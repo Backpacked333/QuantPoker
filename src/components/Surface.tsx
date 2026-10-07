@@ -10,22 +10,29 @@ import {
   surfaceRiskRange,
 } from '../lib/finance'
 import type { Lens, SurfaceScenario } from '../lib/finance'
+import { fitTerrainCamera } from '../lib/terrain-camera'
+
+const terrainBounds = new THREE.Box3(
+  new THREE.Vector3(-2.3, -1.25, -2.1),
+  new THREE.Vector3(2.3, 1.1, 2.15),
+)
+const overviewDirection = new THREE.Vector3(4.5, 3.35, 4.8)
 
 const labels: Record<Lens, [string, string, string]> = {
   equity: [
     'Showdown equity · 0–100%',
-    'Capital at risk / pot',
-    'Decision EV / pot',
+    'Capital at risk in chips',
+    'Decision EV in chips',
   ],
   options: [
     'Showdown equity · 0–100%',
-    'Cost / pot · 0–100%',
-    'Choice value / pot',
+    'Cost in chips',
+    'Choice value in chips',
   ],
   insurance: [
     'Loss probability · 0–100%',
     'Coverage · 0–100%',
-    'Bad-state net / exposure',
+    'Bad-state net in chips',
   ],
 }
 const clamp = (value: number) => Math.max(0, Math.min(1, value))
@@ -57,25 +64,27 @@ function addLabel(
   width = 1,
 ) {
   const canvas = document.createElement('canvas')
-  canvas.width = 512
-  canvas.height = 96
   const context = canvas.getContext('2d')
   if (!context) return
-  context.font = '600 36px sans-serif'
+  const font = '600 42px sans-serif'
+  context.font = font
+  canvas.width = Math.ceil(context.measureText(text).width) + 24
+  canvas.height = 68
+  context.font = font
   context.textAlign = 'center'
   context.textBaseline = 'middle'
   context.strokeStyle = '#071610'
   context.lineWidth = 12
-  context.strokeText(text, 256, 48)
+  context.strokeText(text, canvas.width / 2, 34)
   context.fillStyle = '#eaf5dc'
-  context.fillText(text, 256, 48)
+  context.fillText(text, canvas.width / 2, 34)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   const sprite = new THREE.Sprite(
     new THREE.SpriteMaterial({ map: texture, depthTest: false }),
   )
   sprite.position.set(x, y, z)
-  sprite.scale.set(width, (width * 96) / 512, 1)
+  sprite.scale.set(width, (width * canvas.height) / canvas.width, 1)
   sprite.renderOrder = 3
   group.add(sprite)
 }
@@ -95,6 +104,7 @@ export default function Surface({
 }) {
   const host = useRef<HTMLDivElement>(null)
   const reset = useRef<() => void>(() => {})
+  const moveView = useRef<(direction: THREE.Vector3) => void>(() => {})
   const world = useRef<{
     renderer: THREE.WebGLRenderer
     camera: THREE.PerspectiveCamera
@@ -149,15 +159,14 @@ export default function Surface({
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
     camera.position.set(4.5, 3.35, 4.8)
     const controls = new OrbitControls(camera, renderer.domElement)
-    controls.target.set(0, 0.12, 0)
+    controls.target.set(0, -0.1, 0)
     controls.enablePan = false
     controls.enableZoom = true
     controls.minDistance = 3.8
-    controls.maxDistance = 8.5
-    controls.minPolarAngle = 0.2
+    controls.maxDistance = 40
+    controls.minPolarAngle = 0.01
     controls.maxPolarAngle = Math.PI / 2.05
     controls.update()
-    controls.saveState()
     const ambient = new THREE.HemisphereLight(0xc9ffe5, 0x07100d, 2.1)
     const key = new THREE.DirectionalLight(0xffefd0, 3.6)
     key.position.set(-3, 6, 4)
@@ -250,16 +259,23 @@ export default function Surface({
     marker.add(halo)
     const render = () => renderer.render(scene, camera)
     controls.addEventListener('change', render)
-    reset.current = () => {
-      controls.reset()
-      render()
-    }
-    const moveCamera = (position: THREE.Vector3) => {
+    const motionPreference = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    )
+    const moveCamera = (direction: THREE.Vector3) => {
       cancelAnimationFrame(viewAnimation.current)
+      const position = fitTerrainCamera(
+        camera,
+        controls.target,
+        direction,
+        terrainBounds,
+      )
       const from = camera.position.clone(),
         started = performance.now()
       const frame = (now: number) => {
-        const progress = Math.min(1, (now - started) / 520)
+        const progress = motionPreference.matches
+          ? 1
+          : Math.min(1, (now - started) / 520)
         const eased = 1 - Math.pow(1 - progress, 3)
         camera.position.lerpVectors(from, position, eased)
         camera.lookAt(controls.target)
@@ -267,12 +283,13 @@ export default function Surface({
         render()
         if (progress < 1) viewAnimation.current = requestAnimationFrame(frame)
       }
-      viewAnimation.current = requestAnimationFrame(frame)
+      frame(started)
     }
-    container.dataset.cameraReady = 'true'
-    ;(
-      container as HTMLDivElement & { moveCamera?: typeof moveCamera }
-    ).moveCamera = moveCamera
+    moveView.current = moveCamera
+    reset.current = () => moveCamera(overviewDirection)
+    controls.addEventListener('start', () =>
+      cancelAnimationFrame(viewAnimation.current),
+    )
     world.current = {
       renderer,
       camera,
@@ -290,25 +307,34 @@ export default function Surface({
       renderer.setSize(width, height)
       camera.aspect = width / Math.max(1, height)
       camera.updateProjectionMatrix()
+      cancelAnimationFrame(viewAnimation.current)
+      camera.position.copy(
+        fitTerrainCamera(
+          camera,
+          controls.target,
+          camera.position.clone().sub(controls.target),
+          terrainBounds,
+        ),
+      )
+      controls.update()
       render()
     })
     resize.observe(container)
-    const reduceMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches
     const tick = (time: number) => {
+      const reduceMotion = motionPreference.matches
       const positions = geometry.attributes.position
       const targets = heightTargets.current
-      if (targets && !reduceMotion) {
+      if (targets) {
         let moving = false
         for (let index = 0; index < positions.count; index++) {
-          const next =
-            positions.getY(index) +
-            (targets[index] - positions.getY(index)) * 0.1
+          const next = reduceMotion
+            ? targets[index]
+            : positions.getY(index) +
+              (targets[index] - positions.getY(index)) * 0.1
           moving ||= Math.abs(targets[index] - next) > 0.0002
           positions.setY(index, next)
         }
-        if (moving) {
+        if (moving || reduceMotion) {
           positions.needsUpdate = true
           geometry.computeVertexNormals()
         }
@@ -322,10 +348,16 @@ export default function Surface({
       render()
       if (!reduceMotion) animation.current = requestAnimationFrame(tick)
     }
+    const motionChanged = () => {
+      cancelAnimationFrame(animation.current)
+      tick(performance.now())
+    }
+    motionPreference.addEventListener('change', motionChanged)
     tick(0)
     return () => {
       cancelAnimationFrame(animation.current)
       cancelAnimationFrame(viewAnimation.current)
+      motionPreference.removeEventListener('change', motionChanged)
       resize.disconnect()
       controls.dispose()
       geometry.dispose()
@@ -377,33 +409,17 @@ export default function Surface({
         resources.annotations,
         lens === 'insurance'
           ? `${coordinate * 100}%`
-          : `${Math.round(coordinate * scenario.pot * range)} chips`,
+          : `${Math.round(coordinate * scenario.pot * range)}`,
         1.75,
         -0.96,
         coordinate * 2.8 - 1.4,
         0.8,
       )
     }
-    addLabel(
-      resources.annotations,
-      lens === 'insurance' ? 'LOSS PROBABILITY' : 'SHOWDOWN EQUITY',
-      0,
-      -0.96,
-      -1.95,
-      1.5,
-    )
-    addLabel(
-      resources.annotations,
-      lens === 'insurance' ? 'COVERAGE' : 'CAPITAL AT RISK',
-      1.7,
-      -0.96,
-      1.8,
-      1.25,
-    )
     for (const height of [-0.78, 0, 0.78])
       addLabel(
         resources.annotations,
-        `${Math.round((height / heightScale) * scale)} chips`,
+        `${Math.round((height / heightScale) * scale)}`,
         -1.75,
         height,
         1.65,
@@ -524,25 +540,18 @@ export default function Surface({
   }
 
   function cameraView(view: 'overview' | 'top' | 'edge') {
-    const moveCamera = (
-      host.current as
-        | (HTMLDivElement & {
-            moveCamera?: (position: THREE.Vector3) => void
-          })
-        | null
-    )?.moveCamera
-    moveCamera?.(
+    moveView.current(
       view === 'top'
-        ? new THREE.Vector3(0.01, 6.2, 0.01)
+        ? new THREE.Vector3(0, 6, 0.12)
         : view === 'edge'
           ? new THREE.Vector3(5.5, 1.45, 0.2)
-          : new THREE.Vector3(4.5, 3.35, 4.8),
+          : overviewDirection,
     )
   }
 
   return (
     <>
-      <div className="surface-card">
+      <div className="surface-card terrain-stage">
         <div className="surface-toolbar">
           <span>
             <i className="tiny-dot" /> LIVE · ENGINE-PRICED TERRAIN
@@ -564,17 +573,32 @@ export default function Surface({
             <Box size={12} /> Perspective
           </button>
           <button onClick={() => cameraView('top')}>
-            <Layers3 size={12} /> Contours
+            <Layers3 size={12} /> Top view
           </button>
           <button onClick={() => cameraView('edge')}>
-            <Eye size={12} /> Break-even
+            <Eye size={12} /> Side view
           </button>
+        </div>
+        <div className="terrain-dimensions">
+          <span>
+            X · {lens === 'insurance' ? 'Loss probability' : 'Equity'}
+          </span>
+          <span>Z · {lens === 'insurance' ? 'Coverage' : 'Risk in chips'}</span>
+          <span>
+            Height ·{' '}
+            {lens === 'insurance'
+              ? 'Bad-state net'
+              : lens === 'options'
+                ? 'Choice value'
+                : 'EV'}{' '}
+            in chips
+          </span>
         </div>
         <div
           className="surface-viewport"
           ref={host}
           role="img"
-          aria-label={`${labels[lens][2]} surface, with ${labels[lens][0]} and ${labels[lens][1]}. Drag to rotate or point at the surface to inspect scenarios.`}
+          aria-label={`${labels[lens][2]} surface, with ${labels[lens][0]} and ${labels[lens][1]}. Drag to rotate, click to inspect, or use the probability and exposure sliders below.`}
           onClick={inspect}
         />
         {inspection && (
@@ -582,14 +606,17 @@ export default function Surface({
             <Crosshair size={12} />
             <span>
               {percent(inspection.x)} ·{' '}
-              {percent(
-                inspection.z *
-                  (lens === 'insurance' ? 1 : surfaceRiskRange(scenario)),
-              )}
+              {lens === 'insurance'
+                ? `${percent(inspection.z)} coverage`
+                : `${Math.round(inspection.z * Math.max(1, scenario.pot) * riskRange)} at risk`}
             </span>
             <strong>
               {inspectedValue >= 0 ? '+' : ''}
-              {inspectedValue.toFixed(2)}×
+              {(
+                inspectedValue *
+                (lens === 'insurance' ? scenario.risk : scenario.pot)
+              ).toFixed(1)}{' '}
+              chips
             </strong>
           </div>
         )}
@@ -600,25 +627,28 @@ export default function Surface({
             Live calculations still work.
           </div>
         )}
-        <span className="axis axis-y">{labels[lens][2]}</span>
-        <span className="axis axis-x">{labels[lens][0]}</span>
-        <span className="axis axis-z">
-          {lens === 'insurance'
-            ? labels[lens][1]
-            : `Capital / pot · 0–${surfaceRiskRange(scenario)}×`}
-        </span>
-        <div className="terrain-key" aria-hidden="true">
+        <div className="terrain-key">
+          {lens !== 'options' && (
+            <span>
+              <i className="loss" /> LOSS
+            </span>
+          )}
           <span>
-            <i className="loss" /> LOSS
+            <i className="edge" />{' '}
+            {lens === 'equity'
+              ? 'ZERO EV'
+              : lens === 'options'
+                ? 'ZERO VALUE'
+                : 'ZERO NET LOSS'}
           </span>
+          {lens !== 'insurance' && (
+            <span>
+              <i className="gain" /> GAIN
+            </span>
+          )}
           <span>
-            <i className="edge" /> ZERO EV
-          </span>
-          <span>
-            <i className="gain" /> GAIN
-          </span>
-          <span>
-            <i className="slice" /> CURRENT RISK SLICE
+            <i className="slice" />{' '}
+            {lens === 'insurance' ? 'CURRENT COVERAGE' : 'CURRENT RISK SLICE'}
           </span>
         </div>
         <div className="surface-footer">

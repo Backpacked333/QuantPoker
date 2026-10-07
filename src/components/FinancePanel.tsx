@@ -772,10 +772,10 @@ export function FinancePanel({
                         : 'The cost sits above your modeled break-even frontier.'}
                   </h4>
                   <p>
-                    The pulsing point is this hand. Purple is negative EV, green
-                    is positive EV, and the zero grid is the frontier. Rotate
-                    it, point anywhere, then change your modeled action to watch
-                    the economics reprice.
+                    The glowing point is this scenario. Red-orange is negative
+                    EV, green is positive EV, and the gold line marks break-even
+                    where one exists. Rotate it, click anywhere, then change
+                    your modeled action to watch the economics reprice.
                   </p>
                 </div>
               </div>

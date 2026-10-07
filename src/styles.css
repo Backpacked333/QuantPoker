@@ -3757,11 +3757,8 @@ input:disabled {
 .decision-chart .surface-probe {
   margin-bottom: 12px;
 }
-.decision-chart .surface-viewport {
-  min-height: 300px;
-}
-.decision-chart .surface-card {
-  height: 430px;
+.surface-card.terrain-stage {
+  height: 540px;
   border: 1px solid #28493c;
   border-radius: 14px;
   background: #07140f;
@@ -3769,25 +3766,25 @@ input:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.06),
     0 18px 42px rgba(13, 38, 28, 0.18);
 }
-.decision-chart .surface-card:after {
+.surface-card.terrain-stage:after {
   display: none;
 }
-.decision-chart .surface-toolbar {
+.terrain-stage .surface-toolbar {
   top: 13px;
   left: 15px;
   z-index: 5;
 }
-.decision-chart .surface-toolbar > span {
+.terrain-stage .surface-toolbar > span {
   color: #b8d5c7;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 1.4px;
 }
-.decision-chart .surface-toolbar button {
+.terrain-stage .surface-toolbar button {
   color: #dbebdf;
   background: rgba(255, 255, 255, 0.07);
 }
-.decision-chart .tiny-dot {
+.terrain-stage .tiny-dot {
   width: 6px;
   height: 6px;
   background: #63efad;
@@ -3811,7 +3808,7 @@ input:disabled {
   background: rgba(6, 20, 14, 0.76);
   color: #c8dbcf;
   font:
-    600 8px 'DM Sans',
+    600 10px 'DM Sans',
     sans-serif;
   letter-spacing: 0.2px;
   backdrop-filter: blur(8px);
@@ -3821,8 +3818,9 @@ input:disabled {
   border-color: #79dba9;
   color: white;
 }
-.decision-chart .surface-inspector {
-  top: 84px;
+.terrain-stage .surface-inspector {
+  top: auto;
+  bottom: 87px;
   right: 14px;
   border-color: rgba(200, 236, 216, 0.25);
   background: rgba(7, 20, 15, 0.82);
@@ -3830,23 +3828,23 @@ input:disabled {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(10px);
 }
-.decision-chart .surface-inspector strong {
+.terrain-stage .surface-inspector strong {
   color: #f4d482;
 }
-.decision-chart .axis {
+.terrain-stage .axis {
   display: none;
 }
 .terrain-key {
   position: absolute;
   z-index: 4;
   left: 15px;
-  bottom: 42px;
+  bottom: 52px;
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   pointer-events: none;
   color: #9eb8aa;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.7px;
 }
@@ -3874,28 +3872,49 @@ input:disabled {
 .terrain-key .slice {
   background: white;
 }
-.decision-chart .surface-footer {
+.terrain-stage .surface-footer {
   z-index: 4;
   color: #b8cbbf;
   left: 15px;
   right: 15px;
   bottom: 13px;
-  font-size: 8px;
+  font-size: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.decision-chart .surface-footer .scenario-dot {
+.terrain-stage .surface-footer .scenario-dot {
   background: #74f0b0;
   box-shadow: 0 0 10px #74f0b0;
 }
-.decision-chart .surface-viewport canvas {
+.terrain-stage .surface-viewport {
+  inset: 105px 0 100px;
+  height: auto;
+  min-height: 0;
+}
+.terrain-stage .surface-viewport canvas {
   touch-action: none !important;
 }
+.terrain-dimensions {
+  position: absolute;
+  top: 84px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  gap: 6px 12px;
+  flex-wrap: wrap;
+  color: #b8d5c7;
+  font-size: 11px;
+}
 @media (max-width: 600px) {
-  .decision-chart .surface-card {
-    height: 380px;
+  .surface-card.terrain-stage {
+    height: 520px;
+  }
+  .terrain-stage .surface-viewport {
+    top: 125px;
   }
   .terrain-views button {
     padding: 6px;
-    font-size: 0;
+    font-size: 10px;
   }
   .terrain-views button svg {
     width: 14px;

@@ -47,6 +47,7 @@ import { visibleCoachState } from '../lib/coach'
 import { surfaceRiskRange } from '../lib/finance'
 import { createHandLesson } from '../lib/hand-lesson'
 import { HandLesson } from './HandLesson'
+import { useCloud } from '../lib/cloud-context'
 
 const format = (value: number) =>
   `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(1)}`
@@ -76,6 +77,7 @@ export function FinancePanel({
   playedAction?: Action
   settledResult?: Game['result']
 }) {
+  const cloud = useCloud()
   const [showAssumptions, setShowAssumptions] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const graphHost = useRef<HTMLDivElement>(null)
@@ -352,6 +354,25 @@ export function FinancePanel({
           <HandLesson
             key={`${boardKey}:${pot}:${call}:${lens}`}
             lesson={createHandLesson(lens, pot, call)}
+            onAttempt={(stage, answerId, correct) => {
+              const lesson = createHandLesson(lens, pot, call)
+              cloud?.store.writeAttempt({
+                id: crypto.randomUUID(),
+                lens,
+                stage,
+                answerId,
+                correct,
+                context: {
+                  title: lesson.title,
+                  question:
+                    lesson[stage === 'prediction' ? 'prediction' : 'transfer']
+                      .prompt,
+                  pot,
+                  call,
+                },
+                createdAt: new Date().toISOString(),
+              })
+            }}
             ready={Boolean(analysis)}
             onLesson={() => onLesson(lens)}
             onExplore={(x) => {

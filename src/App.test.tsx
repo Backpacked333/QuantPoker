@@ -3,6 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import App from './App'
 import { botAction } from './lib/poker'
+import type { User } from '@supabase/supabase-js'
+import { CloudContext } from './lib/cloud-context'
+import { CloudStore } from './lib/cloud-store'
+import { SessionApp } from './components/CloudProvider'
+import { STORAGE_KEY } from './lib/storage'
 
 vi.mock('./components/FinancePanel', () => ({
   FinancePanel: () => <input aria-label="Model note" defaultValue="" />,
@@ -72,6 +77,56 @@ const openAnalysis = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Show analysis' }))
 const closeAnalysis = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Close analysis' }))
+
+describe('account-scoped table state', () => {
+  it('restores cloud progress without overwriting guest history and accepts a later remote refresh', () => {
+    const guest = { hands: [], lessons: ['insurance'] }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(guest))
+    const store = new CloudStore(null)
+    let state = {
+      ...store.snapshot(),
+      scope: 'alice',
+      user: { id: 'alice' } as User,
+    }
+    state.cache.progress = { hands: [], lessons: ['equity', 'options'] }
+    vi.spyOn(store, 'snapshot').mockImplementation(() => state)
+    vi.spyOn(store, 'writeProgress').mockImplementation(() => {})
+    vi.spyOn(store, 'writeSettings').mockImplementation(() => {})
+    const view = render(
+      <CloudContext.Provider value={{ store, state }}>
+        <SessionApp />
+      </CloudContext.Provider>,
+    )
+    expect(document.querySelector('.qp-count')?.textContent).toBe('2/3')
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(guest)
+    state = {
+      ...state,
+      cache: {
+        ...state.cache,
+        progress: { hands: [], lessons: ['equity', 'options', 'insurance'] },
+      },
+    }
+    view.rerender(
+      <CloudContext.Provider value={{ store, state }}>
+        <SessionApp />
+      </CloudContext.Provider>,
+    )
+    expect(document.querySelector('.qp-count')?.textContent).toBe('3/3')
+    state = {
+      ...state,
+      scope: 'bob',
+      user: { id: 'bob' } as User,
+      cache: { ...state.cache, progress: { hands: [], lessons: [] } },
+    }
+    view.rerender(
+      <CloudContext.Provider value={{ store, state }}>
+        <SessionApp />
+      </CloudContext.Provider>,
+    )
+    expect(document.querySelector('.qp-count')?.textContent).toBe('0/3')
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual(guest)
+  })
+})
 
 describe('small-screen hand insights', () => {
   it('starts closed, preserves the mounted model, and handles native cancellation', () => {

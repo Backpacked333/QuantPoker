@@ -1,11 +1,15 @@
 import express from 'express'
+import { getVercelOidcTokenSync } from '@vercel/oidc'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { resolve } from 'node:path'
 import { coachRequestSchema } from '../src/lib/coach.js'
 import type { CoachEvent, CoachRequest } from '../src/lib/coach.js'
 import { DEFAULT_MODEL, runCoach } from './coach.js'
+import { createCloudAccess } from './cloud.js'
+import type { CloudAccess } from './cloud.js'
 
 type Options = {
+  cloud?: CloudAccess | null
   configured?: boolean
   accessToken?: string
   production?: boolean
@@ -19,8 +23,17 @@ type Options = {
 }
 export function createCoachApp(options: Options = {}) {
   const app = express()
-  const configured =
-    options.configured ?? Boolean(process.env.AI_GATEWAY_API_KEY)
+  const cloud =
+    options.cloud === undefined ? createCloudAccess() : options.cloud
+  const configured = () => {
+    if (options.configured !== undefined) return options.configured
+    if (process.env.AI_GATEWAY_API_KEY) return true
+    try {
+      return Boolean(getVercelOidcTokenSync())
+    } catch {
+      return false
+    }
+  }
   const accessToken =
     options.accessToken ?? process.env.COACH_ACCESS_TOKEN ?? ''
   const production = options.production ?? process.env.NODE_ENV === 'production'
@@ -34,6 +47,7 @@ export function createCoachApp(options: Options = {}) {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean)
+  if (process.env.VERCEL_URL) origins.push(`https://${process.env.VERCEL_URL}`)
   const budget =
     options.requestBudget ??
     Math.max(1, Math.min(1000, Number(process.env.COACH_REQUEST_BUDGET) || 30))
@@ -48,13 +62,15 @@ export function createCoachApp(options: Options = {}) {
   })
   app.get('/api/coach/health', (_req, res) =>
     res.json({
-      configured: configured && (!production || Boolean(accessToken)),
-      authRequired: Boolean(accessToken),
+      configured:
+        configured() && (!production || Boolean(accessToken) || Boolean(cloud)),
+      authRequired: Boolean(accessToken) || Boolean(cloud),
+      authMode: cloud ? 'account' : accessToken ? 'token' : 'none',
       model: process.env.COACH_MODEL || DEFAULT_MODEL,
     }),
   )
   app.post('/api/coach', express.json({ limit: '48kb' }), async (req, res) => {
-    if (!configured || (production && !accessToken)) {
+    if (!configured() || (production && !accessToken && !cloud)) {
       res.status(503).json({
         error:
           'The AI coach is not configured. The poker game and deterministic explanations still work.',
@@ -67,7 +83,25 @@ export function createCoachApp(options: Options = {}) {
         .json({ error: 'This origin is not enabled for the coach.' })
       return
     }
-    if (accessToken) {
+    let userId: string | null = null
+    if (cloud) {
+      try {
+        userId = await cloud.authorize(
+          (req.get('authorization') ?? '').replace(/^Bearer /, ''),
+        )
+      } catch {
+        res
+          .status(503)
+          .json({ error: 'Account verification is unavailable. Please retry.' })
+        return
+      }
+      if (!userId) {
+        res
+          .status(401)
+          .json({ error: 'Sign in with a verified email to use the coach.' })
+        return
+      }
+    } else if (accessToken) {
       const supplied = (req.get('authorization') ?? '').replace(/^Bearer /, '')
       if (
         !timingSafeEqual(
@@ -91,8 +125,26 @@ export function createCoachApp(options: Options = {}) {
       return
     }
     const now = Date.now()
+    if (cloud && userId) {
+      try {
+        if (!(await cloud.reserve(userId))) {
+          res.setHeader('Retry-After', '60')
+          res.status(429).json({
+            error:
+              'Coach allowance reached: 3 requests per minute, 10 per account per UTC day, and 100 across the site per day. The learning tools remain available.',
+          })
+          return
+        }
+      } catch {
+        res.status(503).json({
+          error:
+            'Could not check your coach allowance. No model request was made.',
+        })
+        return
+      }
+    }
     while (recent.length && recent[0] < now - 60000) recent.shift()
-    if (requests >= budget || recent.length >= 6 || active >= 2) {
+    if ((!cloud && requests >= budget) || recent.length >= 6 || active >= 2) {
       res.setHeader('Retry-After', '60')
       res.status(429).json({
         error:

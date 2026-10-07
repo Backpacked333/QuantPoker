@@ -8,6 +8,7 @@ import type { CoachEvent, CoachRequest } from '../src/lib/coach'
 const servers: Server[] = []
 afterEach(async () => {
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
   await Promise.all(
     servers.splice(0).map(
       (server) =>
@@ -77,6 +78,63 @@ const post = (
     body: JSON.stringify(body),
   })
 describe('coach API boundaries', () => {
+  it('discovers Vercel OIDC at request time, not cold-start module evaluation', async () => {
+    vi.stubEnv('AI_GATEWAY_API_KEY', '')
+    vi.stubEnv('VERCEL_OIDC_TOKEN', '')
+    const url = await start({ configured: undefined })
+    expect(await (await fetch(`${url}/api/coach/health`)).json()).toMatchObject(
+      { configured: false },
+    )
+    vi.stubGlobal(Symbol.for('@vercel/request-context'), {
+      get: () => ({
+        headers: { 'x-vercel-oidc-token': 'test-request-identity' },
+      }),
+    })
+    expect(await (await fetch(`${url}/api/coach/health`)).json()).toMatchObject(
+      { configured: true },
+    )
+    expect((await post(url)).status).toBe(200)
+  })
+  it('uses verified account identity and durable allowance in cloud mode', async () => {
+    const authorize = vi.fn(async (token: string) =>
+      token === 'valid-session' ? 'learner-id' : null,
+    )
+    const reserve = vi.fn(async () => true)
+    const url = await start({ production: true, cloud: { authorize, reserve } })
+    expect(await (await fetch(`${url}/api/coach/health`)).json()).toMatchObject(
+      { configured: true, authMode: 'account', authRequired: true },
+    )
+    expect((await post(url)).status).toBe(401)
+    expect(reserve).not.toHaveBeenCalled()
+    expect(
+      (
+        await post(
+          url,
+          { invalid: true },
+          { Authorization: 'Bearer valid-session' },
+        )
+      ).status,
+    ).toBe(400)
+    expect(reserve).not.toHaveBeenCalled()
+    const response = await post(url, request(), {
+      Authorization: 'Bearer valid-session',
+    })
+    expect(response.status).toBe(200)
+    expect(await response.text()).toContain('Engine-grounded reply')
+    expect(reserve).toHaveBeenCalledWith('learner-id')
+  })
+  it('fails closed when the durable quota is exhausted or unavailable', async () => {
+    const reserve = vi.fn(async () => false)
+    const url = await start({
+      production: true,
+      cloud: { authorize: async () => 'learner-id', reserve },
+    })
+    expect((await post(url)).status).toBe(429)
+    reserve.mockRejectedValueOnce(new Error('DATABASE_SECRET_CANARY'))
+    const response = await post(url)
+    expect(response.status).toBe(503)
+    expect(await response.text()).not.toContain('DATABASE_SECRET_CANARY')
+  })
   it.each([3001, 3017])(
     'accepts its standalone loopback browser origin on port %s',
     async (port) => {

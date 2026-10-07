@@ -18,6 +18,8 @@
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource-variable/manrope": "^5.3.0",
+    "@supabase/supabase-js": "2.57.4",
+    "@vercel/oidc": "3.2.0",
     "ai": "^6.0.301",
     "express": "^5.2.1",
     "lucide-react": "^0.468.0",

@@ -293,18 +293,10 @@ export function FinancePanel({
 
   return (
     <aside className="finance-panel" aria-label="Live finance learning panel">
-      <div className="panel-eyebrow">
-        <span>
-          <Sparkles size={15} /> LIVE QUANT LAB
-        </span>
-        <span className="live-pill">
-          <i /> Live hand + explicit scenario assumptions
-        </span>
-      </div>
       <div className="panel-heading">
         <div>
-          <h2>A better way to read your hand.</h2>
-          <p>Understand the price. See the possibilities. Ask why.</p>
+          <h2>Read the decision</h2>
+          <p>Price, probability, payoff—and the market connection.</p>
         </div>
         <button
           className="icon-button help-button"

@@ -181,8 +181,8 @@ export function DecisionChart({
           >
             <defs>
               <linearGradient id={`${id}-gain`} x1="0" y1="0" x2="0" y2="1">
-                <stop stopColor="#9cdda7" stopOpacity=".35" />
-                <stop offset="1" stopColor="#9cdda7" stopOpacity=".02" />
+                <stop stopColor="#d1efa0" stopOpacity=".32" />
+                <stop offset="1" stopColor="#d1efa0" stopOpacity=".02" />
               </linearGradient>
               <clipPath id={`${id}-negative`}>
                 <rect x="60" y={py(0)} width="630" height="300" />
@@ -232,7 +232,7 @@ export function DecisionChart({
             <path d={area} fill={`url(#${id}-gain)`} />
             <path
               d={area}
-              fill="#a998ca"
+              fill="#ff9baf"
               opacity=".2"
               clipPath={`url(#${id}-negative)`}
             />

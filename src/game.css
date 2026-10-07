@@ -1001,10 +1001,11 @@ body:has(.qp-app) {
   font-weight: 650;
 }
 .qp-analysis {
-  --green: #245c48;
-  --muted: #7a857e;
-  --line: #e4e8df;
-  --accent: #c8e7b5;
+  --green: #b6a6ff;
+  --ink: #f0eff7;
+  --muted: #999baa;
+  --line: #ffffff12;
+  --accent: #b6a6ff;
   position: fixed;
   inset: 0 0 0 auto;
   width: min(560px, 100vw);
@@ -1013,10 +1014,10 @@ body:has(.qp-app) {
   max-height: 100dvh;
   margin: 0;
   border: 0;
-  border-left: 1px solid #d9dbd5;
+  border-left: 1px solid #ffffff16;
   padding: 0 20px 20px;
-  background: #f7f8f3;
-  color: #263c34;
+  background: #15161e;
+  color: #f0eff7;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1031,12 +1032,12 @@ body:has(.qp-app) {
   min-width: 0;
   min-height: 0;
   max-height: 100%;
-  border: 1px solid #d9dbd5;
+  border: 1px solid #ffffff16;
   border-radius: 18px;
   padding-inline: 16px;
   animation: none;
   scrollbar-width: thin;
-  scrollbar-color: #bfc7ba transparent;
+  scrollbar-color: #625b82 transparent;
 }
 .qp-analysis:focus-visible {
   outline: 2px solid #b6a6ff;
@@ -1053,22 +1054,23 @@ body:has(.qp-app) {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #f7f8f3f5;
+  background: #15161ef5;
+  border-bottom: 1px solid #ffffff0d;
   min-height: 70px;
 }
 .qp-analysis-head strong {
   font: 700 16px var(--display);
-  color: #263c34;
+  color: #f0eff7;
 }
 .qp-analysis-head > span {
-  color: #64756c;
+  color: #999baa;
   font-size: 11px;
 }
 .qp-analysis-head button {
   margin-left: auto;
 }
 .qp-analysis-head button:hover {
-  background: #263c340a;
+  background: #ffffff0a;
 }
 .qp-analysis .finance-panel {
   box-shadow: none;
@@ -1085,10 +1087,10 @@ body:has(.qp-app) {
   background: transparent;
 }
 .qp-analysis-docked .panel-heading {
-  margin-top: 12px;
+  margin-top: 14px;
 }
 .qp-analysis-docked .panel-heading h2 {
-  font-size: 21px;
+  font-size: 20px;
   line-height: 1.3;
   letter-spacing: -0.7px;
 }
@@ -1113,15 +1115,493 @@ body:has(.qp-app) {
 }
 .qp-disclaimer {
   font-size: 11px;
-  color: #64756c;
+  color: #777987;
   text-align: center;
   margin: 18px 0 0;
 }
 .qp-app .modal {
-  --green: #245c48;
-  --muted: #7a857e;
-  --line: #e4e8df;
-  --accent: #c8e7b5;
+  --green: #b6a6ff;
+  --ink: #f0eff7;
+  --muted: #999baa;
+  --line: #ffffff12;
+  --accent: #b6a6ff;
+}
+
+/* The table and learning system share one interface language. */
+.qp-app :is(.qp-analysis, .modal) {
+  --learn-surface: #15161e;
+  --learn-raised: #1b1c26;
+  --learn-inset: #111219;
+  --learn-hover: #22232f;
+  --learn-line: #ffffff14;
+  --learn-line-strong: #ffffff22;
+  --learn-text: #f0eff7;
+  --learn-muted: #9a9baa;
+  --learn-faint: #777987;
+  --learn-accent: #b6a6ff;
+  --learn-accent-soft: #b6a6ff1a;
+  --learn-positive: #d1efa0;
+  --learn-negative: #ff9baf;
+  color: var(--learn-text);
+  color-scheme: dark;
+}
+.qp-app .finance-panel {
+  color: var(--learn-text);
+  background: var(--learn-surface);
+  border-color: var(--learn-line);
+  box-shadow: none;
+}
+.qp-app :is(.panel-heading h2, .model-title h3, .decision-story h3, .coach h3) {
+  color: var(--learn-text);
+}
+.qp-app
+  :is(
+    .panel-heading p,
+    .model-title .eyebrow,
+    .hand-snapshot span,
+    .option-map span,
+    .risk-transfer span,
+    .greeks-table > div > span,
+    .model-control > small,
+    .surface-probe label,
+    .surface-probe > div > span,
+    .decision-story p,
+    .outcome-legend,
+    .distribution-key,
+    .coach header p,
+    .coach-context,
+    .coach-welcome > span,
+    .message-meta > span,
+    .coach-privacy,
+    .panel-footnote,
+    .assumptions-toggle,
+    .modal-intro,
+    .modal-note
+  ) {
+  color: var(--learn-muted);
+}
+.qp-app
+  :is(
+    .help-button,
+    .model-title > .icon-button,
+    .lens-tabs button,
+    .story-tabs button,
+    .surface-probe button,
+    .advanced-model > summary,
+    .back-link
+  ) {
+  color: #aaa6bc;
+}
+.qp-app
+  :is(
+    .hand-snapshot,
+    .decision-simulator,
+    .insight-card,
+    .option-map,
+    .greeks-table > div,
+    .coverage-control,
+    .quant-grid > div,
+    .card-sensitivity,
+    .what-if-banner,
+    .surface-probe,
+    .decision-review,
+    .coach,
+    .coach-message.user,
+    .coach-suggestions button,
+    .coach-demonstration,
+    .assumptions,
+    .lesson-link,
+    .library-card,
+    .lesson-caveat,
+    .quiz,
+    .stats-summary,
+    .result-icon
+  ) {
+  color: var(--learn-text);
+  background: var(--learn-raised);
+  border-color: var(--learn-line);
+  box-shadow: none;
+}
+.qp-app
+  :is(
+    .hand-snapshot > div,
+    .finance-metrics > div + div,
+    .lens-tabs,
+    .story-tabs,
+    .advanced-model,
+    .coach-context,
+    .coach-message,
+    .modal-header,
+    .setting-row,
+    .history-list li,
+    .results-list > div
+  ) {
+  border-color: var(--learn-line);
+}
+.qp-app
+  :is(
+    .hand-snapshot strong,
+    .finance-metrics strong,
+    .option-map strong,
+    .greeks-table strong,
+    .quant-grid strong,
+    .surface-probe strong,
+    .surface-probe b,
+    .decision-review h4,
+    .coach-welcome p,
+    .message-body,
+    .model-control label,
+    .model-control label strong
+  ) {
+  color: var(--learn-text);
+}
+.qp-app .decision-simulator {
+  background: #191a25;
+  border-color: #b6a6ff2e;
+}
+.qp-app
+  :is(
+    .finance-metrics > div > span,
+    .finance-metrics em,
+    .finance-metrics small,
+    .insight-card p,
+    .formula,
+    .formula code,
+    .analogy-caption p,
+    .outline-tag,
+    .slider-label,
+    .option-map small,
+    .greeks-table p,
+    .quant-grid small,
+    .card-sensitivity small,
+    .sensitivity-row > span,
+    .sensitivity-row em,
+    .coach-demonstration small,
+    .assumptions
+  ) {
+  color: var(--learn-muted);
+}
+.qp-app :is(.formula, .outline-tag) {
+  border-color: var(--learn-line);
+}
+.qp-app :is(.insight-card h4, .insight-card b, .slider-label strong) {
+  color: var(--learn-text);
+}
+.qp-app :is(.insight-icon, .quant-grid > div > svg) {
+  color: var(--learn-accent);
+}
+.qp-app .outcome-distribution {
+  background: #ffffff12;
+}
+.qp-app :is(.outcome-distribution .win, .distribution-key i.win) {
+  background: var(--learn-positive);
+}
+.qp-app :is(.outcome-distribution .loss, .distribution-key i.loss) {
+  background: var(--learn-negative);
+}
+.qp-app .sensitivity-row button {
+  color: var(--learn-text);
+  background: #ffffff08;
+}
+.qp-app .sensitivity-row button:hover {
+  background: var(--learn-accent-soft);
+  border-color: #b6a6ff55;
+}
+.qp-app .decision-buttons button {
+  color: #d7d5e2;
+  background: #ffffff05;
+  border-color: var(--learn-line);
+  border-radius: 8px;
+}
+.qp-app .decision-buttons button:not(:disabled):hover {
+  color: var(--learn-text);
+  background: var(--learn-hover);
+  border-color: #b6a6ff55;
+}
+.qp-app .decision-buttons button.selected {
+  color: #191622;
+  background: var(--learn-accent);
+  border-color: var(--learn-accent);
+  box-shadow: 0 8px 22px #0003;
+}
+.qp-app .lens-tabs {
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--learn-line);
+  border-radius: 10px;
+  background: var(--learn-inset);
+}
+.qp-app .lens-tabs button {
+  flex: 1;
+  justify-content: center;
+  padding: 9px 7px;
+  border-radius: 7px;
+  font-size: 11px;
+}
+.qp-app .lens-tabs button.selected,
+.qp-app .lens-tabs button:hover {
+  color: var(--learn-text);
+  background: var(--learn-accent-soft);
+}
+.qp-app .lens-tabs button.selected:after {
+  display: none;
+}
+.qp-app .decision-chart {
+  background: var(--learn-inset);
+  border-color: var(--learn-line-strong);
+  border-radius: 12px;
+  box-shadow: inset 0 1px #ffffff08;
+}
+.qp-app .surface-card.terrain-stage {
+  background: #0f1017;
+  border-color: var(--learn-line-strong);
+  box-shadow:
+    inset 0 1px #ffffff08,
+    0 18px 42px #0003;
+}
+.qp-app .terrain-stage .surface-toolbar > span,
+.qp-app .terrain-dimensions,
+.qp-app .terrain-key,
+.qp-app .terrain-stage .surface-footer {
+  color: #b0afbe;
+}
+.qp-app .terrain-stage .surface-toolbar button,
+.qp-app .terrain-views button {
+  color: #d3d0de;
+  background: #171821d9;
+  border-color: var(--learn-line-strong);
+}
+.qp-app :is(.terrain-views button:hover, .terrain-views button:focus-visible) {
+  color: var(--learn-text);
+  border-color: var(--learn-accent);
+}
+.qp-app .terrain-stage .surface-inspector {
+  color: #c2c1cc;
+  background: #111219e8;
+  border-color: var(--learn-line-strong);
+}
+.qp-app .terrain-stage .surface-inspector strong {
+  color: var(--learn-accent);
+}
+.qp-app .terrain-stage :is(.tiny-dot, .surface-footer .scenario-dot) {
+  background: var(--learn-positive);
+  box-shadow: 0 0 10px #d1efa077;
+}
+.qp-app .chart-topline {
+  border-color: var(--learn-line-strong);
+}
+.qp-app
+  :is(.chart-topline > span, .plot-heading, .plot-heading > span:last-child) {
+  color: var(--learn-muted);
+}
+.qp-app .chart-topline button {
+  color: #aaa6bc;
+  border-radius: 7px;
+}
+.qp-app .chart-topline button[aria-pressed='true'] {
+  color: #191622;
+  background: var(--learn-accent);
+}
+.qp-app .payoff-curve {
+  stroke: var(--learn-positive);
+}
+.qp-app .payoff-curve.negative {
+  stroke: var(--learn-negative);
+}
+.qp-app :is(.plot-tick, .plot-axis, .zero-label) {
+  fill: #9d9eac;
+}
+.qp-app .live-point-halo {
+  fill: var(--learn-positive);
+}
+.qp-app :is(.live-point, .live-point-label) {
+  fill: var(--learn-positive);
+}
+.qp-app .probe-line {
+  stroke: var(--learn-accent);
+}
+.qp-app .probe-point {
+  fill: var(--learn-accent);
+}
+.qp-app .point-explanation {
+  border-color: var(--learn-line-strong);
+}
+.qp-app .point-explanation p {
+  color: var(--learn-text);
+}
+.qp-app .point-explanation :is(.negative) {
+  color: var(--learn-negative);
+}
+.qp-app .point-explanation :is(.positive) {
+  color: var(--learn-positive);
+}
+.qp-app .discuss-point {
+  color: var(--learn-text);
+  background: var(--learn-accent-soft);
+  border-color: #b6a6ff44;
+}
+.qp-app .story-tabs button[aria-pressed='true'] {
+  color: var(--learn-text);
+  background: var(--learn-accent-soft);
+}
+.qp-app :is(.story-tabs button span, .story-eyebrow) {
+  color: #a99df1;
+}
+.qp-app .story-link {
+  color: #c6baff;
+  border-color: #b6a6ff55;
+}
+.qp-app .outcome-dots .win {
+  background: var(--learn-positive);
+}
+.qp-app .outcome-dots .loss {
+  background: var(--learn-negative);
+}
+.qp-app .advanced-model > summary:hover {
+  color: #c6baff;
+}
+.qp-app .coach {
+  border-radius: 14px;
+}
+.qp-app .coach-avatar {
+  color: #c6baff;
+  background: var(--learn-accent-soft);
+  border-color: #b6a6ff33;
+}
+.qp-app .coach-state.connected,
+.qp-app .message-meta {
+  color: var(--learn-positive);
+}
+.qp-app .coach-suggestions button:hover,
+.qp-app .coach-demonstration:hover {
+  color: var(--learn-text);
+  background: var(--learn-hover);
+  border-color: #b6a6ff44;
+}
+.qp-app .coach-composer {
+  color: var(--learn-text);
+  background: var(--learn-inset);
+  border-color: var(--learn-line-strong);
+}
+.qp-app .coach-composer:focus-within {
+  outline-color: var(--learn-accent);
+}
+.qp-app .coach-composer textarea {
+  color: var(--learn-text);
+}
+.qp-app .coach-composer textarea::placeholder {
+  color: var(--learn-faint);
+}
+.qp-app .coach-composer button,
+.qp-app .primary-button {
+  color: #191622;
+  background: var(--learn-accent);
+}
+.qp-app :is(.coach-composer button, .primary-button):not(:disabled):hover {
+  background: #c6baff;
+}
+.qp-app :is(.lesson-link, .assumptions-toggle) {
+  color: #c6baff;
+}
+.qp-app .lesson-link {
+  background: var(--learn-raised);
+  border-color: var(--learn-line);
+}
+.qp-app .lesson-link:hover {
+  background: var(--learn-hover);
+}
+.qp-app .modal {
+  color: var(--learn-text);
+  background: var(--learn-surface);
+  border-color: var(--learn-line-strong);
+  box-shadow: 0 32px 110px #0009;
+}
+.qp-app .modal::backdrop {
+  background: #07070bc9;
+}
+.qp-app :is(.library-card:hover, .quiz-choices button:hover) {
+  color: var(--learn-text);
+  background: var(--learn-hover);
+}
+.qp-app :is(.quiz-choices button, .coach-access input) {
+  color: var(--learn-text);
+  background: var(--learn-inset);
+  border-color: var(--learn-line-strong);
+}
+.qp-app .quiz-choices button.correct {
+  color: var(--learn-positive);
+  background: #d1efa014;
+  border-color: #d1efa066;
+}
+.qp-app .quiz-choices button.incorrect {
+  color: var(--learn-negative);
+  background: #ff9baf14;
+  border-color: #ff9baf66;
+}
+.qp-app
+  :is(
+    .library-card p,
+    .library-note,
+    .lesson-meta,
+    .lesson-subtitle,
+    .lesson-detail > p,
+    .lesson-caveat,
+    .quiz-feedback,
+    .help-content p,
+    .setting-row small,
+    .history-list li,
+    .history-list li > span,
+    .stats-summary span,
+    .stats-summary small,
+    .results-list small,
+    .empty-state,
+    .stats-bottom
+  ) {
+  color: var(--learn-muted) !important;
+}
+.qp-app
+  :is(
+    .library-card h3,
+    .lesson-detail > h3,
+    .lesson-detail h4,
+    .help-content h3,
+    .help-content h4,
+    .setting-row strong,
+    .stats-heading,
+    .results-list strong,
+    .empty-state h3
+  ) {
+  color: var(--learn-text);
+}
+.qp-app .stats-summary strong {
+  color: var(--learn-accent);
+}
+.qp-app .library-icon,
+.qp-app .help-content > div > span {
+  color: #c6baff;
+  background: var(--learn-accent-soft);
+}
+.qp-app .switch {
+  background: #343542;
+}
+.qp-app .switch.on {
+  background: var(--learn-accent);
+}
+.qp-app .switch:after {
+  background: #f0eff7;
+}
+.qp-app input[type='range'] {
+  background: #ffffff1f;
+  accent-color: var(--learn-accent);
+}
+.qp-app input[type='range']::-webkit-slider-thumb {
+  background: #ded8ff;
+  border-color: #7064a4;
+  box-shadow: 0 0 0 1px #7064a4;
+}
+.qp-app input[type='range']::-moz-range-thumb {
+  background: #ded8ff;
+  border-color: #7064a4;
 }
 @keyframes qp-drawer {
   from {

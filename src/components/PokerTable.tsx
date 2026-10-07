@@ -1,55 +1,80 @@
 import { useEffect, useState } from 'react'
+import type { CSSProperties } from 'react'
 import {
   ArrowRight,
-  ArrowUpRight,
-  Check,
-  ChevronDown,
+  ChartNoAxesCombined,
   History,
-  Maximize2,
-  Minimize2,
+  Lightbulb,
+  Minus,
   Pause,
   Play,
+  Plus,
   Settings2,
   ShieldCheck,
   Spade,
   Volume2,
   VolumeX,
+  X,
 } from 'lucide-react'
-import type { CSSProperties } from 'react'
 import { cardKey, evaluate, legalActions } from '../lib/poker'
-import type { Action, Game, Player } from '../lib/poker'
+import type { Action, EquityAnalysis, Game, Player } from '../lib/poker'
 import { bestFiveKeys } from '../lib/table-presentation'
 import type { TableFrame } from '../lib/table-presentation'
 import { PlayingCard } from './PlayingCard'
 
 const chips = (n: number) => n.toLocaleString('en-US')
+const percent = (n: number) => `${Math.round(n * 100)}%`
+const signed = (n: number) =>
+  `${n >= 0 ? '+' : '−'}${chips(Math.round(Math.abs(n)))}`
+const BIG_BLIND = 20
+const DENOMINATIONS = [500, 100, 25, 5, 1]
+const ACTION_ENTRY =
+  /^(You|Atlas) (fold|check|call|bet|raise)s?(?: to)?(?: (\d+))?/
+const ROUND_START = /^(Flop|Turn|River) ·|^A new hand|^Guided hand/
+const VERBS: Record<string, string> = {
+  fold: 'Fold',
+  check: 'Check',
+  call: 'Call',
+  bet: 'Bet',
+  raise: 'Raise',
+}
 
-function ChipStacks({
-  amount,
-  className = '',
-}: {
-  amount: number
-  className?: string
-}) {
-  let remainder = amount
-  const piles = [100, 25, 5, 1].flatMap((value) => {
-    const count = Math.floor(remainder / value)
-    remainder %= value
-    return count ? [{ value, count }] : []
-  })
+function Chips({ amount }: { amount: number }) {
+  let rest = amount
+  const stacks = DENOMINATIONS.flatMap((value) => {
+    const count = Math.floor(rest / value)
+    rest %= value
+    return count ? [{ value, count: Math.min(count, 6) }] : []
+  }).slice(0, 4)
   return (
-    <div className={`physical-chips ${className}`} aria-hidden="true">
-      {piles.map(({ value, count }) => (
-        <div className={`chip-pile denomination-${value}`} key={value}>
-          {Array.from({ length: Math.min(5, count) }, (_, i) => (
-            <i key={i} style={{ '--chip-level': i } as CSSProperties}>
-              <span>{value}</span>
-            </i>
+    <span className="chips" aria-hidden="true">
+      {stacks.map(({ value, count }) => (
+        <span
+          className={`chip-stack chip-${value}`}
+          key={value}
+          style={{ '--n': count } as CSSProperties}
+        >
+          {Array.from({ length: count }, (_, i) => (
+            <i key={i} style={{ '--i': i } as CSSProperties} />
           ))}
-        </div>
+        </span>
       ))}
-    </div>
+    </span>
   )
+}
+
+function roundActions(log: string[]) {
+  const found: [string?, string?] = []
+  for (let i = log.length - 1; i >= 0; i--) {
+    if (ROUND_START.test(log[i])) break
+    const match = ACTION_ENTRY.exec(log[i])
+    if (!match) continue
+    const player = match[1] === 'You' ? 0 : 1
+    if (found[player]) continue
+    const verb = VERBS[match[2]]
+    found[player] = match[3] ? `${verb} ${chips(Number(match[3]))}` : verb
+  }
+  return found
 }
 
 export function PokerTable({
@@ -59,6 +84,7 @@ export function PokerTable({
   paused,
   yourTurn,
   betAmount,
+  analysis,
   onRaise,
   onAction,
   onDeal,
@@ -67,11 +93,14 @@ export function PokerTable({
   onHistory,
   sound,
   onSound,
-  focus,
-  onFocus,
+  analysisOpen,
+  onToggleAnalysis,
   onUnlock,
   shortcuts,
   dialogOpen,
+  tip,
+  onDismissTip,
+  notice,
 }: {
   game: Game
   frame: TableFrame
@@ -79,6 +108,7 @@ export function PokerTable({
   paused: boolean
   yourTurn: boolean
   betAmount: number
+  analysis: EquityAnalysis | null
   onRaise: (amount: number) => void
   onAction: (action: Action) => void
   onDeal: () => void
@@ -87,39 +117,79 @@ export function PokerTable({
   onHistory: () => void
   sound: boolean
   onSound: () => void
-  focus: boolean
-  onFocus: () => void
+  analysisOpen: boolean
+  onToggleAnalysis: () => void
   onUnlock: () => void
   shortcuts: boolean
   dialogOpen: boolean
+  tip?: string
+  onDismissTip?: () => void
+  notice?: string
 }) {
   const legal = legalActions(game)
   const [confirmation, setConfirmation] = useState('')
   const [draft, setDraft] = useState<{ key: string; value: string } | null>(
     null,
   )
-  const confirmationKey = `${game.id}:${game.log.length}:${betAmount}`
+  const decisionKey = `${game.id}:${game.log.length}`
+  const confirmationKey = `${decisionKey}:${betAmount}`
   const confirm = confirmation === confirmationKey && yourTurn && legal.canRaise
   const isAllIn = betAmount - game.bets[0] === game.stacks[0]
   const isMaximum = betAmount === legal.maxRaiseTo
-  const raiseLabel = Math.max(...game.bets) === 0 ? 'Bet' : 'Raise to'
-  const handName =
+  const facingBet = Math.max(...game.bets) > 0
+  const raiseVerb = facingBet ? 'Raise to' : 'Bet'
+  const result = game.result
+  const winner = result?.winner
+  const showdown = !!result?.showdown
+  const best = showdown
+    ? bestFiveKeys([...game.cards[winner === 1 ? 1 : 0], ...game.board])
+    : new Set<string>()
+  const actions = roundActions(game.log)
+  const heroHand =
     game.board.length >= 3
       ? evaluate([...game.cards[0], ...game.board]).name
       : game.cards[0][0].rank === game.cards[0][1].rank
         ? 'Pocket pair'
-        : 'Your hole cards'
-  const winner = game.result?.winner
-  const best = game.result?.showdown
-    ? bestFiveKeys([...game.cards[winner === 1 ? 1 : 0], ...game.board])
-    : new Set<string>()
-  const latest = game.log.at(-1) ?? ''
-  const buttonLabel = isAllIn ? 'All-in' : `${raiseLabel} ${chips(betAmount)}`
+        : game.cards[0][0].suit === game.cards[0][1].suit
+          ? 'Suited'
+          : 'Hole cards'
+  const equity = analysis?.equity
+  const price = legal.toCall / (game.pot + legal.toCall)
+  const callEV =
+    equity === undefined
+      ? null
+      : equity * (game.pot + legal.toCall) - legal.toCall
+  const sizingDisabled = !yourTurn || !legal.canRaise
+  const clampBet = (value: number) =>
+    Math.min(legal.maxRaiseTo, Math.max(legal.minRaiseTo, Math.round(value)))
+  const presets = [
+    { label: 'Min', amount: legal.minRaiseTo },
+    {
+      label: '½ pot',
+      amount: Math.max(...game.bets) + (game.pot + legal.toCall) / 2,
+    },
+    {
+      label: '¾ pot',
+      amount: Math.max(...game.bets) + (game.pot + legal.toCall) * 0.75,
+    },
+    { label: 'Pot', amount: Math.max(...game.bets) + game.pot + legal.toCall },
+    {
+      label:
+        legal.maxRaiseTo - game.bets[0] === game.stacks[0] ? 'All-in' : 'Max',
+      amount: legal.maxRaiseTo,
+    },
+  ]
+  const progress =
+    ((betAmount - legal.minRaiseTo) /
+      Math.max(1, legal.maxRaiseTo - legal.minRaiseTo)) *
+    100
+
   function raise() {
     if (!yourTurn || !legal.canRaise) return
     if (isMaximum) setConfirmation(confirmationKey)
     else onAction({ type: 'raise', to: betAmount })
   }
+
   useEffect(() => {
     if (!shortcuts || dialogOpen) return
     const handler = (event: KeyboardEvent) => {
@@ -135,9 +205,14 @@ export function PokerTable({
           ))
       )
         return
-      if (!yourTurn || confirm) return
       const key = event.key.toLowerCase()
-      if (!['f', 'c', 'r'].includes(key)) return
+      if (key === 'n' && result && !busy) {
+        event.preventDefault()
+        onUnlock()
+        onDeal()
+        return
+      }
+      if (!yourTurn || confirm || !['f', 'c', 'r'].includes(key)) return
       event.preventDefault()
       onUnlock()
       if (key === 'f') onAction({ type: 'fold' })
@@ -150,507 +225,419 @@ export function PokerTable({
 
   function seat(player: Player) {
     const hero = player === 0
-    const active = !game.result && !paused && !busy && game.turn === player
-    const action = frame.actor === player && frame.phase === 'bet'
+    const active = !result && !busy && !paused && game.turn === player
+    const revealed = hero || showdown || !!frame.revealOpponent
+    const opponentHand =
+      !hero && revealed && game.board.length >= 3
+        ? evaluate([...game.cards[1], ...game.board]).name
+        : null
+    const tag =
+      !hero && opponentHand
+        ? opponentHand
+        : active && !hero
+          ? 'Thinking'
+          : showdown
+            ? ''
+            : (actions[player] ?? '')
+    const tagKind = tag.startsWith('Fold')
+      ? 'pt-tag-fold'
+      : tag === 'Thinking'
+        ? 'pt-tag-thinking'
+        : opponentHand
+          ? 'pt-tag-hand'
+          : ''
     return (
       <div
-        className={`room-seat ${hero ? 'room-hero' : 'room-opponent'} ${active ? 'seat-is-active' : ''} ${winner === player ? 'seat-winner' : ''}`}
+        className={`pt-seat ${hero ? 'pt-seat-hero' : 'pt-seat-opp'} ${active ? 'pt-active' : ''} ${winner === player ? 'pt-winner' : ''}`}
       >
-        {!hero && (
-          <div className="room-hole-cards opponent-hole-cards">
-            {game.cards[1].map((card, i) => (
-              <div className="card-deal-slot" key={`${game.id}-${i}`}>
-                <PlayingCard
-                  key={
-                    game.result?.showdown || frame.revealOpponent
-                      ? 'face'
-                      : 'back'
-                  }
-                  card={card}
-                  back={!game.result?.showdown && !frame.revealOpponent}
-                  small
-                  delay={i * 110}
-                  highlight={winner === 1 && best.has(cardKey(card))}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="room-player">
-          <span className={`room-avatar ${hero ? 'room-avatar-hero' : ''}`}>
-            {hero ? <Spade size={21} fill="currentColor" /> : <span>A</span>}
+        <div className="pt-hole">
+          {game.cards[player].map((card, i) => (
+            <PlayingCard
+              key={`${game.id}-${i}-${revealed ? 'face' : 'back'}`}
+              card={card}
+              back={!revealed}
+              delay={i * 220 + (hero ? 110 : 0)}
+              highlight={winner === player && best.has(cardKey(card))}
+            />
+          ))}
+        </div>
+        <div className="pt-plate">
+          <span className="pt-avatar" aria-hidden="true">
+            {hero ? <Spade size={17} fill="currentColor" /> : 'A'}
           </span>
-          <div>
-            <strong>
-              {hero ? 'You' : 'Atlas'}{' '}
-              <small>{hero ? 'PLAYER 01' : 'PRACTICE BOT'}</small>
+          <span className="pt-identity">
+            <span className="pt-name">{hero ? 'You' : 'Atlas'}</span>
+            <strong key={game.stacks[player]} className="pt-stack">
+              {chips(game.stacks[player])}
             </strong>
-            <span key={game.stacks[player]} className="stack-value">
-              {chips(game.stacks[player])} <small>chips</small>
-            </span>
-          </div>
+          </span>
+          {hero && <span className="pt-strength">{heroHand}</span>}
           {game.dealer === player && (
-            <span className="room-dealer" aria-label="Dealer">
+            <span className="pt-dealer" aria-label="Dealer">
               D
             </span>
           )}
         </div>
-        {hero && (
-          <div className="room-hole-cards hero-hole-cards">
-            {game.cards[0].map((card, i) => (
-              <div
-                className="card-deal-slot"
-                key={`${game.id}-${cardKey(card)}`}
-              >
-                <PlayingCard
-                  card={card}
-                  delay={220 + i * 110}
-                  highlight={winner !== 1 && best.has(cardKey(card))}
-                />
-              </div>
-            ))}
+        {game.bets[player] > 0 && !result && (
+          <div
+            className="pt-bet"
+            key={`${game.id}-${player}-${game.bets[player]}`}
+          >
+            <Chips amount={game.bets[player]} />
+            <span>{chips(game.bets[player])}</span>
           </div>
         )}
-        <div className="room-seat-status">
-          {game.result ? (
-            winner === player ? (
-              <>
-                <Check size={12} /> Winner
-              </>
-            ) : winner === 'tie' ? (
-              'Split pot'
-            ) : (
-              'Hand complete'
-            )
-          ) : action ? (
-            latest
-          ) : active ? (
-            hero ? (
-              'Your decision'
-            ) : (
-              <>
-                <i />
-                <i />
-                <i /> Considering the odds
-              </>
-            )
-          ) : paused ? (
-            'Table paused'
+        <span
+          className={`pt-tag ${tagKind} ${tag ? '' : 'pt-tag-empty'}`}
+          aria-hidden={!tag}
+        >
+          {tag === 'Thinking' ? (
+            <>
+              Thinking
+              <i />
+              <i />
+              <i />
+            </>
           ) : (
-            'At the table'
+            tag || '·'
           )}
-        </div>
+        </span>
       </div>
     )
   }
 
-  const status = game.result
-    ? game.result.text
-    : paused
-      ? 'Take your time.'
-      : busy
-        ? frame.phase === 'deal'
-          ? 'Dealing a new hand'
-          : frame.phase === 'reveal'
-            ? 'Showdown'
-            : frame.phase === 'street'
-              ? `The ${game.street}`
-              : 'Action on the table'
-        : yourTurn
-          ? 'The decision is yours.'
-          : 'Atlas is thinking.'
-  const progress = Math.round(
-    ((betAmount - legal.minRaiseTo) /
-      Math.max(1, legal.maxRaiseTo - legal.minRaiseTo)) *
-      100,
-  )
+  const status =
+    notice ||
+    (result
+      ? result.text
+      : paused
+        ? 'Table paused'
+        : busy
+          ? frame.phase === 'deal'
+            ? 'Dealing…'
+            : frame.phase === 'reveal'
+              ? 'Showdown'
+              : frame.phase === 'street'
+                ? `Dealing the ${game.street}`
+                : `${frame.actor === 0 ? 'You' : 'Atlas'} · ${actions[frame.actor ?? 0] ?? 'act'}`
+          : yourTurn
+            ? 'Your move'
+            : game.turn === 1
+              ? 'Atlas is thinking…'
+              : 'Waiting')
 
   return (
     <div
-      className={`poker-room ${paused ? 'room-paused' : ''} phase-${frame.phase}`}
+      className={`pt ${paused ? 'pt-paused' : ''} ${showdown ? 'pt-showdown' : ''} pt-phase-${frame.phase}`}
       onPointerDown={onUnlock}
     >
-      <div className="room-toolbar">
-        <div className="room-table-id">
-          <i />
-          <strong>
-            {game.guided ? 'GUIDED OPENING' : 'THE PRACTICE ROOM'}
-          </strong>
-          <span>
-            Heads-up <b>·</b> 10 / 20
+      <div className="pt-bar">
+        <div className="pt-hand-info">
+          <span className="pt-live" />
+          <strong>{game.guided ? 'Guided hand' : `Hand #${game.id}`}</strong>
+          <span>NLH · 10/20</span>
+          <span className="pt-street-chip">
+            {result
+              ? 'Settled'
+              : game.street === 'preflop'
+                ? 'Pre-flop'
+                : game.street}
           </span>
         </div>
-        <div className="room-tools">
+        <div className="pt-tools">
+          <button
+            aria-label="Hand history"
+            title="Hand history"
+            onClick={onHistory}
+          >
+            <History size={17} />
+          </button>
           <button
             aria-label={sound ? 'Mute table sounds' : 'Enable table sounds'}
-            aria-pressed={sound}
             title={sound ? 'Mute sounds' : 'Enable sounds'}
+            aria-pressed={sound}
             onClick={onSound}
           >
             {sound ? <Volume2 size={17} /> : <VolumeX size={17} />}
           </button>
           <button
             aria-label={paused ? 'Resume hand' : 'Pause hand'}
+            title={paused ? 'Resume' : 'Pause'}
             aria-pressed={paused}
             onClick={onPause}
           >
             {paused ? <Play size={17} /> : <Pause size={17} />}
           </button>
-          <button aria-label="Table settings" onClick={onSettings}>
+          <button
+            aria-label="Table settings"
+            title="Settings"
+            onClick={onSettings}
+          >
             <Settings2 size={17} />
           </button>
-          <span className="tool-divider" />
           <button
-            className="room-focus-button"
-            aria-pressed={focus}
-            onClick={onFocus}
+            className="pt-analysis-toggle"
+            aria-pressed={analysisOpen}
+            aria-label={analysisOpen ? 'Hide analysis' : 'Show analysis'}
+            onClick={onToggleAnalysis}
           >
-            {focus ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
-            <span>{focus ? 'Show analysis' : 'Focus mode'}</span>
+            <ChartNoAxesCombined size={16} />
+            <span>{analysisOpen ? 'Hide analysis' : 'Analysis'}</span>
           </button>
         </div>
       </div>
-      <div
-        className="room-stage"
-        aria-label={`Hand ${game.id}, ${game.street}`}
-      >
-        <div className="room-spotlight" />
-        <div className="room-rail">
-          <div className="room-felt">
-            <div className="room-stitch" />
-            <div className="room-felt-signature">
-              <Spade size={19} fill="currentColor" />
-              <span>QUANTPOKER</span>
-              <small>THE DECISION ROOM</small>
-            </div>
-          </div>
-        </div>
-        <div className="room-edge-mark">NO-LIMIT HOLD’EM</div>
-        <div className="room-hand-number">
-          HAND <strong>{String(game.id).padStart(3, '0')}</strong>
-        </div>
+
+      <div className="pt-stage" aria-label={`Hand ${game.id}, ${game.street}`}>
+        <div className="pt-felt" aria-hidden="true" />
         {seat(1)}
-        <div className="room-board">
-          <div className="room-pot" key={`${game.id}-${game.pot}`}>
-            <ChipStacks
-              amount={
-                game.result ? game.invested[0] + game.invested[1] : game.pot
-              }
+        <div className="pt-center">
+          <div className="pt-pot" key={`${game.id}-${game.pot}`}>
+            <Chips
+              amount={result ? game.invested[0] + game.invested[1] : game.pot}
             />
-            <div>
-              <span>{game.result ? 'FINAL POT' : 'IN THE POT'}</span>
-              <strong>
-                {chips(
-                  game.result ? game.invested[0] + game.invested[1] : game.pot,
-                )}
-              </strong>
-            </div>
+            <span>{result ? 'Final pot' : 'Pot'}</span>
+            <strong>
+              {chips(result ? game.invested[0] + game.invested[1] : game.pot)}
+            </strong>
           </div>
-          <div className="room-community" aria-label="Community cards">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div
-                className={`board-slot ${i === 3 ? 'turn-slot' : ''} ${i === 4 ? 'river-slot' : ''}`}
-                key={i}
-              >
+          <div className="pt-board" aria-label="Community cards">
+            {Array.from({ length: 5 }, (_, i) =>
+              game.board[i] ? (
                 <PlayingCard
-                  key={
-                    game.board[i]
-                      ? `${game.id}-${cardKey(game.board[i])}`
-                      : `empty-${game.id}`
-                  }
+                  key={`${game.id}-${cardKey(game.board[i])}`}
                   card={game.board[i]}
-                  empty={!game.board[i]}
-                  highlight={
-                    !!game.board[i] && best.has(cardKey(game.board[i]))
-                  }
-                  delay={i < 3 ? i * 90 : 0}
+                  highlight={best.has(cardKey(game.board[i]))}
+                  delay={i < 3 ? i * 110 : 0}
                 />
-                {!game.board[i] && (
-                  <small>{i < 3 ? 'FLOP' : i === 3 ? 'TURN' : 'RIVER'}</small>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="room-streets" aria-label="Hand progress">
-            {['preflop', 'flop', 'turn', 'river'].map((street, i) => (
-              <span
-                key={street}
-                className={
-                  game.street === street ||
-                  (game.result && i === Math.max(0, game.board.length - 2))
-                    ? 'street-active'
-                    : game.board.length >= [0, 3, 4, 5][i]
-                      ? 'street-past'
-                      : ''
-                }
-              >
-                <i />
-                {street === 'preflop' ? 'Pre-flop' : street}
-              </span>
-            ))}
+              ) : (
+                <PlayingCard
+                  key={`empty-${i}`}
+                  empty
+                  label={i < 3 ? 'Flop' : i === 3 ? 'Turn' : 'River'}
+                />
+              ),
+            )}
           </div>
         </div>
-        {([0, 1] as const).map((player) =>
-          game.bets[player] > 0 && !game.result ? (
-            <div
-              className={`room-wager wager-${player}`}
-              key={`${game.id}-${player}-${game.bets[player]}`}
-            >
-              <ChipStacks amount={game.bets[player]} />
-              <span>{chips(game.bets[player])}</span>
-            </div>
-          ) : null,
-        )}
         {frame.phase === 'bet' && !!frame.amount && (
           <div
-            className={`flying-chips from-${frame.actor}`}
-            key={`${game.id}-${game.log.length}`}
+            className={`pt-fly pt-fly-${frame.actor}`}
+            key={`fly-${game.id}-${game.log.length}`}
             aria-hidden="true"
           >
-            <ChipStacks amount={frame.amount} />
+            <Chips amount={frame.amount} />
           </div>
         )}
-        <div className="room-deck" aria-hidden="true">
-          <i />
-          <i />
-          <span>♠</span>
-        </div>
+        {frame.phase === 'settle' && result && winner !== 'tie' && (
+          <div className={`pt-sweep pt-sweep-${winner}`} aria-hidden="true">
+            <Chips amount={game.invested[0] + game.invested[1]} />
+          </div>
+        )}
         {seat(0)}
-        <div className="room-hand-strength">
-          <Spade size={12} />
-          <span>{handName}</span>
-        </div>
-        {game.result && (
-          <div
-            className={`room-result ${winner === 0 ? 'result-win' : ''}`}
-            key={game.log.length}
-          >
-            <span>
-              {winner === 'tie'
-                ? 'HONORS SHARED'
-                : winner === 0
-                  ? 'NICE HAND'
-                  : 'NEXT HAND, NEW POSSIBILITIES'}
-            </span>
-            <strong>
-              {winner === 'tie'
-                ? 'Split pot.'
-                : winner === 0
-                  ? 'The pot is yours.'
-                  : 'Atlas takes the pot.'}
-            </strong>
-            <small>
-              {game.result.text.split(' · ')[1] ?? 'Hand settled'}{' '}
-              <b>
-                {game.result.net >= 0 ? '+' : '−'}
-                {chips(Math.abs(game.result.net))}
-              </b>
-            </small>
+        {tip && (
+          <div className="pt-toast">
+            <Lightbulb size={15} />
+            <span>{tip}</span>
+            {onDismissTip && (
+              <button aria-label="Dismiss table tip" onClick={onDismissTip}>
+                <X size={14} />
+              </button>
+            )}
           </div>
         )}
-        {paused && !game.result && (
-          <div className="room-pause-overlay">
-            <Pause size={25} />
-            <h3>Take your time.</h3>
-            <p>Your hand is right where you left it.</p>
+        {paused && !result && (
+          <div className="pt-pause">
+            <Pause size={26} />
+            <h3>Table paused</h3>
+            <p>Nothing moves until you’re ready.</p>
             <button onClick={onPause}>
-              <Play size={15} /> Back to the table
+              <Play size={15} /> Resume
             </button>
           </div>
         )}
       </div>
-      <div className="room-action-dock">
-        <div className="room-action-status" role="status">
-          <div>
-            <i className={yourTurn ? 'status-live' : ''} />
-            <strong>{status}</strong>
+
+      <div className="pt-dock">
+        <div className={`pt-insight ${result ? 'pt-insight-result' : ''}`}>
+          <div className="pt-status" role="status">
+            <i className={yourTurn ? 'live' : ''} />
+            <span>{status}</span>
           </div>
-          <span>
-            {game.result
-              ? 'A result is not a verdict on your decision.'
-              : yourTurn
-                ? legal.toCall
-                  ? `${chips(legal.toCall)} to call · pot ${chips(game.pot)}`
-                  : 'No bet to match. Check or take the lead.'
-                : paused
-                  ? 'Resume whenever you’re ready.'
-                  : busy
-                    ? 'Following the action…'
-                    : 'No timer. Think it through.'}
-          </span>
+          {!result && (
+            <div className="pt-metrics">
+              {equity === undefined ? (
+                <span className="pt-metric">Estimating equity…</span>
+              ) : (
+                <>
+                  {legal.toCall > 0 && (
+                    <span
+                      className="pt-metric"
+                      title="Share of the final pot you must pay to call"
+                    >
+                      Price <strong>{percent(price)}</strong>
+                    </span>
+                  )}
+                  <span
+                    className="pt-metric"
+                    title="Estimated share of the pot you win at showdown"
+                  >
+                    Equity <strong>{percent(equity)}</strong>
+                  </span>
+                  {legal.toCall > 0 && callEV !== null && (
+                    <span
+                      className={`pt-metric ${callEV >= 0 ? 'good' : 'bad'}`}
+                      title="Modeled average result of calling, in chips"
+                    >
+                      Call EV <strong>{signed(callEV)}</strong>
+                    </span>
+                  )}
+                </>
+              )}
+              <button className="pt-why" onClick={onToggleAnalysis}>
+                {analysisOpen ? 'Hide' : 'Why?'}
+              </button>
+            </div>
+          )}
         </div>
-        {game.result ? (
-          <div className="room-next-hand">
-            <div>
-              <span>YOUR NET THIS HAND</span>
-              <strong className={game.result.net < 0 ? 'net-negative' : ''}>
-                {game.result.net >= 0 ? '+' : '−'}
-                {chips(Math.abs(game.result.net))} <small>chips</small>
+
+        {result ? (
+          <div className="pt-next">
+            <div className="pt-outcome">
+              <strong>
+                {winner === 'tie'
+                  ? 'Split pot'
+                  : winner === 0
+                    ? 'You win the pot'
+                    : 'Atlas wins the pot'}
+                <b className={result.net < 0 ? 'neg' : 'pos'}>
+                  {signed(result.net)}
+                </b>
               </strong>
+              <span>{result.text}</span>
             </div>
             <button disabled={busy} onClick={onDeal}>
               {game.stacks.some((s) => s === 0)
                 ? 'Refill & deal next hand'
                 : 'Deal next hand'}
-              <ArrowRight size={18} />
+              {shortcuts ? <kbd>N</kbd> : <ArrowRight size={18} />}
             </button>
           </div>
         ) : (
           <>
-            <div className="room-sizing">
-              <label htmlFor="raise-size">
-                {raiseLabel === 'Bet' ? 'Bet size' : 'Raise total'}{' '}
-                <span>
-                  {raiseLabel === 'Bet'
-                    ? 'Additional chips'
-                    : 'Includes your street bet'}
-                </span>
-              </label>
-              <div className="room-size-input">
-                <input
-                  aria-label="Bet or raise total in chips"
-                  type="number"
-                  inputMode="numeric"
-                  min={legal.minRaiseTo}
-                  max={legal.maxRaiseTo}
-                  step="1"
-                  value={
-                    draft?.key === confirmationKey ? draft.value : betAmount
-                  }
-                  disabled={!yourTurn || !legal.canRaise}
-                  onChange={(e) =>
-                    setDraft({ key: confirmationKey, value: e.target.value })
-                  }
-                  onBlur={(e) => {
-                    const value = Number(e.target.value)
-                    onRaise(
-                      Math.min(
-                        legal.maxRaiseTo,
-                        Math.max(
-                          legal.minRaiseTo,
-                          Number.isFinite(value)
-                            ? Math.round(value)
-                            : legal.minRaiseTo,
-                        ),
-                      ),
+            {legal.canRaise && (
+              <div className="pt-sizing">
+                <div
+                  className="pt-presets"
+                  role="group"
+                  aria-label="Bet size presets"
+                >
+                  {presets.map((preset) => {
+                    const amount = clampBet(preset.amount)
+                    return (
+                      <button
+                        key={preset.label}
+                        disabled={sizingDisabled}
+                        aria-pressed={amount === betAmount}
+                        onClick={() => onRaise(amount)}
+                      >
+                        {preset.label}
+                      </button>
                     )
-                    setDraft(null)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') e.currentTarget.blur()
-                  }}
-                />
-                <span>chips</span>
-              </div>
-              <div className="room-presets">
-                {[
-                  { label: 'Min', amount: legal.minRaiseTo },
-                  {
-                    label: '½ pot',
-                    amount:
-                      Math.max(...game.bets) +
-                      Math.round((game.pot + legal.toCall) / 2),
-                  },
-                  {
-                    label: '¾ pot',
-                    amount:
-                      Math.max(...game.bets) +
-                      Math.round((game.pot + legal.toCall) * 0.75),
-                  },
-                  {
-                    label: 'Pot',
-                    amount: Math.max(...game.bets) + game.pot + legal.toCall,
-                  },
-                  {
-                    label:
-                      legal.maxRaiseTo - game.bets[0] === game.stacks[0]
-                        ? 'All-in'
-                        : 'Max',
-                    amount: legal.maxRaiseTo,
-                  },
-                ].map((preset) => {
-                  const amount = Math.min(
-                    legal.maxRaiseTo,
-                    Math.max(legal.minRaiseTo, preset.amount),
-                  )
-                  return (
-                    <button
-                      key={preset.label}
-                      disabled={!yourTurn || !legal.canRaise}
-                      aria-pressed={amount === betAmount}
-                      onClick={() => onRaise(amount)}
-                    >
-                      {preset.label}
-                    </button>
-                  )
-                })}
-              </div>
-              <div className="room-size-slider">
+                  })}
+                </div>
                 <input
-                  id="raise-size"
-                  aria-label="Raise total"
+                  className="pt-slider"
+                  aria-label="Raise size"
                   type="range"
                   min={legal.minRaiseTo}
                   max={Math.max(legal.minRaiseTo, legal.maxRaiseTo)}
                   step="1"
                   value={betAmount}
-                  disabled={!yourTurn || !legal.canRaise}
+                  disabled={sizingDisabled}
                   onChange={(e) => onRaise(Number(e.target.value))}
-                  style={
-                    { '--range-progress': `${progress}%` } as CSSProperties
-                  }
+                  style={{ '--progress': `${progress}%` } as CSSProperties}
                 />
-                <div>
-                  <span>{chips(legal.minRaiseTo)}</span>
-                  <span>Effective max {chips(legal.maxRaiseTo)}</span>
+                <div className="pt-amount">
+                  <button
+                    aria-label="Decrease bet by one big blind"
+                    disabled={sizingDisabled || betAmount <= legal.minRaiseTo}
+                    onClick={() => onRaise(clampBet(betAmount - BIG_BLIND))}
+                  >
+                    <Minus size={14} />
+                  </button>
+                  <input
+                    aria-label="Bet or raise total in chips"
+                    type="number"
+                    inputMode="numeric"
+                    min={legal.minRaiseTo}
+                    max={legal.maxRaiseTo}
+                    step="1"
+                    value={draft?.key === decisionKey ? draft.value : betAmount}
+                    disabled={sizingDisabled}
+                    onChange={(e) =>
+                      setDraft({ key: decisionKey, value: e.target.value })
+                    }
+                    onBlur={(e) => {
+                      const value = Number(e.target.value)
+                      onRaise(
+                        clampBet(
+                          Number.isFinite(value) ? value : legal.minRaiseTo,
+                        ),
+                      )
+                      setDraft(null)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.currentTarget.blur()
+                    }}
+                  />
+                  <button
+                    aria-label="Increase bet by one big blind"
+                    disabled={sizingDisabled || betAmount >= legal.maxRaiseTo}
+                    onClick={() => onRaise(clampBet(betAmount + BIG_BLIND))}
+                  >
+                    <Plus size={14} />
+                  </button>
                 </div>
               </div>
-            </div>
+            )}
             {confirm ? (
               <div
-                className="room-confirm"
+                className="pt-confirm"
                 role="group"
                 aria-label="Confirm maximum bet"
               >
-                <div>
-                  <ShieldCheck size={21} />
-                  <span>
-                    <strong>
-                      {isAllIn
-                        ? 'Commit your entire stack?'
-                        : 'Commit the effective maximum?'}
-                    </strong>
-                    <small>
-                      {chips(betAmount - game.bets[0])} additional chips. This
-                      cannot be undone.
-                    </small>
-                  </span>
-                </div>
+                <ShieldCheck size={22} />
+                <span>
+                  <strong>
+                    {isAllIn ? 'Go all-in?' : 'Bet the effective maximum?'}
+                  </strong>
+                  <small>
+                    {chips(betAmount - game.bets[0])} chips from your stack.
+                  </small>
+                </span>
                 <button onClick={() => setConfirmation('')}>Cancel</button>
                 <button
-                  className="confirm-commit"
+                  className="pt-confirm-go"
                   onClick={() => {
                     setConfirmation('')
                     onAction({ type: 'raise', to: betAmount })
                   }}
                 >
                   Confirm {isAllIn ? 'all-in' : 'bet'}
-                  <ArrowUpRight size={16} />
                 </button>
               </div>
             ) : (
-              <div className="room-actions">
+              <div className="pt-actions">
                 <button
+                  className="pt-fold"
                   disabled={!yourTurn}
-                  className="room-fold"
                   onClick={() => onAction({ type: 'fold' })}
                 >
                   <span>Fold{shortcuts && <kbd>F</kbd>}</span>
-                  <small>Leave this hand</small>
                 </button>
                 <button
+                  className="pt-call"
                   disabled={!yourTurn}
-                  className="room-call"
                   onClick={() =>
                     onAction({ type: legal.canCheck ? 'check' : 'call' })
                   }
@@ -659,40 +646,28 @@ export function PokerTable({
                     {legal.canCheck ? 'Check' : `Call ${chips(legal.toCall)}`}
                     {shortcuts && <kbd>C</kbd>}
                   </span>
-                  <small>
-                    {legal.canCheck ? 'See what comes next' : 'Match the bet'}
-                  </small>
                 </button>
                 <button
+                  className="pt-raise"
                   disabled={!yourTurn || !legal.canRaise}
-                  className="room-raise"
                   onClick={raise}
                 >
                   <span>
-                    {buttonLabel}
-                    {shortcuts ? <kbd>R</kbd> : <ArrowUpRight size={17} />}
+                    {isAllIn
+                      ? `All-in ${chips(betAmount)}`
+                      : `${raiseVerb} ${chips(betAmount)}`}
+                    {shortcuts && <kbd>R</kbd>}
                   </span>
                   <small>
-                    {isMaximum
-                      ? 'Confirmation required'
-                      : `${chips(betAmount - game.bets[0])} additional chips`}
+                    {legal.canRaise
+                      ? `${chips(betAmount - game.bets[0])} from your stack`
+                      : 'Not available'}
                   </small>
                 </button>
               </div>
             )}
           </>
         )}
-      </div>
-      <div className="room-bottom">
-        <span>
-          <ShieldCheck size={12} /> Play money. Real decisions.
-        </span>
-        <button onClick={onHistory}>
-          <History size={13} />
-          <span className="room-last-action">{latest}</span>
-          <span className="history-label">Hand history</span>
-          <ChevronDown size={13} />
-        </button>
       </div>
     </div>
   )

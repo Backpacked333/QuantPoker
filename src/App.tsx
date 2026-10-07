@@ -7,11 +7,8 @@ import {
   BookOpen,
   ChartNoAxesCombined,
   Check,
-  ChevronRight,
   CircleHelp,
-  Coins,
   Diamond,
-  GraduationCap,
   Keyboard,
   Lightbulb,
   Pause,
@@ -34,7 +31,7 @@ import { readProgress, saveProgress } from './lib/storage'
 import { PokerTable } from './components/PokerTable'
 import { useTablePresentation } from './lib/use-table-presentation'
 import { useTableSound } from './lib/use-table-sound'
-import './poker-room.css'
+import './game.css'
 import { FinancePanel } from './components/FinancePanel'
 import { Modal } from './components/Modal'
 import { Lessons } from './components/Lessons'
@@ -74,7 +71,11 @@ export default function App() {
   const [storageAvailable, setStorageAvailable] = useState(true)
   const [sound, setSound] = useState(false)
   const [fast, setFast] = useState(false)
-  const [focus, setFocus] = useState(false)
+  const [analysisOpen, setAnalysisOpen] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(min-width: 1400px)').matches,
+  )
   const [shortcuts, setShortcuts] = useState(false)
   const presentation = useTablePresentation(
     engineGame,
@@ -180,70 +181,66 @@ export default function App() {
   }
 
   return (
-    <div className="decision-room-app">
-      <header className="site-header">
-        <a href="#table" className="brand" aria-label="QuantPoker home">
-          <span className="brand-icon">
-            <Spade size={22} fill="currentColor" />
+    <div className="qp-app">
+      <header className="qp-top">
+        <a href="#table" className="qp-brand" aria-label="QuantPoker home">
+          <span className="qp-brand-mark">
+            <Spade size={16} fill="currentColor" />
           </span>
           <span>
-            quant<span className="brand-light">poker</span>
-            <sup>β</sup>
+            quant<b>poker</b>
           </span>
         </a>
-        <nav aria-label="Main navigation">
+        <nav aria-label="Main navigation" className="qp-nav">
           <button
-            className={!dialog || dialog === 'history' ? 'nav-active' : ''}
+            className={!dialog || dialog === 'history' ? 'active' : ''}
             onClick={() => setDialog(null)}
           >
-            <Diamond size={15} /> Play & learn
+            <Diamond size={14} /> <span>Play</span>
           </button>
           <button
-            className={dialog === 'library' ? 'nav-active' : ''}
+            className={dialog === 'library' ? 'active' : ''}
             onClick={() => openLesson(null)}
           >
-            <BookOpen size={15} /> Learning library
+            <BookOpen size={14} /> <span>Learn</span>
+            <span className="qp-count">{progress.lessons.length}/3</span>
           </button>
           <button
-            className={dialog === 'stats' ? 'nav-active' : ''}
+            className={dialog === 'stats' ? 'active' : ''}
             onClick={() => setDialog('stats')}
           >
-            <ChartNoAxesCombined size={15} /> Your progress
+            <ChartNoAxesCombined size={14} /> <span>Progress</span>
           </button>
         </nav>
-        <div className="header-right">
-          <span className="practice-pill">
-            <i /> PLAY MONEY ONLY
+        <div className="qp-top-right">
+          <span className="qp-session" aria-label="Session result">
+            <span>Session</span>
+            <strong
+              className={sessionNet < 0 ? 'neg' : sessionNet > 0 ? 'pos' : ''}
+            >
+              {sessionNet >= 0 ? '+' : '−'}
+              {chips(Math.abs(sessionNet))}
+            </strong>
+            <span>
+              {activeRecords.length}{' '}
+              {activeRecords.length === 1 ? 'hand' : 'hands'}
+            </span>
           </span>
+          <span className="qp-play-money">Play money</span>
           <button
-            className="profile-button"
-            onClick={() => setDialog('stats')}
-            aria-label="View your progress"
+            className="qp-icon"
+            aria-label="How it works"
+            onClick={() => setDialog('help')}
           >
-            You
+            <CircleHelp size={17} />
           </button>
         </div>
       </header>
       <main
         id="table"
-        className={`workspace ${focus ? 'workspace-focus' : ''}`}
+        className={`qp-main ${analysisOpen ? 'analysis-open' : ''}`}
       >
-        <section className="game-column" aria-label="Poker table">
-          <div className="workspace-heading">
-            <div>
-              <div className="breadcrumb">
-                THE DECISION ROOM <ChevronRight size={12} /> NO-LIMIT HOLD’EM
-              </div>
-              <h1>
-                Make your next move
-                <span>.</span>
-              </h1>
-              <p>Read the table. Trust the math. Play the moment.</p>
-            </div>
-            <button className="how-button" onClick={() => setDialog('help')}>
-              <CircleHelp size={15} /> How it works
-            </button>
-          </div>
+        <section className="qp-game" aria-label="Poker table">
           <PokerTable
             game={game}
             frame={presentation}
@@ -251,6 +248,7 @@ export default function App() {
             paused={paused}
             yourTurn={yourTurn}
             betAmount={betAmount}
+            analysis={analysis}
             onRaise={setRaiseTo}
             onAction={choose}
             onDeal={deal}
@@ -262,111 +260,66 @@ export default function App() {
               unlockAudio()
               setSound(!sound)
             }}
-            focus={focus}
-            onFocus={() => setFocus(!focus)}
+            analysisOpen={analysisOpen}
+            onToggleAnalysis={() => setAnalysisOpen(!analysisOpen)}
             onUnlock={unlockAudio}
             shortcuts={shortcuts}
             dialogOpen={dialog !== null}
+            tip={
+              showTip
+                ? game.guided
+                  ? 'Guided hand: you hold a flush draw facing a bet. Compare the price with your equity below.'
+                  : 'Judge the decision, not the result. Good calls still lose sometimes.'
+                : undefined
+            }
+            onDismissTip={() => setShowTip(false)}
+            notice={
+              notice ||
+              (storageAvailable
+                ? undefined
+                : 'Browser storage is unavailable; progress lasts until you leave.')
+            }
           />
-          {showTip && (
-            <div className="below-table-tip">
-              <span className="tip-bulb">
-                <Lightbulb size={18} />
-              </span>
-              <div>
-                <strong>
-                  {game.guided
-                    ? 'Start with a little intuition.'
-                    : 'The best players think beyond one hand.'}
-                </strong>
-                <p>
-                  {game.guided
-                    ? 'Your first hand is a curated draw. Watch the Finance Lens as you play—then try randomly dealt hands.'
-                    : 'Look at the expected value before the result. A thoughtful decision can still lose, and that’s okay.'}
-                </p>
-              </div>
-              <button
-                className="icon-button"
-                aria-label="Dismiss table tip"
-                onClick={() => setShowTip(false)}
-              >
-                <X size={15} />
-              </button>
-            </div>
-          )}
-          <div className="session-strip">
-            <div>
-              <span className="session-icon">
-                <Coins size={18} />
-              </span>
-              <span>
-                Session net
-                <strong className={sessionNet < 0 ? 'negative' : ''}>
-                  {sessionNet >= 0 ? '+' : '−'}
-                  {chips(Math.abs(sessionNet))} <small>chips</small>
-                </strong>
-              </span>
-            </div>
-            <span className="strip-divider" />
-            <div>
-              <span className="session-icon">
-                <ChartNoAxesCombined size={18} />
-              </span>
-              <span>
-                Hands played<strong>{activeRecords.length}</strong>
-              </span>
-            </div>
-            <span className="strip-divider" />
-            <button onClick={() => openLesson(null)}>
-              <span className="session-icon">
-                <GraduationCap size={19} />
-              </span>
-              <span>
-                Ideas explored
-                <strong>
-                  {progress.lessons.length} <small>/ 3</small>
-                </strong>
-              </span>
-              <ChevronRight size={15} />
+        </section>
+        {analysisOpen && (
+          <button
+            className="qp-scrim"
+            aria-label="Close analysis"
+            onClick={() => setAnalysisOpen(false)}
+          />
+        )}
+        <aside
+          className="qp-analysis"
+          aria-label="Analysis and coach"
+          hidden={!analysisOpen}
+        >
+          <div className="qp-analysis-head">
+            <strong>Analysis</strong>
+            <span>Uses only the cards you can see</span>
+            <button
+              className="qp-icon"
+              aria-label="Close analysis"
+              onClick={() => setAnalysisOpen(false)}
+            >
+              <X size={16} />
             </button>
           </div>
-          {notice && (
-            <p className="notice" role="status">
-              {notice}
-            </p>
-          )}
-          {!storageAvailable && (
-            <p className="notice">
-              Browser storage is unavailable. Progress is kept only until you
-              leave this page.
-            </p>
-          )}
-        </section>
-        <FinancePanel
-          key={`${game.id}-${game.result ? 'review' : 'live'}`}
-          game={review?.game ?? game}
-          analysis={analysis}
-          raiseTo={review?.raiseTo ?? betAmount}
-          playedAction={review?.action}
-          settledResult={game.result}
-          lens={lens}
-          onLens={setLens}
-          onLesson={openLesson}
-        />
+          <FinancePanel
+            key={`${game.id}-${game.result ? 'review' : 'live'}`}
+            game={review?.game ?? game}
+            analysis={analysis}
+            raiseTo={review?.raiseTo ?? betAmount}
+            playedAction={review?.action}
+            settledResult={game.result}
+            lens={lens}
+            onLens={setLens}
+            onLesson={openLesson}
+          />
+          <p className="qp-disclaimer">
+            For learning, not financial advice · No deposits · No withdrawals
+          </p>
+        </aside>
       </main>
-      <footer className="site-footer">
-        <span>
-          <Spade size={12} fill="currentColor" /> A better feel for risk.
-        </span>
-        <span>
-          For learning, not financial advice.{' '}
-          <span className="footer-dot">·</span> No deposits. No withdrawals.
-          Just practice.
-        </span>
-        <button onClick={() => setDialog('help')}>
-          Made for the curious <ArrowUpRight size={12} />
-        </button>
-      </footer>
       {dialog === 'library' && (
         <Modal
           title={

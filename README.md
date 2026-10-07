@@ -68,31 +68,33 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 
 ### The Decision Room
 
-The poker table is a cinematic, responsive play surface: illuminated textured felt,
-stitched and layered rails, custom card backs and court artwork, denomination-colored
-chip piles, visible street bets, dealer markers, and a highlighted active seat.
-Exact chip labels are authoritative; decorative stacks are visually capped, not a
-one-chip-per-chip rendering of the bankroll.
+The game is one screen: a modern dark table fills the viewport and the action dock
+is always visible beneath it, so every decision can be made without scrolling.
+Large flat cards, seat plates with stacks and the latest action, visible street
+bets, and a dealer marker keep the hand readable at a glance. Exact chip labels are
+authoritative; chip stacks are decorative and visually capped.
 
-- Dealing, chip movement, street reveals, opponent-card reveal, and pot settlement
-  are choreographed separately. All-in boards reveal flop → turn → river before
-  showdown. The original immutable engine determines the result; animation never
-  determines cards or changes payouts. Controls and Atlas wait for the sequence.
-- Analysis and history follow the **displayed** information, so a cinematic runout
-  does not expose future cards or final results early. Folded opponent cards stay
-  hidden. Showdowns spotlight the winner’s best five cards (one equivalent best
-  selection in a tied hand).
-- The action dock offers an editable chip total, a slider, minimum/half-pot/three-
-  quarter-pot/pot/effective-maximum presets, and explicit additional-chip costs.
-  Maximum-effective bets require confirmation, whether or not they exhaust the
-  hero’s stack. No automatic next hand or action timer is imposed.
-- **Focus mode** gives the table the full workspace without discarding the finance
-  panel’s state. **Quick play** shortens presentation and bot delays. Optional
-  keyboard actions use F/C/R and are disabled in dialogs and editable controls.
-- Optional synthesized card/chip/win cues require a user gesture and default to
-  muted. No external audio or image services are used. Pause freezes presentation
-  as well as Atlas; dialogs also suspend the table. Reduced-motion changes are
-  respected live, with short sequential reveals and no travel/flip animations.
+- **Decision strip.** Next to the buttons: the price of calling (share of the final
+  pot), your estimated equity from visible cards, and the modeled EV of calling.
+  **Why?** opens the full analysis.
+- **Actions.** Large Fold, Check/Call and Bet/Raise buttons show the exact amount.
+  Min, ½ pot, ¾ pot, pot and all-in/effective-maximum presets update the raise
+  button in one tap; the slider and ±1 big blind stepper are there for fine control.
+  Maximum-effective bets require confirmation. No action timer is imposed.
+- **Analysis on demand.** The finance lens and coach live in a side panel: docked
+  beside the table on wide screens (open by default at 1400px and wider) and a
+  slide-over drawer elsewhere. It stays mounted when hidden, so its state is kept.
+- **Pacing.** Dealing, chip movement, street reveals, opponent-card reveal and pot
+  settlement are choreographed separately; all-in boards reveal flop → turn → river.
+  The immutable engine determines every result; animation never changes cards or
+  payouts, and controls and Atlas wait for the sequence. Analysis and history follow
+  the **displayed** frame, so a runout never exposes future cards early. Folded
+  opponent cards stay hidden; showdowns spotlight the winner’s best five cards.
+- **Settings.** Quick play shortens presentation and bot delays. Optional keyboard
+  actions use F/C/R and N (next hand) and are disabled in dialogs and editable
+  controls. Optional synthesized sounds require a user gesture and default to muted.
+  Pause freezes presentation and Atlas; dialogs also suspend the table. Reduced
+  motion is respected live.
 
 These presentation settings are session-local. This does not introduce multiplayer,
 new poker rules, real money, or a stronger opponent model.

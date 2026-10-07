@@ -73,62 +73,58 @@ describe('SOL-01 exact funded common-event mixture', () => {
       run({ n: 1, p: 0.4, premium: 20, capital: 79.999 }).defaultProbability,
     ).toBeCloseTo(0.4, 14)
   })
-  it('meets mass, moments, promise/payment conservation and all finite outputs across the extreme grid', () => {
-    for (const n of [1, 2, 100, 500])
-      for (const p of [
-        0,
-        Number.MIN_VALUE,
-        1e-12,
-        0.01,
-        0.5,
-        0.99,
-        1 - Number.EPSILON,
-        1,
-      ])
-        for (const rho of [0, 0.25, 1])
-          for (const capital of [0, 500, 100000])
-            for (const severity of [1, 1000])
-              for (const premium of [0, 200]) {
-                const r = run({ n, p, rho, capital, severity, premium })
-                expect(isSafeJson(r)).toBe(true)
-                expect(decodeResult(r).ok).toBe(true)
-                expect(
-                  r.states.reduce((s, x) => s + x.probability, 0),
-                ).toBeCloseTo(1, 11)
-                const mean = n * p,
-                  variance = n * p * (1 - p) * (1 + (n - 1) * rho)
-                expect(
-                  Math.abs(
-                    r.states.reduce(
-                      (s, x) => s + x.probability * x.claimCount,
-                      0,
-                    ) - mean,
-                  ),
-                ).toBeLessThan(1e-9 * Math.max(1, mean))
-                expect(
-                  Math.abs(
-                    r.states.reduce(
-                      (s, x) => s + x.probability * (x.claimCount - mean) ** 2,
-                      0,
-                    ) - variance,
-                  ),
-                ).toBeLessThan(1e-9 * Math.max(1, variance))
-                expect(
-                  Math.abs(
-                    r.expectedActualPayments +
-                      r.expectedShortfall -
-                      r.expectedPromisedClaims,
-                  ),
-                ).toBeLessThan(1e-9 * Math.max(1, r.expectedPromisedClaims))
-                for (const s of r.states) {
-                  expect(s.actualPayments + s.unpaidClaims).toBe(
-                    s.promisedClaims,
-                  )
-                  expect(s.remainingFunds + s.actualPayments).toBe(r.funds)
-                  expect(s.isDefault).toBe(s.promisedClaims > r.funds)
-                }
+  it.each(
+    [1, 2, 100, 500].flatMap((n) =>
+      [0, Number.MIN_VALUE, 1e-12, 0.01, 0.5, 0.99, 1 - Number.EPSILON, 1].map(
+        (p) => ({ n, p }),
+      ),
+    ),
+  )(
+    'meets mass, moments, promise/payment conservation and finite outputs at n=$n, p=$p',
+    ({ n, p }) => {
+      for (const rho of [0, 0.25, 1])
+        for (const capital of [0, 500, 100000])
+          for (const severity of [1, 1000])
+            for (const premium of [0, 200]) {
+              const r = run({ n, p, rho, capital, severity, premium })
+              expect(isSafeJson(r)).toBe(true)
+              expect(decodeResult(r).ok).toBe(true)
+              expect(
+                r.states.reduce((s, x) => s + x.probability, 0),
+              ).toBeCloseTo(1, 11)
+              const mean = n * p,
+                variance = n * p * (1 - p) * (1 + (n - 1) * rho)
+              expect(
+                Math.abs(
+                  r.states.reduce(
+                    (s, x) => s + x.probability * x.claimCount,
+                    0,
+                  ) - mean,
+                ),
+              ).toBeLessThan(1e-9 * Math.max(1, mean))
+              expect(
+                Math.abs(
+                  r.states.reduce(
+                    (s, x) => s + x.probability * (x.claimCount - mean) ** 2,
+                    0,
+                  ) - variance,
+                ),
+              ).toBeLessThan(1e-9 * Math.max(1, variance))
+              expect(
+                Math.abs(
+                  r.expectedActualPayments +
+                    r.expectedShortfall -
+                    r.expectedPromisedClaims,
+                ),
+              ).toBeLessThan(1e-9 * Math.max(1, r.expectedPromisedClaims))
+              for (const s of r.states) {
+                expect(s.actualPayments + s.unpaidClaims).toBe(s.promisedClaims)
+                expect(s.remainingFunds + s.actualPayments).toBe(r.funds)
+                expect(s.isDefault).toBe(s.promisedClaims > r.funds)
               }
-  })
+            }
+    },
+  )
   it('never increases failure or unpaid claims with capital, and is linear in mixture weight', () => {
     for (const n of [1, 7, 100, 500])
       for (const p of [0, 0.1, 0.5, 0.99, 1])

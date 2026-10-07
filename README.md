@@ -42,7 +42,7 @@ The app can be served by any static host. Build with `npm run build` and use `di
 - Explore **optionality**: compare committing capital with preserving the choice to fold. Connect the zero-EV frontier, local sensitivity, next-card uncertainty, and finite information clock to options concepts—with explicit limits on the analogy.
 - Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
-- Open the **Curriculum** for seven deeper poker-to-finance modules, live labs, a searchable concept map, mastery checkpoints, and a local notebook. Relevant lessons are linked from each finance lens.
+- Open the **Curriculum** for eight deeper poker-to-finance modules, live labs, a searchable concept map, mastery checkpoints, and a local notebook. Relevant lessons are linked from each finance lens.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
 On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
@@ -55,15 +55,16 @@ The table remains the default experience (`#table`). The **Curriculum** navigati
 
 Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Finance-panel what-if controls and camera position reset when the table panel is remounted; the game itself does not. Reloading still starts a fresh guided hand.
 
-| Stage            | Poker mechanic    | Finance connection                      | Experiment                                                                |
-| ---------------- | ----------------- | --------------------------------------- | ------------------------------------------------------------------------- |
-| Foundations      | Pot odds          | Expected payoff and entry price         | Change pot, call cost, and equity                                         |
-| Foundations      | Outs              | State spaces and probability            | Exact draws without replacement vs. rule of two/four                      |
-| Foundations      | Equity            | Physical vs. risk-neutral probabilities | Combine wins and split pots                                               |
-| Decision science | Expected value    | Risk-neutral pricing                    | Separate physical forecasts from binomial pricing weights                 |
-| Decision science | Fold equity       | Contingent payoff trees                 | Mix folds with equity conditional on a call                               |
-| Market mechanics | Variance          | Implied volatility                      | Compare poker dispersion with a synthetic option premium and IV inversion |
-| Market mechanics | Payoff accounting | Delta hedging and put-call parity       | Replicate terminal payoffs and compare parity portfolios                  |
+| Stage            | Poker mechanic               | Finance connection                       | Experiment                                                                         |
+| ---------------- | ---------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| Foundations      | Pot odds                     | Expected payoff and entry price          | Change pot, call cost, and equity                                                  |
+| Foundations      | Outs                         | State spaces and probability             | Exact draws without replacement vs. rule of two/four                               |
+| Foundations      | Equity                       | Physical vs. risk-neutral probabilities  | Combine wins and split pots                                                        |
+| Decision science | Expected value               | Risk-neutral pricing                     | Separate physical forecasts from binomial pricing weights                          |
+| Decision science | Fold equity                  | Contingent payoff trees                  | Mix folds with equity conditional on a call                                        |
+| Market mechanics | Variance                     | Implied volatility                       | Compare poker dispersion with a synthetic option premium and IV inversion          |
+| Market mechanics | Payoff accounting            | Delta hedging and put-call parity        | Replicate terminal payoffs and compare parity portfolios                           |
+| Market mechanics | All-in cashouts and bankroll | Insurance premiums and credit protection | Compare cashout/run-twice settlements, Kelly sizing, ruin risk, and variance bands |
 
 Each typed module in `src/curriculum/curriculum.ts` defines three objectives, recommended prerequisites, conceptual explanations, an explicit analogy boundary, a worked numerical example, formula notation, a lab, two mastery questions with feedback, notes, and a further-reading link. Prerequisites guide sequencing but never lock access. Both questions must be correct for local completion; retries are unlimited. The original three lens mini-lessons remain available from the table and retain their existing completion records.
 
@@ -75,6 +76,8 @@ Important distinctions are taught explicitly:
 - The variance experiment assumes independent binary ±100-chip payoffs; total mean scales with the number of hands and standard deviation with its square root.
 - The separate Black–Scholes example assumes spot = strike = 100, one year, a 5% continuously compounded rate, and no dividends. It generates a **synthetic** premium and recovers IV by bisection; it does not fetch market prices or convert chip variance into annualized volatility.
 - The fold-equity lab assumes equal new bets, no subsequent betting, and equity conditional on being called. It is a strategic payoff tree, not an arbitrage-pricing identity.
+- The all-in risk lab uses a binary win/loss payoff with known physical equity. Two equal runouts are treated as independent, so they preserve EV and halve variance; real boards share a depleted deck. A cashout charges a percentage of the fair gross payout. The Kelly model repeats constant, independent odds, resizes after every result, and defines ruin as crossing a selected drawdown floor over a finite horizon—not literal bankruptcy.
+- Cashing out sells the whole pot claim; loss-only insurance pays on a defined losing event while retaining the hand. The latter is the closer credit-default-swap analogy. The lab has no reference entity, default timing, recovery auction, credit-spread curve, discounting, collateral, or counterparty credit risk and does not produce a market CDS price.
 
 Curriculum progress and notes use `quantpoker.learning.v1`; table hand history and lens mini-lessons retain `quantpoker.progress.v1`. Resetting the curriculum does not erase table history. Notes are capped at 10,000 characters per module and exportable as Markdown. Invalid records are normalized safely, and storage failures display a warning. All persistence is browser-local, without cloud sync or accounts.
 

@@ -193,7 +193,7 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
             <ArrowRight size={17} />
           </a>
           <div className="hero-meta">
-            <span>7 connected modules</span>
+            <span>{modules.length} connected modules</span>
             <i /> <span>At your own pace</span>
           </div>
         </div>
@@ -205,7 +205,8 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
             <BookOpen size={18} />
           </span>
           <strong>
-            7<span>Core modules</span>
+            {modules.length}
+            <span>Core modules</span>
           </strong>
         </div>
         <div>
@@ -213,7 +214,8 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
             <FlaskConical size={18} />
           </span>
           <strong>
-            7<span>Interactive labs</span>
+            {modules.length}
+            <span>Interactive labs</span>
           </strong>
         </div>
         <div>
@@ -229,7 +231,8 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
             <Target size={18} />
           </span>
           <strong>
-            {completed.length} / 7<span>Modules completed</span>
+            {completed.length} / {modules.length}
+            <span>Modules completed</span>
           </strong>
         </div>
       </div>
@@ -255,7 +258,7 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
               onClick={() => setFilter(stage)}
             >
               {stage}
-              {stage === 'All modules' ? <span>7</span> : null}
+              {stage === 'All modules' ? <span>{modules.length}</span> : null}
             </button>
           ))}
         </div>
@@ -876,7 +879,9 @@ export default function Curriculum({
               >
                 <Icon size={18} />
                 <span>{label}</span>
-                {navId === 'path' ? <span className="nav-count">7</span> : null}
+                {navId === 'path' ? (
+                  <span className="nav-count">{modules.length}</span>
+                ) : null}
               </a>
             ))}
           </nav>
@@ -890,7 +895,9 @@ export default function Curriculum({
               max={modules.length}
               aria-label="Curriculum completion"
             />
-            <small>{progress.completed.length} of 7 modules completed</small>
+            <small>
+              {progress.completed.length} of {modules.length} modules completed
+            </small>
           </div>
           <div className="sidebar-bottom">
             <div className="sidebar-quote">

@@ -185,7 +185,7 @@ describe('table and curriculum integration', () => {
     const expected = [
       ['Decision', ['odds', 'outs', 'equity']],
       ['Optionality', ['fold', 'pricing', 'replication']],
-      ['Protection', ['variance', 'replication']],
+      ['Protection', ['variance', 'replication', 'risk']],
     ] as const
     for (const [lens, ids] of expected) {
       await user.click(screen.getByRole('tab', { name: lens }))
@@ -195,6 +195,16 @@ describe('table and curriculum integration', () => {
       expect(links.map((link) => link.getAttribute('href'))).toEqual(
         ids.map((id) => `#learn/module/${id}/learn`),
       )
+      if (lens === 'Protection') {
+        expect(
+          screen.getByText('Illustrative all-in cashout'),
+        ).toBeInTheDocument()
+        expect(screen.getByText('Run-twice dispersion')).toBeInTheDocument()
+        expect(screen.getByText('Full Kelly ceiling')).toBeInTheDocument()
+        expect(
+          screen.getByText(/resembles insurance—not a CDS price/),
+        ).toBeInTheDocument()
+      }
     }
   })
 

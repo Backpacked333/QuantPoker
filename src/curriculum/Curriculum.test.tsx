@@ -332,4 +332,22 @@ describe('live model controls', () => {
     )
     expect(screen.getByText('100.0%')).toBeInTheDocument()
   })
+
+  it('prices an all-in cashout and removes repeated risk at zero Kelly', () => {
+    render(<Lab id="risk" />)
+    const cashout = screen.getByText('Take cashout · EV').parentElement!
+    expect(within(cashout).getByText('+8.90')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('slider', { name: 'Cashout fee' }), {
+      target: { value: '5' },
+    })
+    expect(within(cashout).getByText('+4.50')).toBeInTheDocument()
+    fireEvent.change(
+      screen.getByRole('slider', { name: 'Fraction of full Kelly' }),
+      { target: { value: '0' } },
+    )
+    const ruin = screen.getByText('100-bet ruin probability').parentElement!
+    expect(within(ruin).getByText('0.0%')).toBeInTheDocument()
+    const expected = screen.getByText('Expected final bankroll').parentElement!
+    expect(within(expected).getByText('1,000.00')).toBeInTheDocument()
+  })
 })

@@ -1647,6 +1647,25 @@
   line-height: 1.9;
   margin-top: 20px;
 }
+.curriculum-workspace .lab-callout {
+  padding: 16px;
+  margin: 18px 0;
+  border: 1px solid #d8e3cf;
+  border-radius: 7px;
+  background: #f2f6eb;
+  color: #657c54;
+}
+.curriculum-workspace .lab-callout strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #46663a;
+  font-family: Manrope, sans-serif;
+  font-size: 11px;
+}
+.curriculum-workspace .lab-callout p {
+  font-size: 10px;
+  line-height: 1.7;
+}
 .curriculum-workspace .state-tree {
   display: flex;
   align-items: center;

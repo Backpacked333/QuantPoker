@@ -11,7 +11,7 @@ describe('curriculum architecture', () => {
       seen.add(module.id)
       expect(moduleById[module.id]).toBe(module)
     }
-    expect(seen.size).toBe(7)
+    expect(seen.size).toBe(8)
   })
   it('gives every connection objectives, a boundary, a worked example and two valid checks', () => {
     for (const module of modules) {

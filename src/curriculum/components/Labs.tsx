@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { ArrowDown, ArrowRight, FlaskConical, RotateCcw } from 'lucide-react'
 import type { LabId } from '../curriculum'
 import {
@@ -11,6 +11,7 @@ import {
   impliedVolatility,
   showdownEquity,
 } from '../lib/math'
+import { allInCashout, bankrollRisk } from '../../lib/finance'
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`
 const number = (value: number) =>
@@ -697,6 +698,199 @@ function VarianceLab() {
   )
 }
 
+function RiskLab() {
+  const [equity, setEquity] = useState(55)
+  const [amountAtRisk, setAmountAtRisk] = useState(100)
+  const [profitOnWin, setProfitOnWin] = useState(100)
+  const [fee, setFee] = useState(1)
+  const [bankroll, setBankroll] = useState(1000)
+  const [kellyScale, setKellyScale] = useState(50)
+  const [horizon, setHorizon] = useState(100)
+  const [ruinFloor, setRuinFloor] = useState(25)
+  const settlement = allInCashout(
+    equity / 100,
+    amountAtRisk,
+    profitOnWin,
+    fee / 100,
+  )
+  const bankrollModel = useMemo(
+    () =>
+      bankrollRisk({
+        bankroll,
+        equity: equity / 100,
+        amountAtRisk,
+        profitOnWin,
+        kellyScale: kellyScale / 100,
+        horizon,
+        ruinFloor: ruinFloor / 100,
+      }),
+    [
+      amountAtRisk,
+      bankroll,
+      equity,
+      horizon,
+      kellyScale,
+      profitOnWin,
+      ruinFloor,
+    ],
+  )
+  return (
+    <LabFrame
+      title="The all-in risk desk"
+      description="Compare settlement choices, size a repeated edge, and inspect a finite-horizon drawdown distribution."
+      assumption="One binary win/loss payoff with known physical equity; no ties, rake, taxes, liquidity constraints, or later decisions. Two runouts are equal-sized and independent. Kelly bets repeat the same odds and edge, resize after every result, and define ruin as ever touching the selected fraction of starting bankroll within the horizon. Cashout has no counterparty failure; this is not a CDS price."
+      controls={
+        <>
+          <Slider
+            label="Showdown equity"
+            value={equity}
+            min={1}
+            max={99}
+            suffix="%"
+            onChange={setEquity}
+          />
+          <Slider
+            label="Chips at risk"
+            value={amountAtRisk}
+            min={10}
+            max={500}
+            step={10}
+            onChange={setAmountAtRisk}
+          />
+          <Slider
+            label="Profit on a win"
+            value={profitOnWin}
+            min={10}
+            max={1000}
+            step={10}
+            onChange={setProfitOnWin}
+          />
+          <Slider
+            label="Cashout fee"
+            value={fee}
+            min={0}
+            max={5}
+            step={0.25}
+            suffix="%"
+            onChange={setFee}
+          />
+          <div className="control-divider">Repeated-bankroll model</div>
+          <Slider
+            label="Starting bankroll"
+            value={bankroll}
+            min={500}
+            max={10000}
+            step={100}
+            onChange={setBankroll}
+          />
+          <Slider
+            label="Fraction of full Kelly"
+            value={kellyScale}
+            min={0}
+            max={100}
+            step={5}
+            suffix="%"
+            onChange={setKellyScale}
+          />
+          <Slider
+            label="Repeated bets"
+            value={horizon}
+            min={10}
+            max={300}
+            step={10}
+            onChange={setHorizon}
+          />
+          <Slider
+            label="Ruin drawdown floor"
+            value={ruinFloor}
+            min={10}
+            max={80}
+            step={5}
+            suffix="%"
+            onChange={setRuinFloor}
+          />
+        </>
+      }
+    >
+      <div className="metric-grid">
+        <Metric
+          label="Play it once · EV"
+          value={signed(settlement.showdownEV)}
+          hint={`SD ${number(settlement.runOnceDeviation)}`}
+        />
+        <Metric
+          label="Run it twice · EV"
+          value={signed(settlement.showdownEV)}
+          hint={`SD ${number(settlement.runTwiceDeviation)} · independent boards`}
+        />
+        <Metric
+          label="Take cashout · EV"
+          value={signed(settlement.cashoutEV)}
+          hint={`guaranteed net · fee ${number(settlement.fee)}`}
+          accent
+        />
+        <Metric
+          label="Cashout payment"
+          value={number(settlement.cashoutPayout)}
+          hint={`fair gross ${number(settlement.fairPayout)}`}
+        />
+      </div>
+      <div className="lab-callout">
+        <strong>Insurance / CDS lens</strong>
+        <p>
+          Cashing out sells the whole pot claim, including its upside. Loss-only
+          insurance instead pays on a losing runout while you retain the hand:
+          covering {amountAtRisk} chips has a fair one-period premium of{' '}
+          {number((1 - equity / 100) * amountAtRisk)} chips. That contingent
+          payment is the closer CDS analogy. A real CDS also needs a reference
+          entity, recovery, default timing, spreads, discounting, collateral,
+          and counterparty credit—not modeled here.
+        </p>
+      </div>
+      <div className="metric-grid">
+        <Metric
+          label="Full Kelly fraction"
+          value={percent(bankrollModel.fullKelly)}
+          hint={`scaled stake ${number(bankrollModel.stake)} chips`}
+        />
+        <Metric
+          label={`${horizon}-bet ruin probability`}
+          value={percent(bankrollModel.ruinProbability)}
+          hint={`ever at or below ${ruinFloor}% of start`}
+          accent
+        />
+        <Metric
+          label="5th-percentile bankroll"
+          value={number(bankrollModel.fifthPercentile)}
+          hint="downside swing"
+        />
+        <Metric
+          label="Median bankroll"
+          value={number(bankrollModel.median)}
+          hint="50th percentile"
+        />
+        <Metric
+          label="95th-percentile bankroll"
+          value={number(bankrollModel.ninetyFifthPercentile)}
+          hint="upside swing"
+        />
+        <Metric
+          label="Expected final bankroll"
+          value={number(bankrollModel.expectedBankroll)}
+          hint={`final SD ${number(bankrollModel.finalDeviation)}`}
+        />
+      </div>
+      <p className="control-note">
+        The current all-in risks {percent(amountAtRisk / bankroll)} of the
+        starting bankroll; scaled Kelly allocates{' '}
+        {percent(bankrollModel.fraction)}. Kelly maximizes model log growth, not
+        survival probability, and uncertain equity can make its recommendation
+        dangerously precise.
+      </p>
+    </LabFrame>
+  )
+}
+
 export function Lab({ id }: { id: LabId }) {
   const [revision, setRevision] = useState(0)
   const labs: Record<LabId, ReactNode> = {
@@ -707,6 +901,7 @@ export function Lab({ id }: { id: LabId }) {
     fold: <FoldLab />,
     variance: <VarianceLab />,
     replication: <PricingLab replication />,
+    risk: <RiskLab />,
   }
   return (
     <div className="lab-wrapper">

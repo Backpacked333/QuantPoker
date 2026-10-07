@@ -6,6 +6,7 @@ export type LabId =
   | 'fold'
   | 'variance'
   | 'replication'
+  | 'risk'
 export type ModuleId = LabId
 export type Question = {
   prompt: string
@@ -530,6 +531,83 @@ export const modules: Module[] = [
     source: {
       label: 'Options Industry Council · Put-call parity',
       url: 'https://www.optionseducation.org/advancedconcepts/put-call-parity',
+    },
+  },
+  {
+    id: 'risk',
+    number: '08',
+    title: 'Survive the swings',
+    subtitle: 'Trade upside for certainty without hiding the price.',
+    stage: 'Market mechanics',
+    minutes: 24,
+    poker: 'All-in cashouts & bankroll',
+    finance: 'Insurance premiums & credit protection',
+    tags: [
+      'All-in insurance',
+      'Kelly criterion',
+      'Ruin risk',
+      'Credit default swaps',
+    ],
+    prerequisites: ['equity', 'variance'],
+    objectives: [
+      'Compare showdown, cashout, and run-it-twice EV and dispersion.',
+      'Size repeated risks with full and fractional Kelly stakes.',
+      'Explain the useful—and limited—analogy between all-in protection and a credit default swap.',
+    ],
+    bridge:
+      'An all-in cashout sells the whole uncertain pot claim for a guaranteed settlement. Loss-only insurance and credit protection instead pay when a defined event occurs while you retain the underlying exposure. Both teach risk transfer, but they are different payoff structures; probability, coverage, fees, and counterparty terms determine the price.',
+    boundary:
+      'A lost poker runout is not a corporate default, and a poker site cashout is not a tradable credit default swap. CDS pricing includes default timing, recovery, discounting, risk-neutral credit spreads, counterparty credit, collateral, and legal definitions. This lab uses a one-period physical-probability model and no market calibration.',
+    scenario: {
+      title: 'Three ways to settle the same all-in',
+      body: 'You risk 100 chips to win 100 with 55% equity. A cashout offer charges 1% of the fair gross payout. Alternatively, two independent runouts split the pot in half.',
+      calculation:
+        'Showdown EV = 0.55(100) − 0.45(100) = 10; fair gross payout = 110; cashout net = 110(0.99) − 100 = 8.90',
+      takeaway:
+        'Running twice keeps 10 chips of EV and cuts standard deviation by √2 under the independence assumption. Cashing out removes runout variance but gives up 1.10 chips of EV as a fee.',
+    },
+    concepts: [
+      {
+        title: 'Certainty has an explicit price',
+        body: 'A fair cashout pays equity times the eligible pot. Subtracting a fee lowers EV by exactly that fee. It can improve a player’s experience or liquidity, but it does not create an edge.',
+      },
+      {
+        title: 'Twice is smoother, not safer forever',
+        body: 'Two equal independent runouts have the same expected payoff as one runout and half its variance. Real boards share a depleted deck, so independence is an approximation; running twice also does not repair a negative-EV all-in.',
+      },
+      {
+        title: 'Kelly targets growth, not comfort',
+        body: 'Full Kelly maximizes expected logarithmic bankroll growth under fixed, known odds. Estimation error and changing games can make it aggressive, so practitioners often use a fraction. Proportional betting never reaches literal zero in this idealized model; the lab defines ruin as crossing a chosen drawdown floor over a finite horizon.',
+      },
+    ],
+    formula: 'f* = p − (1 − p) / b',
+    formulaKey:
+      'p = physical win probability · b = net profit per chip risked · repeated independent bets · known, constant edge',
+    questions: [
+      {
+        prompt:
+          'If two equal runouts are independent and each has the same equity, running it twice changes…',
+        choices: [
+          'Expected payoff and variance.',
+          'Variance, but not expected payoff.',
+          'Expected payoff, but not variance.',
+        ],
+        correct: 1,
+        explanation:
+          'Averaging two half-sized independent outcomes preserves EV and halves variance, reducing standard deviation by √2.',
+      },
+      {
+        prompt:
+          'At even-money odds with 55% win probability, full Kelly risks what fraction of bankroll?',
+        choices: ['5%', '10%', '55%'],
+        correct: 1,
+        explanation:
+          'For b = 1, f* = 0.55 − 0.45 = 0.10. Fractional Kelly scales that result rather than changing the edge.',
+      },
+    ],
+    source: {
+      label: 'ISDA · Credit Derivatives Definitions',
+      url: 'https://www.isda.org/book/2014-isda-credit-derivatives-definitions/',
     },
   },
 ]

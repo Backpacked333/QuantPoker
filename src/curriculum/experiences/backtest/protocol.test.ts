@@ -54,6 +54,52 @@ async function complete(
   expect(c.phase).toBe('results_ready')
 }
 describe('preregistered/frozen protocol and shared evidence lifecycle', () => {
+  it('retains all maximum-size candidate rows while each frozen protocol transition saves once', async () => {
+    const storage = new MemoryStorage()
+    const session = new LearningSession(storage, fixedClock)
+    const { c } = testController(false, 42, session)
+    c.requestInputChange({
+      ...c.inputs,
+      candidateCount: 200,
+      developmentTrials: 2000,
+      holdoutTrials: 5000,
+    })
+    preregister(
+      c,
+      'The development winner fits noise.',
+      'The independent lower bound fails to establish an edge.',
+      prediction,
+    )
+    const run = runResearch(c, inlineExecutor)
+    await waitFor(() =>
+      expect(protocolFor(c).stage).toBe('development_complete'),
+    )
+    const snapshot = protocolFor(c)
+    expect(snapshot.development?.leaderboard).toHaveLength(200)
+    expect(protocolFor(c)).toBe(snapshot)
+    expect(Object.isFrozen(snapshot.development?.leaderboard[0])).toBe(true)
+    const writes = storage.writes.length
+    const notified = vi.fn()
+    session.subscribe(notified)
+    freezeCandidate(c)
+    expect(storage.writes.length - writes).toBe(1)
+    expect(notified).toHaveBeenCalledTimes(1)
+    expect(snapshot.stage).toBe('development_complete')
+    expect(protocolFor(c).stage).toBe('candidate_frozen')
+    expect(protocolFor(c)).not.toBe(snapshot)
+    requestHoldout(c)
+    await run
+    expect(c.attempt.searchSummary?.leaderboard).toHaveLength(200)
+    const restored = testController(
+      false,
+      42,
+      new LearningSession(storage, fixedClock),
+    ).c
+    expect(protocolFor(restored).history.consumedDatasets).toHaveLength(1)
+    expect(protocolFor(restored).development?.leaderboard).toEqual(
+      snapshot.development?.leaderboard,
+    )
+  })
   it('keeps holdout ungenerated until candidate AND full protocol freeze and explicit reveal', async () => {
     const { c } = testController(),
       executor = vi.fn(inlineExecutor)

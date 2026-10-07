@@ -10,6 +10,7 @@ import {
   failure,
   isRecord,
   isSafeJson,
+  immutable,
   numberIn,
   safeClone,
   success,
@@ -214,16 +215,23 @@ export function decodeProtocol(v: unknown): ModelResult<ResearchProtocol> {
   return success(p)
 }
 type Controller = ExperimentController<BacktestInputs, BacktestOutput>
+const protocolCache = new WeakMap<JsonObject, Readonly<ResearchProtocol>>()
 export function protocolFor(c: Controller): ResearchProtocol {
-  if (Object.keys(c.protocolState).length) {
-    const d = decodeProtocol(c.protocolState)
-    if (!d.ok) throw new RangeError(d.errors[0].message)
+  const snapshot = c.protocolState
+  if (Object.keys(snapshot).length) {
+    let p = protocolCache.get(snapshot)
+    if (!p) {
+      const d = decodeProtocol(snapshot)
+      if (!d.ok) throw new RangeError(d.errors[0].message)
+      p = immutable(d.value)
+      if (Object.isFrozen(snapshot)) protocolCache.set(snapshot, p)
+    }
     if (
-      d.value.seed !== c.attempt.seed ||
-      parameterHash(d.value.inputs) !== parameterHash(c.inputs)
+      p.seed !== c.attempt.seed ||
+      parameterHash(p.inputs) !== parameterHash(c.inputs)
     )
       throw new RangeError('Saved protocol does not match this frozen run.')
-    return d.value
+    return p
   }
   return {
     stage: 'draft_protocol',
@@ -259,15 +267,12 @@ export function preregister(
       'Record a hypothesis and falsification condition, each up to 2,000 characters; prose is ungraded.',
     )
   c.commitPrediction(prediction)
-  c.saveProtocolState(
-    encodeProtocol({
-      ...p,
-      stage: 'preregistered',
-      hypothesis: hypothesis.trim(),
-      falsification: falsification.trim(),
-    }),
-  )
-  saveSearch(c)
+  saveProtocol(c, {
+    ...p,
+    stage: 'preregistered',
+    hypothesis: hypothesis.trim(),
+    falsification: falsification.trim(),
+  })
 }
 export function freezeCandidate(c: Controller) {
   const p = protocolFor(c)
@@ -275,14 +280,11 @@ export function freezeCandidate(c: Controller) {
     throw new RangeError(
       'Complete development before freezing the selected candidate.',
     )
-  c.saveProtocolState(
-    encodeProtocol({
-      ...p,
-      stage: 'candidate_frozen',
-      frozenHash: frozenProtocolHash(p),
-    }),
-  )
-  saveSearch(c)
+  saveProtocol(c, {
+    ...p,
+    stage: 'candidate_frozen',
+    frozenHash: frozenProtocolHash(p),
+  })
 }
 export function requestHoldout(c: Controller) {
   const p = protocolFor(c)
@@ -299,25 +301,21 @@ export function requestHoldout(c: Controller) {
     throw new RangeError(
       'Consumed-test ledger is full. Export your research before an explicit learning reset; no history is silently dropped.',
     )
-  c.saveProtocolState(
-    encodeProtocol({
-      ...p,
-      revealRequested: true,
-      history: {
-        ...p.history,
-        consumedDatasets: [...p.history.consumedDatasets, key],
-      },
-    }),
-  )
-  saveSearch(c)
+  saveProtocol(c, {
+    ...p,
+    revealRequested: true,
+    history: {
+      ...p.history,
+      consumedDatasets: [...p.history.consumedDatasets, key],
+    },
+  })
 }
 export function saveResearchReflection(c: Controller, text: string) {
   const p = protocolFor(c)
   if (!['evaluation_revealed', 'research_reflection'].includes(p.stage))
     throw new RangeError('Reflect after the primary evaluation.')
   c.reflect(text)
-  c.saveProtocolState(encodeProtocol({ ...p, stage: 'research_reflection' }))
-  saveSearch(c)
+  saveProtocol(c, { ...p, stage: 'research_reflection' })
 }
 export function linkedExperiment(c: Controller, next: BacktestInputs) {
   const p = protocolFor(c),
@@ -342,9 +340,8 @@ export function linkedExperiment(c: Controller, next: BacktestInputs) {
     }),
   )
 }
-function saveSearch(c: Controller) {
-  const p = protocolFor(c)
-  c.recordSearchSummary({
+function saveProtocol(c: Controller, p: ResearchProtocol) {
+  c.saveProtocolState(encodeProtocol(p), {
     hypothesis: p.hypothesis,
     falsification: p.falsification,
     seed: p.seed,
@@ -483,8 +480,7 @@ export async function runResearch(
           experimentCount: p.history.experimentCount + 1,
         },
       }
-      c.saveProtocolState(encodeProtocol(p))
-      saveSearch(c)
+      saveProtocol(c, p)
     }
     p = await waitFor(
       c,
@@ -509,8 +505,7 @@ export async function runResearch(
       p.development!.selectedId,
     )
     if (!valid.ok) return valid
-    c.saveProtocolState(encodeProtocol({ ...p, stage: 'evaluation_revealed' }))
-    saveSearch(c)
+    saveProtocol(c, { ...p, stage: 'evaluation_revealed' })
     return success(evaluationOutput(p.development!, valid.value, p.frozenHash!))
   })
 }

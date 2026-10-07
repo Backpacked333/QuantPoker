@@ -528,6 +528,9 @@ describe('complete foundation bank interaction and honest availability', () => {
     expect(screen.getByRole('status')).toHaveTextContent(
       '100/100; eligible unaided evidence',
     )
+    expect(
+      screen.getByRole('heading', { name: 'Structured feedback' }),
+    ).toHaveFocus()
     expect(session.store.receipts[0].firstDemonstration).toBe(true)
     expect(session.store.reviewSchedule.f03?.dueAt).toBe(
       '2026-10-10T12:00:00.000Z',

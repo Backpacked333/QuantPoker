@@ -17,6 +17,7 @@ import type {
   AttemptSnapshot,
   Clock,
   EvidenceCallbacks,
+  JsonObject,
   LearningStoreV2,
 } from './types'
 import { safeClone } from './validation'
@@ -99,7 +100,10 @@ export class LearningSession implements EvidenceCallbacks {
     }
     this.notify()
   }
-  recordAttempt = (attempt: AttemptSnapshot) => {
+  recordAttempt = (
+    attempt: AttemptSnapshot,
+    draft?: { key: string; protocol: JsonObject },
+  ) => {
     const decoded = decodeAttempt(attempt)
     if (!decoded.ok) throw new RangeError(decoded.errors[0].message)
     this.update((store) => {
@@ -149,6 +153,17 @@ export class LearningSession implements EvidenceCallbacks {
         attempt.assistance.hintIds.length > 0
       let next = {
         ...store,
+        ...(draft
+          ? {
+              drafts: {
+                ...store.drafts,
+                [draft.key]: {
+                  attempt: safeClone(attempt),
+                  protocol: safeClone(draft.protocol),
+                },
+              },
+            }
+          : {}),
         attempts: [
           ...store.attempts.filter((a) => a.id !== attempt.id),
           safeClone(attempt),

@@ -35,13 +35,14 @@ import {
 } from './curriculum'
 import { Checkpoint } from './components/Checkpoint'
 import { Lab } from './components/Labs'
-import {
-  emptyProgress,
-  loadProgress,
-  STORAGE_KEY,
-  type Progress,
-  type LearningSession,
-} from './lib/progress'
+import { type Progress } from './lib/progress'
+import { useLearningSession, type LearningSession } from './core/session'
+import { parseLearningRoute } from './core/routes'
+import { experienceIds } from './core/types'
+import { registry } from './core/registry'
+import { evidenceState } from './core/assessment'
+import { FoundationWorkspace } from './components/FoundationWorkspace'
+import { LearningDataTools } from './components/LearningDataTools'
 
 type Page = 'path' | 'map' | 'lab' | 'notebook' | 'module'
 const stages = [
@@ -742,8 +743,9 @@ function Notebook({
         {confirmReset ? (
           <div className="reset-confirm" role="alert">
             <p>
-              Delete all notes and completed checkpoints from this browser? This
-              cannot be undone.
+              Delete all notes, completed core checkpoints, foundation attempts,
+              active drafts and review evidence from this browser? Table history
+              and original mini-lessons are not removed. This cannot be undone.
             </p>
             <button
               className="button danger"
@@ -782,6 +784,16 @@ export default function Curriculum({
   session?: RefObject<LearningSession | null>
 }) {
   const hash = useHash()
+  const learning = useLearningSession(session)
+  const route = parseLearningRoute(hash)
+  const foundationPage =
+    route.kind === 'unit' ||
+    route.kind === 'pathway' ||
+    (route.kind === 'not-found' &&
+      /^#learn\/(unit|pathway|lab)\//.test(hash)) ||
+    (route.kind === 'lab' && experienceIds.includes(route.id as never)) ||
+    (route.kind === 'overview' &&
+      ['foundations', 'atlas', 'pathways', 'reviews'].includes(route.page))
   const [pagePart = 'path', idPart = 'odds', tabPart = 'learn'] = hash
     .replace(/^#learn\/?/, '')
     .split('/')
@@ -795,9 +807,7 @@ export default function Curriculum({
     ? (idPart as ModuleId)
     : 'odds'
   const tab = ['learn', 'lab', 'check'].includes(tabPart) ? tabPart : 'learn'
-  const [initial] = useState(() => session?.current ?? loadProgress())
-  const [progress, setProgress] = useState(initial.progress)
-  const [storageAvailable, setStorageAvailable] = useState(initial.available)
+  const progress: Progress = { version: 1, ...learning.store.legacy }
   const [mobileOpen, setMobileOpen] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
   const activeNav = page === 'module' ? 'path' : page
@@ -810,16 +820,20 @@ export default function Curriculum({
     mainRef.current?.querySelector('h1')?.focus({ preventScroll: true })
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [hash, page, selected.title])
-  function save(updated: Progress) {
-    setProgress(updated)
-    let available = true
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
-    } catch {
-      available = false
+  useEffect(() => {
+    const changed = (event: StorageEvent) =>
+      learning.observeStorage(event.key, event.newValue)
+    window.addEventListener('storage', changed)
+    return () => {
+      window.removeEventListener('storage', changed)
+      learning.cancelRuns()
     }
-    setStorageAvailable(available)
-    if (session) session.current = { progress: updated, available }
+  }, [learning])
+  function save(updated: Progress) {
+    learning.update((store) => ({
+      ...store,
+      legacy: { completed: updated.completed, notes: updated.notes },
+    }))
   }
   function saveNote(noteId: ModuleId, note: string) {
     save({ ...progress, notes: { ...progress.notes, [noteId]: note } })
@@ -870,6 +884,18 @@ export default function Curriculum({
             <ArrowLeft size={15} /> Return to table
           </a>
           <nav aria-label="Curriculum navigation">
+            <a href="#learn/foundations" onClick={() => setMobileOpen(false)}>
+              Foundation units
+            </a>
+            <a href="#learn/pathways" onClick={() => setMobileOpen(false)}>
+              Four pathways
+            </a>
+            <a href="#learn/atlas" onClick={() => setMobileOpen(false)}>
+              96-family atlas
+            </a>
+            <a href="#learn/reviews" onClick={() => setMobileOpen(false)}>
+              Delayed reviews
+            </a>
             {navItems.map(({ id: navId, label, icon: Icon }) => (
               <a
                 href={`#learn/${navId}`}
@@ -887,7 +913,25 @@ export default function Curriculum({
           </nav>
           <div className="sidebar-progress">
             <div>
-              <span>Your progress</span>
+              <span>Prior/core practice</span>
+              <p>Core library completed: {progress.completed.length}/8</p>
+              <p>
+                Foundation demonstrated:{' '}
+                {
+                  [...registry.units.values()].filter((u) =>
+                    ['demonstrated', 'retained', 'review-due'].includes(
+                      evidenceState(
+                        learning.store,
+                        u.id,
+                        u.contentVersion,
+                        u.rubricVersion,
+                        learning.clock,
+                      ),
+                    ),
+                  ).length
+                }
+                /10
+              </p>
               <strong>{percentage}%</strong>
             </div>
             <progress
@@ -950,14 +994,17 @@ export default function Curriculum({
           </header>
           <main ref={mainRef} id="main-content" tabIndex={-1}>
             {liveHand ? <LiveHandBridge hand={liveHand} /> : null}
-            {!storageAvailable ? (
+            {learning.notice ? (
               <div className="storage-warning" role="alert">
-                Browser storage is unavailable. You can keep learning, but
-                changes won’t survive a reload. Export your notes before
-                leaving.
+                {learning.notice}
               </div>
             ) : null}
-            {page === 'path' ? (
+            {learning.recovery || learning.conflict || page === 'notebook' ? (
+              <LearningDataTools session={learning} />
+            ) : null}
+            {foundationPage ? (
+              <FoundationWorkspace route={route} session={learning} />
+            ) : page === 'path' ? (
               <LearningPath completed={progress.completed} />
             ) : page === 'map' ? (
               <ConceptMap completed={progress.completed} />
@@ -967,7 +1014,7 @@ export default function Curriculum({
               <Notebook
                 progress={progress}
                 onNote={saveNote}
-                onReset={() => save(emptyProgress())}
+                onReset={() => learning.reset()}
               />
             ) : (
               <Lesson

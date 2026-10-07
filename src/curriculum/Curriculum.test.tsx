@@ -12,7 +12,7 @@ import App from './Curriculum'
 import { modules } from './curriculum'
 import { Lab } from './components/Labs'
 import { Checkpoint } from './components/Checkpoint'
-import { STORAGE_KEY } from './lib/progress'
+import { LEARNING_KEY as STORAGE_KEY } from './core/persistence'
 
 function navigate(hash: string) {
   act(() => {
@@ -118,9 +118,9 @@ describe('learning workspace', () => {
       screen.getByRole('textbox', { name: 'Your field notes' }),
       'Count the call in the final pot.',
     )
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).notes.odds).toBe(
-      'Count the call in the final pot.',
-    )
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.notes.odds,
+    ).toBe('Count the call in the final pot.')
     navigate('#learn/notebook')
     expect(
       screen.getByRole('textbox', {
@@ -154,7 +154,9 @@ describe('learning workspace', () => {
         name: 'Notes for The price of a decision',
       }),
     ).toHaveValue('')
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).completed).toEqual([])
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.completed,
+    ).toEqual([])
   })
 
   it('survives unavailable storage and warns without blocking notes', async () => {
@@ -197,9 +199,9 @@ describe('learning workspace', () => {
     )
     expect(screen.getByRole('status')).toHaveTextContent('Connection made.')
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '1')
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).completed).toEqual([
-      'odds',
-    ])
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.completed,
+    ).toEqual(['odds'])
     view.unmount()
     navigate('#learn/path')
     render(<App />)

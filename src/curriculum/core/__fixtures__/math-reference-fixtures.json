@@ -1,0 +1,916 @@
+{
+  "spec_version": "1.0",
+  "status": "independent reference calculations, not app test execution",
+  "calculation_method": "Python standard library finite-state formulas, exact integer combinations; independently cross-checked with Decimal/Fraction in verify_spec.py",
+  "probabilities": "physical unless explicitly risk-neutral in a pricing fixture",
+  "simulation_warning": "No sampled outcome is a required profit target. Random generator vectors are supplied by the implementation contract agent.",
+  "fixtures": [
+    {
+      "id": "pot-odds",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.3,
+        "pot": 100,
+        "call_cost": 25
+      },
+      "expected": {
+        "ev": 12.5,
+        "threshold": 0.2,
+        "final_pot": 125
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "outs",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "outs": 9,
+        "unseen": 47,
+        "draws": 2
+      },
+      "expected": {
+        "next_card": 0.19148936170212766,
+        "two_cards": 0.3496762257169288,
+        "after_missed_turn": 0.1956521739130435
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "asymmetric-variance",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.3,
+        "win": 100,
+        "loss": 25
+      },
+      "expected": {
+        "mean": 12.5,
+        "variance": 3281.25,
+        "sd": 57.282196186948,
+        "five_losses": 0.16806999999999994
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "bayes-action",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "prior": 0.25,
+        "likelihood_strong": 0.8,
+        "likelihood_weak": 0.2
+      },
+      "expected": {
+        "posterior": 0.5714285714285714
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "credibility",
+      "research_lab": 2,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "alpha": 2,
+        "beta": 8,
+        "wins": 4,
+        "losses": 1
+      },
+      "expected": {
+        "alpha": 6,
+        "beta": 9,
+        "posterior_mean": 0.4,
+        "raw_rate": 0.8
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "log-utility",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "wealth": 200,
+        "loss": 100,
+        "loss_probability": 0.2,
+        "premium": 22
+      },
+      "expected": {
+        "expected_uninsured_wealth": 180,
+        "insured_wealth": 178,
+        "uninsured_certainty_equivalent": 174.1101126592249
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "kelly-nominal-robust",
+      "research_lab": 6,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "nominal_p": 0.55,
+        "worst_p": 0.51,
+        "best_p": 0.59,
+        "net_odds": 1
+      },
+      "expected": {
+        "nominal_fraction": 0.1,
+        "half_fraction": 0.05,
+        "robust_fraction": 0.02
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "calibration-default",
+      "research_lab": 1,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "weights": [0.5, 0.5],
+        "true_p": [0.1, 0.6],
+        "gain": 100,
+        "loss": 25
+      },
+      "expected": {
+        "base_forecast": 0.35,
+        "baseline_brier": 0.2275,
+        "informed_brier": 0.165,
+        "subgroup_evs": [-12.5, 50],
+        "baseline_policy_value": 18.75,
+        "informed_policy_value": 25,
+        "gain": 6.25
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "calibration-equal",
+      "research_lab": 1,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "weights": [0.5, 0.5],
+        "true_p": [0.3, 0.3],
+        "gain": 100,
+        "loss": 25
+      },
+      "expected": {
+        "brier_both": 0.21,
+        "policy_value_both": 12.5,
+        "gain": 0
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "selection-default",
+      "research_lab": 3,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "population": 1000,
+        "bluff_p": 0.3,
+        "bluff_record_p": 0.1,
+        "value_record_p": 0.6
+      },
+      "expected": {
+        "population_counts": [300, 700],
+        "observed_counts": [30, 420],
+        "omitted_counts": [270, 280],
+        "observed_share": 0.06666666666666667,
+        "corrected_share": 0.3
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "selection-unobserved",
+      "research_lab": 3,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "population": 1000,
+        "bluff_p": 0.3,
+        "bluff_record_p": 0,
+        "value_record_p": 0
+      },
+      "expected": {
+        "observed_total": 0,
+        "observed_share": null,
+        "corrected_share": null
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Null represents tagged unavailable, not a numeric zero."
+    },
+    {
+      "id": "information-default",
+      "research_lab": 4,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.3,
+        "gain": 100,
+        "loss": 25,
+        "sensitivity": 0.8,
+        "specificity": 0.8,
+        "fee": 0
+      },
+      "expected": {
+        "positive_probability": 0.38,
+        "posterior_positive": 0.631578947368421,
+        "posterior_negative": 0.0967741935483871,
+        "without_signal": 12.5,
+        "with_signal_before_fee": 20.5,
+        "evsi": 8,
+        "perfect_value": 30,
+        "evpi": 17.5
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "information-fee9",
+      "research_lab": 4,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.3,
+        "gain": 100,
+        "loss": 25,
+        "sensitivity": 0.8,
+        "specificity": 0.8,
+        "fee": 9
+      },
+      "expected": {
+        "purchase_net": 11.5,
+        "optimal_value": 12.5,
+        "buy": false
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "information-inverted",
+      "research_lab": 4,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.3,
+        "gain": 100,
+        "loss": 25,
+        "sensitivity": 0,
+        "specificity": 0,
+        "fee": 0
+      },
+      "expected": {
+        "positive_probability": 0.7,
+        "posterior_positive": 0,
+        "posterior_negative": 1,
+        "with_signal_before_fee": 30,
+        "evsi": 17.5
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "layer-default",
+      "research_lab": 8,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "losses": [30, 90, 250],
+        "deductible": 50,
+        "limit": 100,
+        "premium": 0
+      },
+      "expected": {
+        "payments": [0, 40, 100],
+        "retained": [30, 50, 150]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "layer-distribution",
+      "research_lab": 8,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "losses": [0, 90, 250],
+        "probabilities": [0.5, 0.3, 0.2],
+        "deductible": 50,
+        "limit": 100,
+        "premium": 15
+      },
+      "expected": {
+        "expected_loss": 77,
+        "expected_payment": 32,
+        "expected_buyer_cost": 60,
+        "expected_seller_profit": -17
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "protective-put",
+      "research_lab": 8,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "spot": 100,
+        "strike": 90,
+        "premium": 3,
+        "terminal": [60, 90, 100, 120]
+      },
+      "expected": {
+        "put_payoff": [30, 0, 0, 0],
+        "combined_profit": [-13, -13, -3, 17]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "deductible-wording",
+      "research_lab": 8,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "losses": [80, 80],
+        "deductible": 100,
+        "limit": 1000
+      },
+      "expected": {
+        "per_occurrence_payment": 0,
+        "aggregate_payment": 60
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "solvency-independent",
+      "research_lab": 15,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 100,
+        "p": 0.1,
+        "severity": 100,
+        "premium": 12,
+        "capital": 500,
+        "rho": 0
+      },
+      "expected": {
+        "funds": 1700,
+        "expected_claims": 1000.0,
+        "promised_margin": 200.0,
+        "default_probability": 0.01000727926212509,
+        "expected_shortfall": 1.7858751495477883,
+        "expected_actual_payments": 998.2141248504548
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Default uses claims > funds, strictly."
+    },
+    {
+      "id": "solvency-common",
+      "research_lab": 15,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 100,
+        "p": 0.1,
+        "severity": 100,
+        "premium": 12,
+        "capital": 500,
+        "rho": 1
+      },
+      "expected": {
+        "funds": 1700,
+        "expected_claims": 1000.0,
+        "promised_margin": 200.0,
+        "default_probability": 0.1,
+        "expected_shortfall": 830.0,
+        "expected_actual_payments": 170.0
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Default uses claims > funds, strictly."
+    },
+    {
+      "id": "solvency-mixture",
+      "research_lab": 15,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 100,
+        "p": 0.1,
+        "severity": 100,
+        "premium": 12,
+        "capital": 500,
+        "rho": 0.25
+      },
+      "expected": {
+        "funds": 1700,
+        "expected_claims": 1000.0,
+        "promised_margin": 200.0,
+        "default_probability": 0.03250545944659382,
+        "expected_shortfall": 208.83940636216084,
+        "expected_actual_payments": 791.1605936378412
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Default uses claims > funds, strictly."
+    },
+    {
+      "id": "solvency-equality",
+      "research_lab": 15,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 1,
+        "p": 0.4,
+        "severity": 100,
+        "premium": 20,
+        "capital": 80,
+        "rho": 0.7
+      },
+      "expected": {
+        "funds": 100,
+        "expected_claims": 40.0,
+        "promised_margin": -20.0,
+        "default_probability": 0,
+        "expected_shortfall": 0.0,
+        "expected_actual_payments": 40.0
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "pool-average-risk",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 100,
+        "p": 0.2,
+        "severity": 100,
+        "rho": [0, 0.25, 1]
+      },
+      "expected": {
+        "single_sd": 40,
+        "average_sd": [4, 20.29778313018444, 40]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "backtest-independent-null",
+      "research_lab": 20,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "m": 20,
+        "alpha": 0.05
+      },
+      "expected": {
+        "at_least_one_false_positive": 0.6415140775914581
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Independent exact-size null tests only; not a universal backtest correction."
+    },
+    {
+      "id": "wilson-0-20",
+      "research_lab": 20,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "wins": 0,
+        "n": 20,
+        "z": 1.959963984540054
+      },
+      "expected": {
+        "interval": [0, 0.16112515805281938]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "wilson-20-20",
+      "research_lab": 20,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "wins": 20,
+        "n": 20,
+        "z": 1.959963984540054
+      },
+      "expected": {
+        "interval": [0.8388748419471806, 1]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "wilson-500-1000",
+      "research_lab": 20,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "wins": 500,
+        "n": 1000,
+        "z": 1.959963984540054
+      },
+      "expected": {
+        "interval": [0.4690696003681042, 0.5309303996318958]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "f10-equipment",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.4,
+        "gain": 120,
+        "loss": 30,
+        "sensitivity": 0.75,
+        "specificity": 0.8,
+        "fee": 4,
+        "deductible": 10,
+        "limit": 15,
+        "premium": 10,
+        "wealth": 45,
+        "floor": 20
+      },
+      "expected": {
+        "baseline_ev": 30,
+        "positive_probability": 0.42,
+        "signal_value_before_fee": 32.4,
+        "evsi": 2.4,
+        "signal_value_after_fee": 28.4,
+        "loss_payment": 15,
+        "insured_payoffs": [110, -25],
+        "insured_ev": 29,
+        "insured_min_wealth": 20
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "f10-inventory",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.35,
+        "gross_success_receipt": 180,
+        "purchase_cost": 50,
+        "sensitivity": 0.9,
+        "specificity": 0.75,
+        "fee": 8,
+        "deductible": 20,
+        "limit": 20,
+        "premium": 16,
+        "wealth": 66,
+        "floor": 20
+      },
+      "expected": {
+        "net_payoffs": [130, -50],
+        "baseline_ev": 13,
+        "positive_probability": 0.4775,
+        "signal_value_before_fee": 32.825,
+        "evsi": 19.825,
+        "signal_value_after_fee": 24.825,
+        "loss_payment": 20,
+        "insured_payoffs": [114, -46],
+        "insured_ev": 10,
+        "min_wealth_uninsured": 16,
+        "min_wealth_signal": 8,
+        "min_wealth_insured": 20
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "f10-warranty",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "n": 20,
+        "p": 0.1,
+        "ground_up_loss": 150,
+        "deductible": 20,
+        "limit": 100,
+        "premium": 14,
+        "capital": 120
+      },
+      "expected": {
+        "funds": 400,
+        "policy_payment": 100,
+        "expected_claims": 200,
+        "promised_margin": 80,
+        "independent_failure": 0.043174495284463404,
+        "common_failure": 0.1,
+        "common_shortfall": 1600,
+        "common_payment_each": 20,
+        "required_total_capital": 1720,
+        "additional_capital": 1600,
+        "retained_if_paid": 50,
+        "retained_in_common_default": 130
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "stopping",
+      "research_lab": 5,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "start": 10,
+        "upper": 11,
+        "lower": 0,
+        "up_probability": 0.5
+      },
+      "expected": {
+        "win_probability": 0.9090909090909091,
+        "loss_probability": 0.09090909090909091,
+        "expected_profit": 0
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "strategic-response",
+      "research_lab": 7,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "pot": 100,
+        "bets": [25, 100],
+        "fold_p": [0.2, 0.6],
+        "called_equity": [0.6, 0.3]
+      },
+      "expected": {
+        "ev": [72, 56]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "replication",
+      "research_lab": 9,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "spot": 100,
+        "up_spot": 120,
+        "down_spot": 80,
+        "strike": 100,
+        "rate": 0,
+        "physical_up_p": 0.7
+      },
+      "expected": {
+        "call_payoffs": [20, 0],
+        "delta": 0.5,
+        "cash": -40,
+        "price": 10,
+        "risk_neutral_up": 0.5,
+        "physical_expected_payoff": 14
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "gamma-approximation",
+      "research_lab": 10,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "delta": 0.5,
+        "gamma": 0.04,
+        "moves": [5, -5]
+      },
+      "expected": {
+        "option_change": [3, -2],
+        "delta_hedged_change": [0.5, 0.5]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Local approximation excluding time, carry, costs, volatility changes and error."
+    },
+    {
+      "id": "american-put",
+      "research_lab": 11,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "spot": 80,
+        "strike": 100,
+        "terminal": [76, 92],
+        "q": 0.5,
+        "period_rate": 0.05
+      },
+      "expected": {
+        "exercise": 20,
+        "continuation": 15.238095238095237,
+        "discounted_stock_expectation": 80
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "compound-claims",
+      "research_lab": 12,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "poisson_mean": 2,
+        "severity": [100, 1000],
+        "p": [0.9, 0.1]
+      },
+      "expected": {
+        "mean_severity": 190,
+        "second_severity_moment": 109000,
+        "aggregate_mean": 380,
+        "aggregate_variance": 218000,
+        "aggregate_sd": 466.9047011971501
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "incentives",
+      "research_lab": 13,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "loss": 1000,
+        "risk_classes": [0.01, 0.1],
+        "equal_weights": true,
+        "prevention_cost": 15,
+        "before_p": 0.08,
+        "after_p": 0.02,
+        "deductible": 300
+      },
+      "expected": {
+        "pooled_claims": 55,
+        "remaining_high_risk_claims": 100,
+        "prevention_private_saving": 18,
+        "net_prevention_benefit": 3
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "reserving",
+      "research_lab": 14,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "ultimate": 500,
+        "reported": 300,
+        "paid": 120
+      },
+      "expected": {
+        "unpaid": 380,
+        "reported_unpaid": 180,
+        "future_development": 200
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "counterparty",
+      "research_lab": 16,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "loss": 100,
+        "loss_p": 0.2,
+        "default_p": 0.1,
+        "recovery": 0
+      },
+      "expected": {
+        "independent_protection": 18,
+        "wrong_way_conditional_default": 0.5,
+        "wrong_way_protection": 10
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "waterfall",
+      "research_lab": 17,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "assets": [60, 100, 150],
+        "senior_face": 80,
+        "junior_face": 40
+      },
+      "expected": {
+        "payments": [
+          [60, 0, 0],
+          [80, 20, 0],
+          [80, 40, 30]
+        ]
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "margin",
+      "research_lab": 18,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "initial": 10,
+        "maintenance": 7,
+        "mark_to_market_loss": 4
+      },
+      "expected": {
+        "balance": 6,
+        "top_up_to_initial": 4
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "dealer-quotes",
+      "research_lab": 19,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "values": [80, 120],
+        "prior_high": 0.5,
+        "informed_fraction": 0.2
+      },
+      "expected": {
+        "posterior_high_on_buy": 0.6,
+        "posterior_high_on_sell": 0.4,
+        "ask": 104,
+        "bid": 96,
+        "expected_loss_at_101_99": 3
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "execution",
+      "research_lab": 19,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "ask_levels": [
+          [100, 101],
+          [200, 103]
+        ],
+        "market_buy_quantity": 250,
+        "alternative_limit": 102
+      },
+      "expected": {
+        "market_cost": 25550,
+        "market_average": 102.2,
+        "limit_initial_fill": 100
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": ""
+    },
+    {
+      "id": "cashout-regression",
+      "research_lab": null,
+      "kind": "exact_finite_model",
+      "inputs": {
+        "p": 0.55,
+        "risk": 100,
+        "win_profit": 100,
+        "fee_rate": 0.01
+      },
+      "expected": {
+        "fair_gross_payout": 110,
+        "showdown_ev": 10,
+        "cashout_payout": 108.9,
+        "cashout_ev": 8.9,
+        "single_sd": 99.498743710662,
+        "double_sd": 70.35623639735144
+      },
+      "absolute_tolerance": 1e-10,
+      "relative_tolerance": 1e-9,
+      "notes": "Existing independent-runout binary approximation; preserve legacy model."
+    }
+  ]
+}

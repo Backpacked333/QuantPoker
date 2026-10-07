@@ -1,0 +1,132 @@
+[
+  {
+    "id": "f01",
+    "title": "Information and incremental cash flows",
+    "prerequisites": [],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["A01", "A05", "C01", "C02"],
+    "legacy_resources": ["odds"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f02",
+    "title": "Conditional probability and event definitions",
+    "prerequisites": ["f01"],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["A02", "A03", "A04", "A05"],
+    "legacy_resources": ["outs", "equity"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f03",
+    "title": "Price and expected value",
+    "prerequisites": ["f01", "f02"],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["C01", "C02", "F01"],
+    "legacy_resources": ["odds"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f04",
+    "title": "Repetition, variability, and model uncertainty",
+    "prerequisites": ["f02", "f03"],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["A06", "B01", "B08", "L01"],
+    "legacy_resources": ["variance"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f05",
+    "title": "Updating and evaluating forecasts",
+    "prerequisites": ["f02", "f04"],
+    "base_case_owner": "A01+A02",
+    "final_integrator": "A07",
+    "concepts": ["B01", "B02", "B03", "B04", "B05"],
+    "legacy_resources": [],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f06",
+    "title": "Capital, compounding, and preferences",
+    "prerequisites": ["f03", "f04"],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["C03", "E01", "E02", "E03", "E04", "E05"],
+    "legacy_resources": ["risk"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f07",
+    "title": "Dependence and pooling",
+    "prerequisites": ["f04", "f06"],
+    "base_case_owner": "A05",
+    "final_integrator": "A07",
+    "concepts": ["A04", "E06", "E08", "H02"],
+    "legacy_resources": [],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f08",
+    "title": "Build contingent cash flows",
+    "prerequisites": ["f01", "f03"],
+    "base_case_owner": "A04",
+    "final_integrator": "A07",
+    "concepts": ["F01", "F03", "F04", "H05"],
+    "legacy_resources": [],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f09",
+    "title": "Protection, pricing, and obligations",
+    "prerequisites": ["f06", "f07", "f08"],
+    "base_case_owner": "A00",
+    "final_integrator": "A07",
+    "concepts": ["H03", "I06", "F06", "F07"],
+    "legacy_resources": ["risk", "pricing", "replication"],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  },
+  {
+    "id": "f10",
+    "title": "Independent finance transfer",
+    "prerequisites": [
+      "f01",
+      "f02",
+      "f03",
+      "f04",
+      "f05",
+      "f06",
+      "f07",
+      "f08",
+      "f09"
+    ],
+    "base_case_owner": "A07",
+    "final_integrator": "A07",
+    "concepts": ["C08", "E08", "L05", "L06", "L07", "L08"],
+    "legacy_resources": [],
+    "minimum_transfer_variants": 3,
+    "minimum_review_variants": 3,
+    "r1_required": true
+  }
+]

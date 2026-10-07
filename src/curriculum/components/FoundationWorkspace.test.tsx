@@ -1,0 +1,364 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { useRef } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+import Curriculum from '../Curriculum'
+import { NumericControl } from './NumericControl'
+import { DataTable } from './DataTable'
+import { SeriesChart } from './SeriesChart'
+import { CasePlayer } from './CasePlayer'
+import { baseCases } from '../content/foundationCases/baseBanks'
+import { LearningSession } from '../core/session'
+import { useExperimentController } from '../core/experiments'
+import { fixedClock, MemoryStorage } from '../core/__fixtures__/testing'
+import {
+  referenceCase,
+  referenceManifest,
+} from '../core/__fixtures__/reference'
+import ReferenceView from '../core/__fixtures__/ReferenceView'
+import { LEARNING_KEY } from '../core/persistence'
+
+function navigate(hash: string) {
+  act(() => {
+    window.history.replaceState(null, '', hash)
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+  })
+}
+function ReferenceHarness({ session }: { session: LearningSession }) {
+  const c = useExperimentController({
+    manifest: referenceManifest,
+    session,
+    mode: 'assess',
+    assessmentMode: 'transfer',
+    unitId: 'f03',
+    caseId: 'reference-1',
+    seed: 42,
+  })
+  return (
+    <div className="curriculum-workspace">
+      <ReferenceView controller={c} evidence={session} />
+    </div>
+  )
+}
+describe('accessible frozen primitives and reference fixture', () => {
+  it('charts finite summaries with labeled axes, equivalent table and gaps for undefined branches', () => {
+    const view = render(
+      <SeriesChart
+        title="Expected profit"
+        summary="Not realized winnings."
+        xLabel="Probability"
+        xUnits="fraction"
+        yLabel="EV"
+        yUnits="currency"
+        series={[
+          {
+            name: 'Call',
+            points: [
+              { x: 0, y: -25 },
+              { x: 0.5, y: null },
+              { x: 1, y: 100 },
+            ],
+          },
+        ]}
+      />,
+    )
+    expect(screen.getByRole('img')).toHaveAccessibleDescription(
+      /Undefined branches are gaps/,
+    )
+    expect(
+      screen.getByRole('table', {
+        name: 'Expected profit — equivalent values',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('cell', { name: 'Unavailable' }),
+    ).toBeInTheDocument()
+    view.rerender(
+      <SeriesChart
+        title="Bad"
+        summary="Never render NaN."
+        xLabel="x"
+        xUnits="units"
+        yLabel="y"
+        yUnits="units"
+        series={[{ name: 'Bad', points: [{ x: NaN, y: 1 }] }]}
+      />,
+    )
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('invalid')
+  })
+  it('labels equivalent numeric and slider input with units/limits/errors and rejects invalid entry', () => {
+    const onChange = vi.fn()
+    render(
+      <NumericControl
+        name="price"
+        label="Purchase price"
+        units="currency units"
+        min={0}
+        max={100}
+        step={1}
+        value={25}
+        onChange={onChange}
+      />,
+    )
+    const numeric = screen.getByRole('spinbutton', {
+      name: 'Purchase price (currency units)',
+    })
+    expect(numeric).toHaveAttribute('min', '0')
+    expect(numeric).toHaveAttribute('max', '100')
+    expect(numeric).toHaveAccessibleDescription(
+      '0–100 currency units; increment 1',
+    )
+    const slider = screen.getByRole('slider', {
+      name: 'Purchase price slider (currency units)',
+    })
+    fireEvent.change(numeric, { target: { value: '101' } })
+    expect(onChange).not.toHaveBeenCalled()
+    expect(numeric).toHaveAttribute('aria-invalid', 'true')
+    expect(numeric).toHaveAccessibleDescription(/Use a value/)
+    fireEvent.change(numeric, { target: { value: '' } })
+    expect(onChange).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('finite number')
+    fireEvent.change(numeric, { target: { value: '30' } })
+    expect(onChange).toHaveBeenCalledWith(30)
+    fireEvent.change(slider, { target: { value: '40' } })
+    expect(onChange).toHaveBeenCalledWith(40)
+  })
+  it('provides caption, textual summary and null-unavailable equivalent table', () => {
+    render(
+      <DataTable
+        caption="Finite states"
+        summary="A missing branch is unavailable, not zero."
+        columns={['State', 'Probability']}
+        rows={[
+          ['Unreachable', null],
+          ['Reachable', 0.3],
+        ]}
+      />,
+    )
+    expect(
+      screen.getByRole('table', { name: 'Finite states' }),
+    ).toHaveAccessibleDescription('A missing branch is unavailable, not zero.')
+    expect(
+      screen.getByRole('rowheader', { name: 'Unreachable' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('cell', { name: 'Unavailable' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('region')).toHaveAttribute('tabindex', '0')
+  })
+  it('runs the real fixture View/model/controller with commitment before results', async () => {
+    const user = userEvent.setup(),
+      session = new LearningSession(new MemoryStorage(), fixedClock)
+    render(<ReferenceHarness session={session} />)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run reference' })).toBeDisabled()
+    await user.type(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+      'The modeled expectation should be12.5.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Commit prediction' }))
+    await user.click(screen.getByRole('button', { name: 'Run reference' }))
+    expect(
+      await screen.findByRole('table', { name: 'Reference exact values' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '12.5' })).toBeInTheDocument()
+    expect(session.store.attempts[0].prediction?.rationale).toBe(
+      'The modeled expectation should be12.5.',
+    )
+    expect(session.store.attempts[0].evaluation).toBeUndefined()
+    await user.type(
+      screen.getByRole('textbox', { name: 'Reference reflection (ungraded)' }),
+      'My expected-profit prediction was not a realized outcome.',
+    )
+    for (const q of referenceCase.questions) {
+      if (q.kind === 'numeric')
+        fireEvent.change(
+          screen.getByRole('spinbutton', {
+            name: new RegExp(q.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          }),
+          { target: { value: String(q.expected) } },
+        )
+      else if (q.kind === 'choice')
+        await user.selectOptions(
+          screen.getByRole('combobox', { name: q.prompt }),
+          String(q.expected),
+        )
+    }
+    await user.click(
+      screen.getByRole('button', { name: 'Submit reference assessment' }),
+    )
+    expect(
+      screen.getByText('Reference evidence: 100/100; eligible.'),
+    ).toBeInTheDocument()
+    expect(session.store.receipts[0].eligible).toBe(true)
+    const lazyModule = await referenceManifest.loadView()
+    expect(lazyModule.default).toBe(ReferenceView)
+  })
+})
+describe('complete foundation bank interaction and honest availability', () => {
+  it('has all seven steps, keeps shells incomplete, and offers no fake planned lab links', () => {
+    navigate('#learn/foundations')
+    render(<Curriculum />)
+    expect(
+      screen.getByRole('link', { name: /F01 Information/ }),
+    ).toHaveAttribute('href', '#learn/unit/f01/brief')
+    expect(
+      screen.queryByRole('link', { name: /F05 Updating/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', {
+        name: 'Price the next piece of information',
+      }),
+    ).not.toBeInTheDocument()
+    navigate('#learn/unit/f01/brief')
+    expect(
+      screen.getByRole('navigation', { name: 'Seven lesson steps' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Retrieve before studying' }),
+    ).toBeInTheDocument()
+    navigate('#learn/unit/f05/transfer')
+    expect(
+      screen.getByRole('heading', {
+        name: 'Partial — required cases are not integrated',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Submit structured answers' }),
+    ).not.toBeInTheDocument()
+    navigate('#learn/lab/calibration')
+    expect(
+      screen.getByRole('heading', { name: 'Laboratory pending integration' }),
+    ).toBeInTheDocument()
+    navigate('#learn/atlas')
+    expect(
+      screen.getByRole('heading', { name: '96-family concept atlas' }),
+    ).toBeInTheDocument()
+    navigate('#learn/pathways')
+    expect(
+      screen.getByRole('heading', { name: 'Four quantitative pathways' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('heading', {
+        name: 'Future capstone — planned, not playable',
+      }),
+    ).toHaveLength(4)
+  })
+  it('retains a committed case across navigation/reload and earns structured unaided evidence, not prose mastery', async () => {
+    const c = baseCases.find((c) => c.id === 'f03-transfer-1')!,
+      session = new LearningSession(new MemoryStorage(), fixedClock),
+      user = userEvent.setup()
+    const view = render(<CasePlayer caseRecord={c} session={session} />)
+    await user.type(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+      'I expect positive profit from the supplied ledger.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Commit prediction' }))
+    view.unmount()
+    render(<CasePlayer caseRecord={c} session={session} />)
+    expect(
+      screen.queryByRole('button', { name: 'Commit prediction' }),
+    ).not.toBeInTheDocument()
+    for (const q of c.questions) {
+      if (q.kind === 'numeric')
+        fireEvent.change(
+          screen.getByRole('spinbutton', {
+            name: new RegExp(q.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          }),
+          { target: { value: String(q.expected) } },
+        )
+      else if (q.kind === 'choice') {
+        const group = screen.getByRole('group', { name: q.prompt })
+        const correct = q.options.find((o) => o.id === q.expected)!
+        await user.click(
+          within(group).getByRole('radio', { name: correct.label }),
+        )
+      }
+    }
+    await user.type(
+      screen.getByRole('textbox', { name: /Written defense/ }),
+      'This text is deliberately not keyword graded.',
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Submit structured answers' }),
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '100/100; eligible unaided evidence',
+    )
+    expect(session.store.receipts[0].firstDemonstration).toBe(true)
+    expect(session.store.reviewSchedule.f03?.dueAt).toBe(
+      '2026-10-10T12:00:00.000Z',
+    )
+    const reloaded = new LearningSession(session.storage, fixedClock)
+    expect(reloaded.store.receipts).toEqual(session.store.receipts)
+    expect(reloaded.store.attempts[0].reflection).toBe(
+      'This text is deliberately not keyword graded.',
+    )
+  })
+  it('marks hint-assisted correct answers practice-only before solution exposure', async () => {
+    const c = baseCases.find((c) => c.id === 'f01-transfer-1')!,
+      session = new LearningSession(new MemoryStorage(), fixedClock),
+      user = userEvent.setup()
+    render(<CasePlayer caseRecord={c} session={session} />)
+    await user.type(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+      'I will examine the ledger.',
+    )
+    await user.click(screen.getByRole('button', { name: 'Commit prediction' }))
+    await user.click(
+      screen.getByRole('button', { name: /Show next hint for setup/ }),
+    )
+    for (const q of c.questions) {
+      if (q.kind === 'numeric')
+        fireEvent.change(screen.getByRole('spinbutton'), {
+          target: { value: String(q.expected) },
+        })
+      else if (q.kind === 'choice')
+        await user.click(
+          within(screen.getByRole('group', { name: q.prompt })).getByRole(
+            'radio',
+            { name: q.options.find((o) => o.id === q.expected)!.label },
+          ),
+        )
+    }
+    await user.click(
+      screen.getByRole('button', { name: 'Submit structured answers' }),
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '100/100; practice only; assisted/repeated',
+    )
+    expect(session.store.reviewSchedule.f01).toBeUndefined()
+  })
+  it('roots storage-blocked work across workspace remounts and exposes conflict recovery', async () => {
+    const port = new MemoryStorage()
+    port.failRead = true
+    port.failWrite = true
+    const session = new LearningSession(port, fixedClock)
+    function Harness() {
+      const root = useRef<LearningSession | null>(session)
+      return <Curriculum session={root} />
+    }
+    navigate('#learn/unit/f03/transfer')
+    const view = render(<Harness />)
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+      { target: { value: 'Work before leaving' } },
+    )
+    navigate('#learn/path')
+    navigate('#learn/unit/f03/transfer')
+    expect(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+    ).toHaveValue('Work before leaving')
+    view.unmount()
+    render(<Harness />)
+    expect(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+    ).toHaveValue('Work before leaving')
+    act(() => session.observeStorage(LEARNING_KEY, '{"other":"tab"}'))
+    expect(
+      screen.getByRole('button', { name: 'Review reload saved progress' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/Another tab/)
+  })
+})

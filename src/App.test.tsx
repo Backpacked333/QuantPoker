@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { STORAGE_KEY as TABLE_KEY } from './lib/storage'
-import { STORAGE_KEY as LEARNING_KEY } from './curriculum/lib/progress'
+import { STORAGE_KEY as LEARNING_V1_KEY } from './curriculum/lib/progress'
+import { LEARNING_KEY } from './curriculum/core/persistence'
 import * as poker from './lib/poker'
 
 vi.mock('./components/Surface', () => ({
@@ -128,7 +129,7 @@ describe('table and curriculum integration', () => {
     }
     localStorage.setItem(TABLE_KEY, JSON.stringify(legacy))
     localStorage.setItem(
-      LEARNING_KEY,
+      LEARNING_V1_KEY,
       JSON.stringify({
         version: 1,
         completed: ['odds'],
@@ -144,9 +145,9 @@ describe('table and curriculum integration', () => {
       screen.getByRole('button', { name: 'Delete my local learning data' }),
     )
     expect(JSON.parse(localStorage.getItem(TABLE_KEY)!)).toEqual(legacy)
-    expect(JSON.parse(localStorage.getItem(LEARNING_KEY)!).completed).toEqual(
-      [],
-    )
+    expect(
+      JSON.parse(localStorage.getItem(LEARNING_KEY)!).legacy.completed,
+    ).toEqual([])
     navigate('#table')
     await user.click(
       screen.getByRole('button', {

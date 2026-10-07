@@ -30,6 +30,19 @@ export type Game = {
     showdown: boolean
   }
 }
+export type OutcomeProbabilities = {
+  equity: number
+  win: number
+  tie: number
+  loss: number
+}
+export type NextCardScenario = OutcomeProbabilities & { card: Card }
+export type EquityAnalysis = OutcomeProbabilities & {
+  improve: number | null
+  nextCardVolatility: number | null
+  bestNextCards: NextCardScenario[]
+  worstNextCards: NextCardScenario[]
+}
 
 export const SUITS: Record<Suit, string> = {
   s: '♠',
@@ -391,6 +404,98 @@ export function estimateEquity(
       heroScore > opponentScore ? 1 : heroScore === opponentScore ? 0.5 : 0
   }
   return wins / trials
+}
+
+export function analyzeEquity(
+  hole: Card[],
+  board: Card[],
+  trials = 2000,
+  random = Math.random,
+): EquityAnalysis {
+  const visible = new Set([...hole, ...board].map(cardKey))
+  const available = deck().filter((card) => !visible.has(cardKey(card)))
+  const currentCategory =
+    hole.length + board.length >= 5
+      ? categories.indexOf(evaluate([...hole, ...board]).name)
+      : null
+  let win = 0,
+    tie = 0,
+    improved = 0
+  for (let i = 0; i < trials; i++) {
+    const pool = [...available]
+    const draw = () => pool.splice(Math.floor(random() * pool.length), 1)[0]
+    const opponent = [draw(), draw()]
+    const future = [...board]
+    while (future.length < 5) future.push(draw())
+    const hero = evaluate([...hole, ...future])
+    const villain = evaluate([...opponent, ...future])
+    if (hero.score > villain.score) win++
+    else if (hero.score === villain.score) tie++
+    if (
+      currentCategory !== null &&
+      categories.indexOf(hero.name) > currentCategory
+    )
+      improved++
+  }
+  const equity = (win + tie / 2) / trials
+  const nextCards =
+    board.length >= 3 && board.length < 5
+      ? available.map((card) => ({
+          card,
+          ...sampleOutcomes(hole, [...board, card], 180, random),
+        }))
+      : []
+  const nextMean = nextCards.length
+    ? nextCards.reduce((sum, item) => sum + item.equity, 0) / nextCards.length
+    : 0
+  const nextCardVolatility = nextCards.length
+    ? Math.sqrt(
+        nextCards.reduce(
+          (sum, item) => sum + (item.equity - nextMean) ** 2,
+          0,
+        ) / nextCards.length,
+      )
+    : null
+  const sorted = [...nextCards].sort((a, b) => b.equity - a.equity)
+  return {
+    equity,
+    win: win / trials,
+    tie: tie / trials,
+    loss: 1 - (win + tie) / trials,
+    improve: currentCategory === null ? null : improved / trials,
+    nextCardVolatility,
+    bestNextCards: sorted.slice(0, 4),
+    worstNextCards: sorted.slice(-4).reverse(),
+  }
+}
+
+function sampleOutcomes(
+  hole: Card[],
+  board: Card[],
+  trials: number,
+  random: () => number,
+): OutcomeProbabilities {
+  const visible = new Set([...hole, ...board].map(cardKey))
+  const available = deck().filter((card) => !visible.has(cardKey(card)))
+  let win = 0,
+    tie = 0
+  for (let i = 0; i < trials; i++) {
+    const pool = [...available]
+    const draw = () => pool.splice(Math.floor(random() * pool.length), 1)[0]
+    const opponent = [draw(), draw()]
+    const future = [...board]
+    while (future.length < 5) future.push(draw())
+    const heroScore = evaluate([...hole, ...future]).score
+    const villainScore = evaluate([...opponent, ...future]).score
+    if (heroScore > villainScore) win++
+    else if (heroScore === villainScore) tie++
+  }
+  return {
+    equity: (win + tie / 2) / trials,
+    win: win / trials,
+    tie: tie / trials,
+    loss: 1 - (win + tie) / trials,
+  }
 }
 
 export function botAction(game: Game, random = Math.random): Action {

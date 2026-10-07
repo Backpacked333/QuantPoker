@@ -33,7 +33,7 @@ import {
   newHand,
   other,
 } from './lib/poker'
-import type { Action, Game } from './lib/poker'
+import type { Action, EquityAnalysis, Game } from './lib/poker'
 import type { Lens } from './lib/finance'
 import { readProgress, saveProgress } from './lib/storage'
 import { PlayingCard } from './components/PlayingCard'
@@ -48,19 +48,20 @@ function useEquity(game: Game) {
   const key = JSON.stringify({ hole: game.cards[0], board: game.board })
   const [estimate, setEstimate] = useState<{
     key: string
-    equity: number
+    analysis: EquityAnalysis
   } | null>(null)
   useEffect(() => {
     const worker = new Worker(
       new URL('./lib/equity.worker.ts', import.meta.url),
       { type: 'module' },
     )
-    worker.onmessage = (e: MessageEvent<{ key: string; equity: number }>) =>
-      setEstimate(e.data)
+    worker.onmessage = (
+      e: MessageEvent<{ key: string; analysis: EquityAnalysis }>,
+    ) => setEstimate(e.data)
     worker.postMessage({ key, ...JSON.parse(key) })
     return () => worker.terminate()
   }, [key])
-  return estimate?.key === key ? estimate.equity : null
+  return estimate?.key === key ? estimate.analysis : null
 }
 
 export default function App() {
@@ -75,9 +76,16 @@ export default function App() {
   const [storageAvailable, setStorageAvailable] = useState(true)
   const [sound, setSound] = useState(false)
   const [notice, setNotice] = useState('')
+  const [lastDecision, setLastDecision] = useState<{
+    game: Game
+    action: Action
+    raiseTo: number
+  } | null>(null)
   const sessionId = useRef(crypto.randomUUID())
   const audio = useRef<AudioContext | null>(null)
-  const equity = useEquity(game)
+  const review =
+    game.result && lastDecision?.game.id === game.id ? lastDecision : null
+  const analysis = useEquity(review?.game ?? game)
   const legal = legalActions(game)
   const yourTurn = game.turn === 0 && !game.result && !paused
   const betAmount = Math.max(
@@ -166,6 +174,7 @@ export default function App() {
   function choose(action: Action) {
     if (!yourTurn) return
     playSound()
+    setLastDecision({ game, action, raiseTo: betAmount })
     setGame(act(game, action))
     setNotice('')
   }
@@ -631,8 +640,12 @@ export default function App() {
           )}
         </section>
         <FinancePanel
-          game={game}
-          equity={equity}
+          key={`${game.id}-${game.result ? 'review' : 'live'}`}
+          game={review?.game ?? game}
+          analysis={analysis}
+          raiseTo={review?.raiseTo ?? betAmount}
+          playedAction={review?.action}
+          settledResult={game.result}
           lens={lens}
           onLens={setLens}
           onLesson={openLesson}

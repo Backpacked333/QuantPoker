@@ -5,6 +5,7 @@ import {
   cardKey,
   deck,
   estimateEquity,
+  analyzeEquity,
   evaluate,
   guidedHand,
   legalActions,
@@ -254,4 +255,54 @@ describe('visible-information equity', () => {
       0.85,
       1,
     ))
+  it('returns an honest outcome distribution and next-card repricing', () => {
+    const analysis = analyzeEquity(
+      cards('As Js'),
+      cards('Ks Qs 7d'),
+      500,
+      rng(12),
+    )
+    expect(analysis.win + analysis.tie + analysis.loss).toBeCloseTo(1)
+    expect(analysis.nextCardVolatility).toBeGreaterThan(0)
+    expect(analysis.bestNextCards).toHaveLength(4)
+    expect(analysis.worstNextCards).toHaveLength(4)
+    expect(analysis.bestNextCards[0].equity).toBeGreaterThanOrEqual(
+      analysis.worstNextCards[0].equity,
+    )
+    for (const item of [
+      ...analysis.bestNextCards,
+      ...analysis.worstNextCards,
+    ]) {
+      expect(item.win + item.tie + item.loss).toBeCloseTo(1)
+      expect(item.equity).toBeCloseTo(item.win + item.tie / 2)
+      expect(cards('As Js Ks Qs 7d')).not.toContainEqual(item.card)
+    }
+  })
+  it('keeps river certainty and board-only ties distinct', () => {
+    const win = analyzeEquity(
+      cards('As Ks'),
+      cards('Qs Js Ts 2d 3c'),
+      100,
+      rng(12),
+    )
+    expect(win.win).toBe(1)
+    expect(win.loss).toBe(0)
+    expect(win.nextCardVolatility).toBeNull()
+    const tie = analyzeEquity(
+      cards('2d 3c'),
+      cards('As Ks Qs Js Ts'),
+      100,
+      rng(12),
+    )
+    expect(tie.tie).toBe(1)
+    expect(tie.equity).toBe(0.5)
+    expect(tie.loss).toBe(0)
+    expect(tie.bestNextCards).toEqual([])
+  })
+  it('does not invent a single-next-card volatility before the flop', () => {
+    const preflop = analyzeEquity(cards('As Ks'), [], 100, rng(12))
+    expect(preflop.nextCardVolatility).toBeNull()
+    expect(preflop.improve).toBeNull()
+    expect(preflop.bestNextCards).toEqual([])
+  })
 })

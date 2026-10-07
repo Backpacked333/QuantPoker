@@ -17,17 +17,37 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite (normally `http://localhost:5173`). No API keys, database, account, or environment variables are required. `.env.example` documents that intentionally empty configuration.
+Open the URL printed by Vite (normally `http://localhost:5173`). Poker, all graphs, and the guided deterministic explanations work without any API key, database, or account. The optional conversational coach requires server-side configuration below.
 
 ```sh
 npm run typecheck    # strict TypeScript
 npm run lint         # ESLint and React hooks checks
-npm test             # deterministic engine, finance, and storage tests
-npm run build        # type-check + production assets in dist/
-npm run preview      # locally serve the production build
+npm test             # engine, finance, privacy, API and streaming tests (no live model)
+npm run build        # frontend in dist/ + Node backend in dist-server/
+npm run preview      # frontend-only static preview; no AI backend
+npm start            # full private Node server on port 3001; see configuration below
 ```
 
-The app can be served by any static host. Build with `npm run build` and use `dist` as the output directory. There are no server routes or client-side path-routing requirements. A local preview is not a public deployment.
+The game can still be served by any static host using `dist`. **Static hosting alone does not run the AI coach.** `npm run dev` embeds the Express API in Vite's development server. `npm start` serves both built assets and the coach API from a Node process; place it behind HTTPS for private deployment. A local preview is not a public production deployment.
+
+## Conversational coach
+
+1. Copy `.env.example` to `.env.local` and set `AI_GATEWAY_API_KEY` using your approved Vercel AI Gateway credential. No `VITE_` secret variables are used. The npm development/start scripts load this uncommitted file.
+2. Start `npm run dev`. Under the graph, the coach should report **AI configured**. This badge means the backend is configured, not that the provider has been contacted; provider errors are shown when you send a question.
+3. Try “Explain the point I am inspecting,” “Compare calling with raising,” or “What if the turn is the ten of spades?” Responses stream, and the coach can offer **Show on graph** buttons to change the finance lens, preview an action, inspect a calculated point, or apply a next-card what-if. These never place a bet or change the real deck.
+4. Each question captures the current visible-hand/model snapshot. Replies from older snapshots are labeled, and their demonstration buttons are disabled once the model changes. Chat resets when the hand or final-decision review panel resets; it is not persisted by this app.
+
+The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's model catalog when implemented. `COACH_MODEL` can select another tool-capable Gateway model; check its availability and pricing first. Calls cost provider credits. Nothing calls the model until you send a question.
+
+### Privacy and deployment guardrails
+
+- Only your two hole cards, public board/bets, model assumptions, graph coordinates, and chat are sent. A strict allowlisted serializer excludes Atlas's private cards, the deck, action logs, and settlement text. Runtime validation rejects extra fields. Provider credentials stay in the server environment.
+- The LLM receives canonical EV/break-even/insurance calculations and bounded tools that reuse the same math as the charts. Tool simulations use 2,000 random legal hands; visual next-card buttons based on the worker's sensitivity scan use 180 samples. Neither conditions on a learned opponent range. AI prose may still be wrong—inspect the math and assumptions.
+- Chat text goes to the configured provider; this app does not save it or log request bodies. The provider's retention policy still applies. Do not put personal information in chat. The game itself remains entirely local and non-authoritative.
+- Full production-mode startup requires `COACH_ACCESS_TOKEN`, a long random **site access token distinct from the AI key**. Share it privately with invited users, who enter it in the coach UI. It is held in browser memory only. Without it, production AI requests fail closed. Add the exact HTTPS origin to `COACH_ALLOWED_ORIGINS`; no wildcard CORS is enabled.
+- The preview caps requests at six per minute, two concurrent, and 30 per process by default (`COACH_REQUEST_BUDGET`). Each question is bounded to three model steps, 900 output tokens per step, a 45-second deadline, and at most two next-card simulations. Cancelling a response aborts the upstream request; already generated tokens can still be billed.
+- **These are private-preview protections, not production multi-user billing controls.** In-memory limits reset on restart and are not shared between replicas. Set a provider-side budget before exposing the service, and add proper user authentication and durable shared quotas before a public launch. Do not publicly expose the unauthenticated development server.
+- If the key/backend is absent, poker and the deterministic learning tools keep working, and chat explicitly reports that AI is unavailable. There is no canned answer disguised as an LLM response.
 
 ## What you can do
 
@@ -41,6 +61,8 @@ The app can be served by any static host. Build with `npm run build` and use `di
 - After settlement, compare the realized result with a **final-decision review** frozen at the information you had before acting. Later board cards and the opponent's revealed hand do not leak into that analysis.
 - Explore **optionality**: compare committing capital with preserving the choice to fold. Connect the zero-EV frontier, local sensitivity, next-card uncertainty, and finite information clock to options concepts—with explicit limits on the analogy.
 - Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
+- Read a chip-denominated **payoff slice** with a labeled break-even line, current estimate, and pointer/keyboard what-if inspection. Switch to 3D for the full sensitivity terrain, world-space axis labels, the gold zero-EV frontier and white current-exposure slice.
+- Walk through **The price → The possibilities → The market connection**, including a 100-dot illustration of the estimated showdown distribution. Ask the context-aware coach for a different explanation or a calculated visual demonstration.
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
@@ -105,11 +127,12 @@ These are **conceptual connections**, not measured correlations with financial a
 | Equity       | Worker in `src/lib/equity.worker.ts`; visible-information Monte Carlo                                                    |
 | Finance      | Pure functions in `src/lib/finance.ts` shared with charts/tests                                                          |
 | 3D           | Lazy-loaded Three.js + OrbitControls; raycast inspection, numerical probes, animated marker; static under reduced motion |
+| Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts             |
 | Persistence  | Versioned, validated browser localStorage in `src/lib/storage.ts`                                                        |
 | Fonts        | Bundled DM Sans and Manrope (Fontsource, SIL Open Font License); no Google Fonts requests                                |
 | CI           | GitHub Actions: clean install, typecheck, lint, tests, production build                                                  |
 
-All play is client-side. The application makes no analytics or AI-provider requests and stores no credentials. Reloading starts a fresh guided table while preserving lesson completion and recorded results. Settings, the current hand, and the current session bankroll are not persisted. When a player runs out of chips, **Refill & deal next hand** resets both practice stacks to 2,000 and keeps the recorded results.
+All play is client-side. There are no analytics requests. Model-provider requests happen server-side only after an explicit coach question; no provider credentials are bundled into the frontend. Reloading starts a fresh guided table while preserving lesson completion and recorded results. Settings, chat, the current hand, and the current session bankroll are not persisted. When a player runs out of chips, **Refill & deal next hand** resets both practice stacks to 2,000 and keeps the recorded results.
 
 ## Validation
 
@@ -123,6 +146,7 @@ Automated coverage includes:
 - Known equity cases, conditional next-card distributions, fold/call/raise arithmetic, sensitivity surfaces, and unclamped overbet markers.
 - Fair protection preserving expected wealth with ties and opponent folds; reduced payoff dispersion; premium-inclusive vanilla option payoffs in the lesson utilities.
 - Corrupt/unavailable browser storage and bounded saved history.
+- Coach visible-state isolation, invalid/hidden payload rejection, canonical graph-point calculations, production access checks, origin/body/request limits, safe provider failures, disconnect cancellation and chunked Unicode streaming.
 
 These tests do not replace browser end-to-end, screen-reader, mobile-device, or cross-browser testing.
 

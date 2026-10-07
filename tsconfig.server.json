@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "outDir": "dist-server",
+    "rootDir": "."
+  },
+  "include": [
+    "server",
+    "src/lib/coach.ts",
+    "src/lib/finance.ts",
+    "src/lib/poker.ts"
+  ],
+  "exclude": ["**/*.test.ts"]
+}

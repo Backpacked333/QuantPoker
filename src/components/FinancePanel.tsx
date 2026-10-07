@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   ArrowDownRight,
@@ -39,13 +39,18 @@ import type {
   NextCardScenario,
 } from '../lib/poker'
 import { Modal } from './Modal'
+import { DecisionChart } from './DecisionChart'
+import type { Probe } from './DecisionChart'
+import { Coach } from './Coach'
+import type { CoachSnapshot, Demonstration } from '../lib/coach'
+import { visibleCoachState } from '../lib/coach'
+import { surfaceRiskRange } from '../lib/finance'
 
-const Surface = lazy(() => import('./Surface'))
 const format = (value: number) =>
   `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(1)}`
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`
 const titles: Record<Lens, string> = {
-  equity: 'Your decision, as a terrain.',
+  equity: 'Where does this hand become worth playing?',
   options: 'The option to walk away has value.',
   insurance: 'Protection reshapes the downside.',
 }
@@ -71,6 +76,7 @@ export function FinancePanel({
 }) {
   const [showAssumptions, setShowAssumptions] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const graphHost = useRef<HTMLDivElement>(null)
   const [actionChoice, setAction] = useState<DecisionAction>(
     playedAction?.type === 'fold'
       ? 'fold'
@@ -80,6 +86,14 @@ export function FinancePanel({
   )
   const [foldProbability, setFoldProbability] = useState(0.25)
   const [coverageFraction, setCoverageFraction] = useState(0.75)
+  const [chart, setChart] = useState<'payoff' | 'terrain'>('payoff')
+  const [probe, setProbe] = useState<Probe | null>(null)
+  const [lessonStep, setLessonStep] = useState<
+    'price' | 'outcomes' | 'markets'
+  >('price')
+  const [question, setQuestion] = useState<{ text: string; id: number } | null>(
+    null,
+  )
   const [nextCard, setNextCard] = useState<{
     key: string
     value: NextCardScenario
@@ -122,7 +136,10 @@ export function FinancePanel({
   const model = models[action]
   const ev = decisionEV(model, equity)
   const threshold = decisionBreakEven(model)
-  const exposure = model.risk
+  const foldDrivenEdge = decisionEV(model, 0) > 0
+  const risk = model.risk
+  const exposure = risk
+  const signed = format
   const lossProbability =
     probabilities.loss *
     (action === 'raise' ? 1 - foldProbability : action === 'fold' ? 0 : 1)
@@ -134,12 +151,28 @@ export function FinancePanel({
   const hedgedVolatility = payoffStatistics(
     decisionOutcomes(model, probabilities, coverage),
   ).deviation
-  const scenario: SurfaceScenario = {
-    ...model,
-    equity,
-    lossProbability,
-    coverageFraction,
-  }
+  const scenario: SurfaceScenario = useMemo(
+    () => ({
+      action,
+      pot,
+      risk: model.risk,
+      opponentCall: model.opponentCall,
+      foldProbability: model.foldProbability,
+      equity,
+      lossProbability,
+      coverageFraction,
+    }),
+    [
+      action,
+      pot,
+      model.risk,
+      model.opponentCall,
+      model.foldProbability,
+      equity,
+      lossProbability,
+      coverageFraction,
+    ],
+  )
   const cardsToCome = Math.max(0, 5 - game.board.length)
   const handName =
     game.board.length >= 3
@@ -162,22 +195,80 @@ export function FinancePanel({
         : call
           ? `Call ${call}`
           : 'Check'
-  const graph = (
-    <Suspense
-      fallback={<div className="graph-loading">Mapping this decision…</div>}
-    >
-      <Surface
-        lens={lens}
-        scenario={scenario}
-        markerLabel={
-          selectedNext
-            ? `What if ${cardLabel(selectedNext.card)}?`
-            : settledResult
-              ? 'Final decision review'
-              : 'Your hand now'
-        }
-      />
-    </Suspense>
+  const ask = (text: string) =>
+    setQuestion((previous) => ({ text, id: (previous?.id ?? 0) + 1 }))
+  const snapshot: CoachSnapshot | null = analysis
+    ? {
+        id: `${boardKey}/${game.pot}/${game.bets.join('-')}/${action}/${raiseTo}/${foldProbability}/${coverageFraction}/${lens}/${chart}/${lessonStep}/${probe?.x.toFixed(4) ?? '-'}/${probe?.z.toFixed(4) ?? '-'}/${selectedNext ? cardKey(selectedNext.card) : '-'}`,
+        ...visibleCoachState(game),
+        mode: settledResult ? 'review' : 'live',
+        pot,
+        callCost: call,
+        minRaiseTo: legal.minRaiseTo,
+        maxRaiseTo: legal.maxRaiseTo,
+        canRaise: Boolean(canModelRaise),
+        raiseTo,
+        action,
+        foldProbability,
+        coverageFraction,
+        probabilities: {
+          win: probabilities.win,
+          tie: probabilities.tie,
+          loss: probabilities.loss,
+        },
+        hypotheticalCard: selectedNext?.card ?? null,
+        nextCardVolatility: analysis.nextCardVolatility,
+        lens,
+        chart,
+        lesson: lessonStep,
+        probe,
+      }
+    : null
+  function demonstrate(demonstration: Demonstration) {
+    setProbe(null)
+    if (demonstration.kind === 'lens') onLens(demonstration.lens)
+    if (demonstration.kind === 'decision') {
+      setAction(demonstration.action)
+      onLens('equity')
+    }
+    if (demonstration.kind === 'probe') {
+      onLens(demonstration.lens)
+      setProbe(demonstration.point)
+    }
+    graphHost.current?.scrollIntoView({ block: 'center', behavior: 'auto' })
+    if (demonstration.kind === 'next-card')
+      setNextCard({
+        key: boardKey,
+        value: {
+          card: demonstration.card,
+          ...demonstration.probabilities,
+          equity:
+            demonstration.probabilities.win +
+            demonstration.probabilities.tie / 2,
+        },
+      })
+  }
+  const graph = analysis ? (
+    <DecisionChart
+      lens={lens}
+      scenario={scenario}
+      probe={probe}
+      onProbe={setProbe}
+      view={chart}
+      onView={setChart}
+      onAsk={ask}
+      markerLabel={
+        selectedNext
+          ? `What if ${cardLabel(selectedNext.card)}?`
+          : settledResult
+            ? 'Final decision review'
+            : 'Your hand now'
+      }
+    />
+  ) : (
+    <div className="graph-loading" role="status">
+      Sampling your visible cards before drawing the model…
+    </div>
   )
 
   function navigateTabs(event: KeyboardEvent<HTMLDivElement>) {
@@ -196,6 +287,7 @@ export function FinancePanel({
     if (next === null) return
     event.preventDefault()
     onLens(keys[next])
+    setProbe(null)
     document.getElementById(`tab-${keys[next]}`)?.focus()
   }
 
@@ -212,11 +304,11 @@ export function FinancePanel({
       <div className="panel-heading">
         <div>
           <h2>
-            See the decision.
+            A better way to
             <br />
-            Not just the cards.
+            read your hand.
           </h2>
-          <p>Change the action. Stress the assumptions. Read the terrain.</p>
+          <p>Understand the price. See the possibilities. Ask why.</p>
         </div>
         <button
           className="icon-button help-button"
@@ -344,7 +436,10 @@ export function FinancePanel({
             aria-selected={lens === key}
             tabIndex={lens === key ? 0 : -1}
             aria-controls="lens-content"
-            onClick={() => onLens(key)}
+            onClick={() => {
+              onLens(key)
+              setProbe(null)
+            }}
             className={lens === key ? 'selected' : ''}
           >
             <Icon size={15} /> {label}
@@ -372,327 +467,492 @@ export function FinancePanel({
             <Maximize2 size={16} />
           </button>
         </div>
-        {graph}
+        <div ref={graphHost}>{graph}</div>
 
-        {lens === 'equity' && (
-          <>
-            <div className="finance-metrics">
-              <div>
-                <span>
-                  {selectedNext ? 'What-if showdown equity' : 'Showdown equity'}
-                </span>
-                <strong>{analysis ? percent(equity) : '…'}</strong>
-                <small>
-                  {analysis
-                    ? `${percent(probabilities.win)} win · ${percent(probabilities.tie)} tie`
-                    : 'running visible-card simulations'}
-                </small>
-              </div>
-              <div>
-                <span>{actionLabel} expected value</span>
-                <strong className={ev >= 0 ? 'positive' : 'negative'}>
-                  {analysis ? format(ev) : '…'} <em>chips</em>
-                </strong>
-                <small>break-even {percent(threshold)}</small>
-              </div>
-            </div>
-            <div
-              className="outcome-distribution"
-              aria-label="Simulated outcome distribution"
-            >
-              <span
-                className="win"
-                style={{ width: `${probabilities.win * 100}%` }}
-              />
-              <span
-                className="tie"
-                style={{ width: `${probabilities.tie * 100}%` }}
-              />
-              <span
-                className="loss"
-                style={{ width: `${probabilities.loss * 100}%` }}
-              />
-            </div>
-            <div className="distribution-key">
-              <span>
-                <i className="win" />
-                Win {percent(probabilities.win)}
+        <section className="decision-story" aria-label="Guided explanation">
+          <div className="story-tabs" aria-label="Explanation step">
+            {(['price', 'outcomes', 'markets'] as const).map((step, i) => (
+              <button
+                key={step}
+                aria-pressed={lessonStep === step}
+                onClick={() => setLessonStep(step)}
+              >
+                <span>0{i + 1}</span>
+                {step === 'price'
+                  ? 'The price'
+                  : step === 'outcomes'
+                    ? 'The possibilities'
+                    : 'The market connection'}
+              </button>
+            ))}
+          </div>
+          {!analysis ? (
+            <p>
+              Calculating your visible-card probabilities. The explanation and
+              coach will be ready shortly.
+            </p>
+          ) : lessonStep === 'price' ? (
+            <>
+              <span className="story-eyebrow">
+                {selectedNext
+                  ? 'HYPOTHETICAL NEXT CARD'
+                  : settledResult
+                    ? 'INFORMATION YOU HAD AT THE TIME'
+                    : 'START WITH THE DECISION, NOT THE RESULT'}
               </span>
-              <span>
-                <i className="tie" />
-                Tie {percent(probabilities.tie)}
+              <h3>
+                {action === 'fold'
+                  ? 'Folding stops you putting more chips at risk.'
+                  : lens === 'insurance'
+                    ? risk
+                      ? `Protecting ${Math.round(coverageFraction * 100)}% of this risk costs ${premium.toFixed(1)} chips.`
+                      : 'There are no new chips at risk to protect.'
+                    : lens === 'options'
+                      ? 'An option is valuable because you can say no.'
+                      : foldDrivenEdge
+                        ? 'The assumed folds—not your cards—fund this raise.'
+                        : `You need ${percent(threshold)} equity to break even.`}
+              </h3>
+              <p>
+                {action === 'fold'
+                  ? 'The zero line means zero additional gain or loss from this point. Chips already in the pot are sunk; folding does not recover them.'
+                  : lens === 'insurance'
+                    ? `You put ${risk} new chips at risk. This toy protection pays up to ${coverage.toFixed(0)} only in a losing state. The fair premium is loss probability × coverage; it reduces the bad outcome, not the chance of a bad card.`
+                    : lens === 'options'
+                      ? `The model compares continuing at ${signed(ev)} chips of average value with declining at 0 additional chips. The curve keeps only the positive part. That resembles an option’s right, not obligation—but it is not a traded option price.`
+                      : action === 'raise'
+                        ? `You risk ${risk} new chips. The model assumes Atlas folds ${percent(foldProbability)} of the time and otherwise adds ${opponentCall} chips. ${foldDrivenEdge ? 'Under that strong assumption, the model stays profitable even at zero equity; there is no break-even crossing. This is not evidence that Atlas will actually fold.' : 'The gold line is the equity needed under that assumption, not a read of Atlas’s cards.'}`
+                        : call > 0
+                          ? `You risk ${call} more chips to win the ${pot} already in the pot. The price is ${call} ÷ (${pot} + ${call}) = ${percent(threshold)}. Your estimated equity is ${percent(equity)}: ${equity >= threshold ? 'above' : 'below'} that line.`
+                          : 'Checking costs no new chips, so the simplified break-even price is zero. Future betting can change the decision; this graph assumes no later bets.'}
+              </p>
+              {lens !== 'insurance' && action !== 'fold' && !foldDrivenEdge && (
+                <button
+                  className="story-link"
+                  onClick={() =>
+                    setProbe({
+                      x: threshold,
+                      z: risk / (pot * surfaceRiskRange(scenario)),
+                    })
+                  }
+                >
+                  Show me exactly where the edge disappears{' '}
+                  <ArrowRight size={14} />
+                </button>
+              )}
+            </>
+          ) : lessonStep === 'outcomes' ? (
+            <>
+              <span className="story-eyebrow">
+                A DISTRIBUTION, NOT A PROMISE
               </span>
-              <span>
-                <i className="loss" />
-                Lose {percent(probabilities.loss)}
-              </span>
-            </div>
-            <div className="quant-grid">
-              <div>
-                <Gauge size={16} />
-                <span>
-                  PRICE OF 1% EQUITY<small>EV sensitivity</small>
-                </span>
-                <strong>{deltaPerPoint.toFixed(1)} chips</strong>
-              </div>
-              <div>
-                <Waves size={16} />
-                <span>
-                  NEXT-CARD VOLATILITY<small>dispersion in equity</small>
-                </span>
-                <strong>
-                  {analysis?.nextCardVolatility == null
-                    ? cardsToCome
-                      ? 'flop pending'
-                      : 'settled'
-                    : percent(analysis.nextCardVolatility)}
-                </strong>
-              </div>
-              <div>
-                <TimerReset size={16} />
-                <span>
-                  INFORMATION CLOCK<small>public cards left</small>
-                </span>
-                <strong>{cardsToCome}</strong>
-              </div>
-              <div>
-                <Layers3 size={16} />
-                <span>
-                  BANKROLL EXPOSED<small>position sizing</small>
-                </span>
-                <strong>
-                  {exposure ? percent(bankrollExposure) : 'no risk'}
-                </strong>
-              </div>
-            </div>
-            {analysis?.bestNextCards.length ? (
-              <div className="card-sensitivity">
-                <div>
-                  <span className="eyebrow">NEXT-CARD SENSITIVITY</span>
-                  <small>Select a card to reprice every lens.</small>
-                </div>
-                <div className="sensitivity-row">
-                  <span>Best shifts</span>
-                  {analysis.bestNextCards.map((item) => (
-                    <button
-                      key={cardLabel(item.card)}
-                      onClick={() =>
-                        setNextCard({ key: boardKey, value: item })
-                      }
-                      aria-label={`Model ${cardLabel(item.card)} as the next card`}
-                    >
-                      {cardLabel(item.card)} <em>{percent(item.equity)}</em>
-                    </button>
-                  ))}
-                </div>
-                <div className="sensitivity-row">
-                  <span>Worst shifts</span>
-                  {analysis.worstNextCards.map((item) => (
-                    <button
-                      key={cardLabel(item.card)}
-                      onClick={() =>
-                        setNextCard({ key: boardKey, value: item })
-                      }
-                      aria-label={`Model ${cardLabel(item.card)} as the next card`}
-                    >
-                      {cardLabel(item.card)} <em>{percent(item.equity)}</em>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div className="insight-card">
-              <div className="insight-icon">
-                <Lightbulb size={18} />
-              </div>
-              <div>
-                <h4>
-                  {action === 'fold'
-                    ? 'Folding limits future exposure to zero.'
-                    : ev >= 0
-                      ? 'The terrain says this scenario has positive average value.'
-                      : 'The cost sits above your modeled break-even frontier.'}
-                </h4>
-                <p>
-                  The pulsing point is this hand. Purple is negative EV, green
-                  is positive EV, and the zero grid is the frontier. Rotate it,
-                  point anywhere, then change your modeled action to watch the
-                  economics reprice.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {lens === 'options' && (
-          <>
-            <div className="option-map">
-              <div>
-                <span>POKER STATE</span>
-                <strong>{percent(equity)} estimated claim probability</strong>
-                <small>from only visible cards</small>
-              </div>
-              <ArrowRight size={17} />
-              <div>
-                <span>MARKET LENS</span>
-                <strong>{exposure} premium-like cost</strong>
-                <small>for a claim on the {pot}-chip pot</small>
-              </div>
-            </div>
-            <div className="finance-metrics compact">
-              <div>
-                <span>Exercise frontier</span>
-                <strong>{percent(decisionBreakEven(model))}</strong>
-                <small>probability where best-choice EV turns positive</small>
-              </div>
-              <div>
-                <span>Choice value now</span>
-                <strong className="positive">{format(Math.max(0, ev))}</strong>
-                <small>max(fold EV, {actionLabel.toLowerCase()} EV)</small>
-              </div>
-            </div>
-            <div className="greeks-table">
-              <div>
-                <span>Δ DELTA-LIKE</span>
-                <strong>{deltaPerPoint.toFixed(1)} chips / 1%</strong>
-                <p>
-                  How fast your decision EV moves when estimated equity moves.
-                  This is literal local sensitivity, not an option Greek.
-                </p>
-              </div>
-              <div>
-                <span>σ VOLATILITY</span>
-                <strong>
-                  {analysis?.nextCardVolatility == null
-                    ? cardsToCome
-                      ? 'Flop pending'
-                      : 'No reveal left'
-                    : percent(analysis.nextCardVolatility)}
-                </strong>
-                <p>
-                  How widely the next public card can reprice your equity.
-                  Markets price distributions, not only averages.
-                </p>
-              </div>
-              <div>
-                <span>τ TIME / INFORMATION</span>
-                <strong>
-                  {cardsToCome} reveal{cardsToCome === 1 ? '' : 's'}
-                </strong>
-                <p>
-                  Poker has a finite information clock. Unlike financial
-                  options, you cannot continuously trade the hand.
-                </p>
-              </div>
-              <div>
-                <span>Γ CONVEXITY</span>
-                <strong>The kink at EV = 0</strong>
-                <p>
-                  The option to fold clips the modeled decision value at zero
-                  before you commit. Once you call, the loss is real.
-                </p>
-              </div>
-            </div>
-            <div className="insight-card">
-              <div className="insight-icon">
-                <Crosshair size={18} />
-              </div>
-              <div>
-                <h4>This is a contingent claim—not a traded call option.</h4>
-                <p>
-                  Your call pays differently depending on a future state: win,
-                  tie, or lose. The 3D surface maps the value of choosing
-                  between folding and continuing as equity and price change. It
-                  does not pretend poker has a stock price, Black–Scholes
-                  dynamics, or continuous hedging.
-                </p>
-              </div>
-            </div>
-          </>
-        )}
-
-        {lens === 'insurance' && (
-          <>
-            <div className="model-control coverage-control">
-              <label htmlFor="coverage">
-                Hypothetical coverage of {actionLabel.toLowerCase()} exposure{' '}
-                <strong>{Math.round(coverageFraction * 100)}%</strong>
-              </label>
-              <input
-                id="coverage"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={coverageFraction}
-                disabled={!exposure}
-                onChange={(event) =>
-                  setCoverageFraction(Number(event.target.value))
-                }
-              />
-              <small>
-                This overlay teaches risk transfer. No policy is available and
-                your poker balance is unchanged.
-              </small>
-            </div>
-            <div className="risk-transfer">
-              <div>
-                <span>UNHEDGED BAD STATE</span>
-                <strong>−{exposure.toFixed(0)}</strong>
-                <div className="risk-bar">
-                  <i style={{ width: exposure ? '100%' : '0%' }} />
-                </div>
-              </div>
-              <ArrowRight size={18} />
-              <div>
-                <span>AFTER FAIR PROTECTION</span>
-                <strong>
-                  −{Math.max(0, exposure - coverage + premium).toFixed(1)}
-                </strong>
-                <div className="risk-bar protected">
+              <h3>
+                {action === 'fold'
+                  ? 'No new bet. No future payoff from this hand.'
+                  : `One hand is random. The model’s average is ${signed(ev)} chips.`}
+              </h3>
+              <p>
+                These 100 dots illustrate the estimated showdown mix against
+                uniformly random legal hands: roughly{' '}
+                {Math.round(probabilities.win * 100)} wins,{' '}
+                {Math.round(probabilities.tie * 100)} ties, and{' '}
+                {100 -
+                  Math.round(probabilities.win * 100) -
+                  Math.round(probabilities.tie * 100)}{' '}
+                losses.{' '}
+                {action === 'raise'
+                  ? `This is the called-showdown mix; the separate ${percent(foldProbability)} fold assumption also contributes to raise EV.`
+                  : 'A good average can still include many losing hands.'}{' '}
+                {action === 'fold' &&
+                  'The dots describe what could happen at showdown, not a payoff you receive after folding.'}
+              </p>
+              <div className="outcome-dots" aria-hidden="true">
+                {Array.from({ length: 100 }, (_, i) => (
                   <i
-                    style={{
-                      width: `${exposure ? Math.min(100, ((exposure - coverage + premium) / exposure) * 100) : 0}%`,
-                    }}
+                    key={i}
+                    className={
+                      i < Math.round(probabilities.win * 100)
+                        ? 'win'
+                        : i <
+                            Math.round(probabilities.win * 100) +
+                              Math.round(probabilities.tie * 100)
+                          ? 'tie'
+                          : 'loss'
+                    }
                   />
+                ))}
+              </div>
+              <div className="outcome-legend">
+                <span>Green: win</span>
+                <span>Gold: tie</span>
+                <span>Purple: loss</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="story-eyebrow">
+                THE SAME QUESTION IN A DIFFERENT MARKET
+              </span>
+              <h3>
+                {lens === 'equity'
+                  ? 'A strong asset can still be a bad buy.'
+                  : lens === 'options'
+                    ? 'You own a choice, not a guaranteed win.'
+                    : 'Insurance reshapes the downside. It doesn’t create an edge.'}
+              </h3>
+              <p>
+                {lens === 'equity'
+                  ? `In a market, price and value are different. Here, your ${percent(equity)} estimated share is the value input; the ${risk}-chip commitment is the price. The graph asks what remains after paying it. Unlike a stock valuation, this is a short-horizon chip model with an explicitly assumed opponent range.`
+                  : lens === 'options'
+                    ? 'The bend in the curve comes from refusing negative-value investments. That is the same asymmetric idea behind an option payoff. Poker lets you make choices as information arrives, but this graph does not price future choices, a premium, volatility dynamics, or a replicating hedge.'
+                    : `Fair protection charges ${premium.toFixed(1)} chips on average for the same expected payout. It transfers risk out of bad outcomes into a certain premium. Real policies also charge for costs, capital, exclusions and correlated claims.`}
+              </p>
+              <button
+                className="story-link"
+                onClick={() =>
+                  ask(
+                    `Teach me the ${lens === 'equity' ? 'price versus value' : lens === 'options' ? 'optionality' : 'insurance'} connection using this exact hand. What carries over to finance, and what does not?`,
+                  )
+                }
+              >
+                Explore this connection with the coach <ArrowRight size={14} />
+              </button>
+            </>
+          )}
+        </section>
+
+        <Coach
+          snapshot={snapshot}
+          question={question}
+          onDemonstrate={demonstrate}
+        />
+
+        <details className="advanced-model">
+          <summary>Go deeper · exact numbers, next cards & assumptions</summary>
+
+          {lens === 'equity' && (
+            <>
+              <div className="finance-metrics">
+                <div>
+                  <span>
+                    {selectedNext
+                      ? 'What-if showdown equity'
+                      : 'Showdown equity'}
+                  </span>
+                  <strong>{analysis ? percent(equity) : '…'}</strong>
+                  <small>
+                    {analysis
+                      ? `${percent(probabilities.win)} win · ${percent(probabilities.tie)} tie`
+                      : 'running visible-card simulations'}
+                  </small>
+                </div>
+                <div>
+                  <span>{actionLabel} expected value</span>
+                  <strong className={ev >= 0 ? 'positive' : 'negative'}>
+                    {analysis ? format(ev) : '…'} <em>chips</em>
+                  </strong>
+                  <small>break-even {percent(threshold)}</small>
                 </div>
               </div>
-            </div>
-            <div className="finance-metrics compact">
-              <div>
-                <span>Actuarially fair premium</span>
-                <strong>
-                  {premium.toFixed(1)} <em>chips</em>
-                </strong>
+              <div
+                className="outcome-distribution"
+                aria-label="Simulated outcome distribution"
+              >
+                <span
+                  className="win"
+                  style={{ width: `${probabilities.win * 100}%` }}
+                />
+                <span
+                  className="tie"
+                  style={{ width: `${probabilities.tie * 100}%` }}
+                />
+                <span
+                  className="loss"
+                  style={{ width: `${probabilities.loss * 100}%` }}
+                />
+              </div>
+              <div className="distribution-key">
+                <span>
+                  <i className="win" />
+                  Win {percent(probabilities.win)}
+                </span>
+                <span>
+                  <i className="tie" />
+                  Tie {percent(probabilities.tie)}
+                </span>
+                <span>
+                  <i className="loss" />
+                  Lose {percent(probabilities.loss)}
+                </span>
+              </div>
+              <div className="quant-grid">
+                <div>
+                  <Gauge size={16} />
+                  <span>
+                    PRICE OF 1% EQUITY<small>EV sensitivity</small>
+                  </span>
+                  <strong>{deltaPerPoint.toFixed(1)} chips</strong>
+                </div>
+                <div>
+                  <Waves size={16} />
+                  <span>
+                    NEXT-CARD VOLATILITY<small>dispersion in equity</small>
+                  </span>
+                  <strong>
+                    {analysis?.nextCardVolatility == null
+                      ? cardsToCome
+                        ? 'flop pending'
+                        : 'settled'
+                      : percent(analysis.nextCardVolatility)}
+                  </strong>
+                </div>
+                <div>
+                  <TimerReset size={16} />
+                  <span>
+                    INFORMATION CLOCK<small>public cards left</small>
+                  </span>
+                  <strong>{cardsToCome}</strong>
+                </div>
+                <div>
+                  <Layers3 size={16} />
+                  <span>
+                    BANKROLL EXPOSED<small>position sizing</small>
+                  </span>
+                  <strong>
+                    {exposure ? percent(bankrollExposure) : 'no risk'}
+                  </strong>
+                </div>
+              </div>
+              {analysis?.bestNextCards.length ? (
+                <div className="card-sensitivity">
+                  <div>
+                    <span className="eyebrow">NEXT-CARD SENSITIVITY</span>
+                    <small>Select a card to reprice every lens.</small>
+                  </div>
+                  <div className="sensitivity-row">
+                    <span>Best shifts</span>
+                    {analysis.bestNextCards.map((item) => (
+                      <button
+                        key={cardLabel(item.card)}
+                        onClick={() =>
+                          setNextCard({ key: boardKey, value: item })
+                        }
+                        aria-label={`Model ${cardLabel(item.card)} as the next card`}
+                      >
+                        {cardLabel(item.card)} <em>{percent(item.equity)}</em>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="sensitivity-row">
+                    <span>Worst shifts</span>
+                    {analysis.worstNextCards.map((item) => (
+                      <button
+                        key={cardLabel(item.card)}
+                        onClick={() =>
+                          setNextCard({ key: boardKey, value: item })
+                        }
+                        aria-label={`Model ${cardLabel(item.card)} as the next card`}
+                      >
+                        {cardLabel(item.card)} <em>{percent(item.equity)}</em>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="insight-card">
+                <div className="insight-icon">
+                  <Lightbulb size={18} />
+                </div>
+                <div>
+                  <h4>
+                    {action === 'fold'
+                      ? 'Folding limits future exposure to zero.'
+                      : ev >= 0
+                        ? 'The terrain says this scenario has positive average value.'
+                        : 'The cost sits above your modeled break-even frontier.'}
+                  </h4>
+                  <p>
+                    The pulsing point is this hand. Purple is negative EV, green
+                    is positive EV, and the zero grid is the frontier. Rotate
+                    it, point anywhere, then change your modeled action to watch
+                    the economics reprice.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {lens === 'options' && (
+            <>
+              <div className="option-map">
+                <div>
+                  <span>POKER STATE</span>
+                  <strong>{percent(equity)} estimated claim probability</strong>
+                  <small>from only visible cards</small>
+                </div>
+                <ArrowRight size={17} />
+                <div>
+                  <span>MARKET LENS</span>
+                  <strong>{exposure} premium-like cost</strong>
+                  <small>for a claim on the {pot}-chip pot</small>
+                </div>
+              </div>
+              <div className="finance-metrics compact">
+                <div>
+                  <span>Exercise frontier</span>
+                  <strong>{percent(decisionBreakEven(model))}</strong>
+                  <small>probability where best-choice EV turns positive</small>
+                </div>
+                <div>
+                  <span>Choice value now</span>
+                  <strong className="positive">
+                    {format(Math.max(0, ev))}
+                  </strong>
+                  <small>max(fold EV, {actionLabel.toLowerCase()} EV)</small>
+                </div>
+              </div>
+              <div className="greeks-table">
+                <div>
+                  <span>Δ DELTA-LIKE</span>
+                  <strong>{deltaPerPoint.toFixed(1)} chips / 1%</strong>
+                  <p>
+                    How fast your decision EV moves when estimated equity moves.
+                    This is literal local sensitivity, not an option Greek.
+                  </p>
+                </div>
+                <div>
+                  <span>σ VOLATILITY</span>
+                  <strong>
+                    {analysis?.nextCardVolatility == null
+                      ? cardsToCome
+                        ? 'Flop pending'
+                        : 'No reveal left'
+                      : percent(analysis.nextCardVolatility)}
+                  </strong>
+                  <p>
+                    How widely the next public card can reprice your equity.
+                    Markets price distributions, not only averages.
+                  </p>
+                </div>
+                <div>
+                  <span>τ TIME / INFORMATION</span>
+                  <strong>
+                    {cardsToCome} reveal{cardsToCome === 1 ? '' : 's'}
+                  </strong>
+                  <p>
+                    Poker has a finite information clock. Unlike financial
+                    options, you cannot continuously trade the hand.
+                  </p>
+                </div>
+                <div>
+                  <span>Γ CONVEXITY</span>
+                  <strong>The kink at EV = 0</strong>
+                  <p>
+                    The option to fold clips the modeled decision value at zero
+                    before you commit. Once you call, the loss is real.
+                  </p>
+                </div>
+              </div>
+              <div className="insight-card">
+                <div className="insight-icon">
+                  <Crosshair size={18} />
+                </div>
+                <div>
+                  <h4>This is a contingent claim—not a traded call option.</h4>
+                  <p>
+                    Your call pays differently depending on a future state: win,
+                    tie, or lose. The 3D surface maps the value of choosing
+                    between folding and continuing as equity and price change.
+                    It does not pretend poker has a stock price, Black–Scholes
+                    dynamics, or continuous hedging.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {lens === 'insurance' && (
+            <>
+              <div className="model-control coverage-control">
+                <label htmlFor="coverage">
+                  Hypothetical coverage of {actionLabel.toLowerCase()} exposure{' '}
+                  <strong>{Math.round(coverageFraction * 100)}%</strong>
+                </label>
+                <input
+                  id="coverage"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={coverageFraction}
+                  disabled={!exposure}
+                  onChange={(event) =>
+                    setCoverageFraction(Number(event.target.value))
+                  }
+                />
                 <small>
-                  {percent(lossProbability)} loss probability ×{' '}
-                  {coverage.toFixed(0)} coverage
+                  This overlay teaches risk transfer. No policy is available and
+                  your poker balance is unchanged.
                 </small>
               </div>
-              <div>
-                <span>Payoff dispersion</span>
-                <strong>{hedgedVolatility.toFixed(1)}</strong>
-                <small>down from {unhedgedVolatility.toFixed(1)} chips</small>
+              <div className="risk-transfer">
+                <div>
+                  <span>UNHEDGED BAD STATE</span>
+                  <strong>−{exposure.toFixed(0)}</strong>
+                  <div className="risk-bar">
+                    <i style={{ width: exposure ? '100%' : '0%' }} />
+                  </div>
+                </div>
+                <ArrowRight size={18} />
+                <div>
+                  <span>AFTER FAIR PROTECTION</span>
+                  <strong>
+                    −{Math.max(0, exposure - coverage + premium).toFixed(1)}
+                  </strong>
+                  <div className="risk-bar protected">
+                    <i
+                      style={{
+                        width: `${exposure ? Math.min(100, ((exposure - coverage + premium) / exposure) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="insight-card">
-              <div className="insight-icon">
-                <ShieldCheck size={18} />
+              <div className="finance-metrics compact">
+                <div>
+                  <span>Actuarially fair premium</span>
+                  <strong>
+                    {premium.toFixed(1)} <em>chips</em>
+                  </strong>
+                  <small>
+                    {percent(lossProbability)} loss probability ×{' '}
+                    {coverage.toFixed(0)} coverage
+                  </small>
+                </div>
+                <div>
+                  <span>Payoff dispersion</span>
+                  <strong>{hedgedVolatility.toFixed(1)}</strong>
+                  <small>down from {unhedgedVolatility.toFixed(1)} chips</small>
+                </div>
               </div>
-              <div>
-                <h4>Fair protection changes the shape, not the average.</h4>
-                <p>
-                  The hypothetical policy transfers {coverage.toFixed(0)} chips
-                  in the losing state and charges its expected payout up front.
-                  Expected wealth stays the same before fees, while outcome
-                  dispersion falls. Real insurance adds expenses, exclusions,
-                  capital costs, and correlated-loss risk.
-                </p>
+              <div className="insight-card">
+                <div className="insight-icon">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h4>Fair protection changes the shape, not the average.</h4>
+                  <p>
+                    The hypothetical policy transfers {coverage.toFixed(0)}{' '}
+                    chips in the losing state and charges its expected payout up
+                    front. Expected wealth stays the same before fees, while
+                    outcome dispersion falls. Real insurance adds expenses,
+                    exclusions, capital costs, and correlated-loss risk.
+                  </p>
+                </div>
               </div>
-            </div>
-          </>
-        )}
-
+            </>
+          )}
+        </details>
         <button
           className="assumptions-toggle"
           aria-expanded={showAssumptions}

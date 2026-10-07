@@ -3,7 +3,12 @@ import type { PointerEvent } from 'react'
 import { Crosshair, Move, RotateCcw } from 'lucide-react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { liveSurfaceValue, surfaceRiskRange } from '../lib/finance'
+import {
+  decisionBreakEven,
+  decisionEV,
+  liveSurfaceValue,
+  surfaceRiskRange,
+} from '../lib/finance'
 import type { Lens, SurfaceScenario } from '../lib/finance'
 
 const labels: Record<Lens, [string, string, string]> = {
@@ -34,14 +39,59 @@ const heightScaleFor = (lens: Lens, scenario: SurfaceScenario) =>
     ),
   )
 
+function clearAnnotations(group: THREE.Group) {
+  for (const child of [...group.children]) {
+    if (child instanceof THREE.Sprite) {
+      child.material.map?.dispose()
+      child.material.dispose()
+    }
+    group.remove(child)
+  }
+}
+function addLabel(
+  group: THREE.Group,
+  text: string,
+  x: number,
+  y: number,
+  z: number,
+  width = 1,
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 96
+  const context = canvas.getContext('2d')
+  if (!context) return
+  context.font = '600 36px sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.strokeStyle = '#f3f6ed'
+  context.lineWidth = 10
+  context.strokeText(text, 256, 48)
+  context.fillStyle = '#325849'
+  context.fillText(text, 256, 48)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, depthTest: false }),
+  )
+  sprite.position.set(x, y, z)
+  sprite.scale.set(width, (width * 96) / 512, 1)
+  sprite.renderOrder = 3
+  group.add(sprite)
+}
+
 export default function Surface({
   lens,
   scenario,
   markerLabel,
+  inspection,
+  onInspect,
 }: {
   lens: Lens
   scenario: SurfaceScenario
   markerLabel: string
+  inspection: { x: number; z: number } | null
+  onInspect: (point: { x: number; z: number } | null) => void
 }) {
   const host = useRef<HTMLDivElement>(null)
   const reset = useRef<() => void>(() => {})
@@ -52,15 +102,14 @@ export default function Surface({
     mesh: THREE.Mesh
     marker: THREE.Mesh
     probe: THREE.Mesh
+    annotations: THREE.Group
+    frontier: THREE.Line
+    slice: THREE.Line
     render: () => void
   } | null>(null)
   const markerY = useRef(0)
   const animation = useRef(0)
   const [unavailable, setUnavailable] = useState(false)
-  const [inspection, setInspection] = useState<{
-    x: number
-    z: number
-  } | null>(null)
   const riskRange = surfaceRiskRange(scenario)
   const probePoint =
     inspection ??
@@ -142,6 +191,18 @@ export default function Surface({
     probe.scale.setScalar(0.65)
     probe.visible = false
     scene.add(probe)
+    const annotations = new THREE.Group()
+    const frontier = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xbb8d38, depthTest: false }),
+    )
+    const slice = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xf7ffee, depthTest: false }),
+    )
+    frontier.renderOrder = 2
+    slice.renderOrder = 2
+    scene.add(annotations, frontier, slice)
     const haloGeometry = new THREE.RingGeometry(0.1, 0.14, 24)
     const haloMaterial = new THREE.MeshBasicMaterial({
       color: 0xa9db86,
@@ -158,7 +219,18 @@ export default function Surface({
       controls.reset()
       render()
     }
-    world.current = { renderer, camera, geometry, mesh, marker, probe, render }
+    world.current = {
+      renderer,
+      camera,
+      geometry,
+      mesh,
+      marker,
+      probe,
+      annotations,
+      frontier,
+      slice,
+      render,
+    }
     const resize = new ResizeObserver(() => {
       const { width, height } = container.getBoundingClientRect()
       renderer.setSize(width, height)
@@ -189,6 +261,11 @@ export default function Surface({
       markerGeometry.dispose()
       markerMaterial.dispose()
       probeMaterial.dispose()
+      clearAnnotations(annotations)
+      frontier.geometry.dispose()
+      ;(frontier.material as THREE.Material).dispose()
+      slice.geometry.dispose()
+      ;(slice.material as THREE.Material).dispose()
       haloGeometry.dispose()
       haloMaterial.dispose()
       grid.geometry.dispose()
@@ -210,6 +287,90 @@ export default function Surface({
       neutral = new THREE.Color('#d8e1c8'),
       high = new THREE.Color('#48a989')
     const heightScale = heightScaleFor(lens, scenario)
+    const scale = lens === 'insurance' ? scenario.risk : scenario.pot
+    const range = surfaceRiskRange(scenario)
+    clearAnnotations(resources.annotations)
+    for (const coordinate of [0, 0.5, 1]) {
+      addLabel(
+        resources.annotations,
+        `${coordinate * 100}%`,
+        coordinate * 2.8 - 1.4,
+        -0.96,
+        -1.65,
+        0.65,
+      )
+      addLabel(
+        resources.annotations,
+        lens === 'insurance'
+          ? `${coordinate * 100}%`
+          : `${Math.round(coordinate * scenario.pot * range)} chips`,
+        1.75,
+        -0.96,
+        coordinate * 2.8 - 1.4,
+        0.8,
+      )
+    }
+    addLabel(
+      resources.annotations,
+      lens === 'insurance' ? 'LOSS PROBABILITY' : 'SHOWDOWN EQUITY',
+      0,
+      -0.96,
+      -1.95,
+      1.5,
+    )
+    addLabel(
+      resources.annotations,
+      lens === 'insurance' ? 'COVERAGE' : 'CAPITAL AT RISK',
+      1.7,
+      -0.96,
+      1.8,
+      1.25,
+    )
+    for (const height of [-0.78, 0, 0.78])
+      addLabel(
+        resources.annotations,
+        `${Math.round((height / heightScale) * scale)} chips`,
+        -1.75,
+        height,
+        1.65,
+        0.95,
+      )
+    const frontierPoints: THREE.Vector3[] = []
+    for (
+      let i = 0;
+      i <= 64 && lens !== 'insurance' && scenario.action !== 'fold';
+      i++
+    ) {
+      const z = i / 64
+      const model = { ...scenario, risk: z * Math.max(1, scenario.pot) * range }
+      const threshold = decisionBreakEven(model)
+      if (Math.abs(decisionEV(model, threshold)) < 0.00001)
+        frontierPoints.push(
+          new THREE.Vector3(threshold * 2.8 - 1.4, 0.018, z * 2.8 - 1.4),
+        )
+    }
+    resources.frontier.geometry.dispose()
+    resources.frontier.geometry = new THREE.BufferGeometry().setFromPoints(
+      frontierPoints,
+    )
+    resources.frontier.visible = frontierPoints.length > 1
+    const currentZ =
+      lens === 'insurance'
+        ? scenario.coverageFraction
+        : scenario.risk / (Math.max(1, scenario.pot) * range)
+    resources.slice.geometry.dispose()
+    resources.slice.geometry = new THREE.BufferGeometry().setFromPoints(
+      Array.from(
+        { length: 65 },
+        (_, i) =>
+          new THREE.Vector3(
+            (i / 64) * 2.8 - 1.4,
+            liveSurfaceValue(lens, i / 64, currentZ, scenario) * heightScale +
+              0.015,
+            currentZ * 2.8 - 1.4,
+          ),
+      ),
+    )
     for (let index = 0; index < positions.count; index++) {
       const x = (positions.getX(index) + 1.4) / 2.8
       const z = (positions.getZ(index) + 1.4) / 2.8
@@ -274,7 +435,7 @@ export default function Surface({
     if (!hit) return
     const x = clamp((hit.point.x + 1.4) / 2.8),
       z = clamp((hit.point.z + 1.4) / 2.8)
-    setInspection({ x, z })
+    onInspect({ x, z })
   }
 
   return (
@@ -298,7 +459,6 @@ export default function Surface({
           role="img"
           aria-label={`${labels[lens][2]} surface, with ${labels[lens][0]} and ${labels[lens][1]}. Drag to rotate or point at the surface to inspect scenarios.`}
           onPointerMove={inspect}
-          onPointerLeave={() => setInspection(null)}
         />
         {inspection && (
           <div className="surface-inspector" aria-live="polite">
@@ -352,7 +512,7 @@ export default function Surface({
             ).toFixed(1)}{' '}
             chips
           </strong>
-          <button onClick={() => setInspection(null)} disabled={!inspection}>
+          <button onClick={() => onInspect(null)} disabled={!inspection}>
             Reset probe
           </button>
         </div>
@@ -367,7 +527,7 @@ export default function Surface({
             step="0.01"
             value={probePoint.x}
             onChange={(event) =>
-              setInspection({ ...probePoint, x: Number(event.target.value) })
+              onInspect({ ...probePoint, x: Number(event.target.value) })
             }
           />
         </label>
@@ -386,7 +546,7 @@ export default function Surface({
             step="0.01"
             value={probePoint.z}
             onChange={(event) =>
-              setInspection({ ...probePoint, z: Number(event.target.value) })
+              onInspect({ ...probePoint, z: Number(event.target.value) })
             }
           />
         </label>

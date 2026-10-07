@@ -21,7 +21,10 @@ describe('poker presentation choreography', () => {
     expect(next).toEqual(final)
   })
   it('sequences an all-in flop, turn, river, reveal and payout with conserved chips', () => {
-    const previous = newHand(2, [20, 20], 0, () => 0.5)
+    const previous = act(
+      newHand(2, [100, 100], 0, () => 0.5),
+      { type: 'raise', to: 100 },
+    )
     const next = act(previous, { type: 'call' })
     expect(next.result?.showdown).toBe(true)
     const frames = tableFrames(previous, next)
@@ -38,7 +41,7 @@ describe('poker presentation choreography', () => {
       expect(frame.game.result).toBeUndefined()
       expect(frame.game.stacks).toEqual([0, 0])
       expect(frame.game.stacks[0] + frame.game.stacks[1] + frame.game.pot).toBe(
-        40,
+        200,
       )
     })
     expect(frames.find((f) => f.revealOpponent)?.game.board.length).toBe(5)
@@ -64,7 +67,10 @@ describe('poker presentation choreography', () => {
     expect(tableFrames(previous, raise)[0].game).toBe(raise)
   })
   it('does not expose later street log entries during an intermediate reveal', () => {
-    const previous = newHand(2, [20, 20], 0, () => 0.5)
+    const previous = act(
+      newHand(2, [100, 100], 0, () => 0.5),
+      { type: 'raise', to: 100 },
+    )
     const next = act(previous, { type: 'call' })
     tableFrames(previous, next)
       .slice(0, -1)

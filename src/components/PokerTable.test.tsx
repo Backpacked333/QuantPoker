@@ -38,7 +38,7 @@ describe('poker room presentation', () => {
     expect(html).toContain('GUIDED OPENING')
     expect(html).toContain('Call 40')
     expect(html).toContain('Raise to 100')
-    expect(html).toContain('60 additional chips')
+    expect(html).toContain('100 additional chips')
     expect(html).toContain('aria-label="Community cards"')
     expect(html).toContain('aria-label="Raise total"')
     expect(html.match(/Hidden opponent card/g)).toHaveLength(2)

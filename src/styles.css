@@ -3551,6 +3551,12 @@ input:disabled {
   align-items: center;
   gap: 12px;
 }
+.off-slice-note {
+  margin: 8px 0 0;
+  color: #d6f8c7;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
 .chart-topline > span {
   font-size: 9px;
   font-weight: 700;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Server } from 'node:http'
 import { createCoachApp } from './app'
 import { guidedHand, legalActions } from '../src/lib/poker'
@@ -7,6 +7,7 @@ import type { CoachEvent, CoachRequest } from '../src/lib/coach'
 
 const servers: Server[] = []
 afterEach(async () => {
+  vi.unstubAllEnvs()
   await Promise.all(
     servers.splice(0).map(
       (server) =>
@@ -76,6 +77,56 @@ const post = (
     body: JSON.stringify(body),
   })
 describe('coach API boundaries', () => {
+  it.each([3001, 3017])(
+    'accepts its standalone loopback browser origin on port %s',
+    async (port) => {
+      vi.stubEnv('COACH_PORT', String(port))
+      vi.stubEnv('COACH_ALLOWED_ORIGINS', '')
+      const url = await start({
+        production: true,
+        accessToken: 'test-only-passphrase',
+      })
+      const headers = { Authorization: 'Bearer test-only-passphrase' }
+      for (const host of ['localhost', '127.0.0.1']) {
+        const response = await post(url, request(), {
+          ...headers,
+          Origin: `http://${host}:${port}`,
+        })
+        expect(response.status).toBe(200)
+        await response.text()
+      }
+      expect(
+        (
+          await post(url, request(), {
+            ...headers,
+            Origin: 'https://untrusted.example',
+          })
+        ).status,
+      ).toBe(403)
+    },
+  )
+  it('honors explicit deployment origins rather than trusting arbitrary Host headers', async () => {
+    vi.stubEnv('COACH_ALLOWED_ORIGINS', ' https://poker.example , ')
+    const url = await start({
+      production: true,
+      accessToken: 'test-only-passphrase',
+    })
+    const headers = { Authorization: 'Bearer test-only-passphrase' }
+    const response = await post(url, request(), {
+      ...headers,
+      Origin: 'https://poker.example',
+    })
+    expect(response.status).toBe(200)
+    await response.text()
+    expect(
+      (
+        await post(url, request(), {
+          ...headers,
+          Origin: 'http://localhost:3001',
+        })
+      ).status,
+    ).toBe(403)
+  })
   it('streams a validated request with no-store headers', async () => {
     const response = await post(await start())
     expect(response.status).toBe(200)

@@ -24,12 +24,16 @@ export function createCoachApp(options: Options = {}) {
   const accessToken =
     options.accessToken ?? process.env.COACH_ACCESS_TOKEN ?? ''
   const production = options.production ?? process.env.NODE_ENV === 'production'
+  const localPort = production ? Number(process.env.COACH_PORT) || 3001 : 5173
   const origins =
     options.origins ??
     (
-      process.env.COACH_ALLOWED_ORIGINS ??
-      'http://localhost:5173,http://127.0.0.1:5173'
-    ).split(',')
+      process.env.COACH_ALLOWED_ORIGINS ||
+      `http://localhost:${localPort},http://127.0.0.1:${localPort}`
+    )
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean)
   const budget =
     options.requestBudget ??
     Math.max(1, Math.min(1000, Number(process.env.COACH_REQUEST_BUDGET) || 30))
@@ -51,12 +55,10 @@ export function createCoachApp(options: Options = {}) {
   )
   app.post('/api/coach', express.json({ limit: '48kb' }), async (req, res) => {
     if (!configured || (production && !accessToken)) {
-      res
-        .status(503)
-        .json({
-          error:
-            'The AI coach is not configured. The poker game and deterministic explanations still work.',
-        })
+      res.status(503).json({
+        error:
+          'The AI coach is not configured. The poker game and deterministic explanations still work.',
+      })
       return
     }
     if (req.get('origin') && !origins.includes(req.get('origin')!)) {
@@ -73,37 +75,31 @@ export function createCoachApp(options: Options = {}) {
           createHash('sha256').update(accessToken).digest(),
         )
       ) {
-        res
-          .status(401)
-          .json({
-            error:
-              'Enter the private coach access token, not a provider API key.',
-          })
+        res.status(401).json({
+          error:
+            'Enter the private coach access token, not a provider API key.',
+        })
         return
       }
     }
     const parsed = coachRequestSchema.safeParse(req.body)
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          error:
-            'The question or visible-hand snapshot is invalid. Refresh the hand and try again.',
-        })
+      res.status(400).json({
+        error:
+          'The question or visible-hand snapshot is invalid. Refresh the hand and try again.',
+      })
       return
     }
     const now = Date.now()
     while (recent.length && recent[0] < now - 60000) recent.shift()
     if (requests >= budget || recent.length >= 6 || active >= 2) {
       res.setHeader('Retry-After', '60')
-      res
-        .status(429)
-        .json({
-          error:
-            requests >= budget
-              ? 'This preview’s coach request allowance is used up. The owner can renew it.'
-              : 'The coach is busy. Wait a minute before trying again.',
-        })
+      res.status(429).json({
+        error:
+          requests >= budget
+            ? 'This preview’s coach request allowance is used up. The owner can renew it.'
+            : 'The coach is busy. Wait a minute before trying again.',
+      })
       return
     }
     requests++

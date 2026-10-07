@@ -48,6 +48,7 @@ export function DecisionChart({
         : scenario.risk / (Math.max(1, scenario.pot) * range),
   }
   const selected = probe ?? actual
+  const sameExposure = Math.abs(selected.z - actual.z) < 0.000001
   const valueAt = (x: number, z = selected.z) =>
     liveSurfaceValue(lens, x, z, scenario) * scale
   const samples = Array.from({ length: 101 }, (_, i) => ({
@@ -55,8 +56,8 @@ export function DecisionChart({
     y: valueAt(i / 100),
   }))
   const actualValue = valueAt(actual.x, actual.z)
-  const lower = Math.min(0, actualValue, ...samples.map((p) => p.y))
-  const upper = Math.max(1, actualValue, ...samples.map((p) => p.y))
+  const lower = Math.min(0, ...samples.map((p) => p.y))
+  const upper = Math.max(1, ...samples.map((p) => p.y))
   const padding = (upper - lower) * 0.17
   const min = lower - padding,
     max = upper + padding
@@ -272,28 +273,30 @@ export function DecisionChart({
                   </text>
                 </g>
               )}
-            <g>
-              <circle
-                className="live-point-halo"
-                cx={px(actual.x)}
-                cy={py(actualValue)}
-                r="13"
-              />
-              <circle
-                className="live-point"
-                cx={px(actual.x)}
-                cy={py(actualValue)}
-                r="6"
-              />
-              <text
-                x={Math.max(103, Math.min(615, px(actual.x)))}
-                y={py(actualValue) - 21}
-                textAnchor="middle"
-                className="live-point-label"
-              >
-                {markerLabel.toUpperCase()}
-              </text>
-            </g>
+            {sameExposure && (
+              <g>
+                <circle
+                  className="live-point-halo"
+                  cx={px(actual.x)}
+                  cy={py(actualValue)}
+                  r="13"
+                />
+                <circle
+                  className="live-point"
+                  cx={px(actual.x)}
+                  cy={py(actualValue)}
+                  r="6"
+                />
+                <text
+                  x={Math.max(103, Math.min(615, px(actual.x)))}
+                  y={py(actualValue) - 21}
+                  textAnchor="middle"
+                  className="live-point-label"
+                >
+                  {markerLabel.toUpperCase()}
+                </text>
+              </g>
+            )}
             {probe && (
               <g>
                 <line
@@ -316,16 +319,25 @@ export function DecisionChart({
             </text>
           </svg>
           <div className="plot-legend">
-            <span>
-              <i className="live-key" />
-              Your hand
-            </span>
+            {sameExposure && (
+              <span>
+                <i className="live-key" />
+                Your hand
+              </span>
+            )}
             <span>
               <i className="probe-key" />
               What-if point
             </span>
             <span>Move across the graph · or use arrow keys</span>
           </div>
+          {!sameExposure && (
+            <p className="off-slice-note">
+              Your hand is off this slice: {(actual.z * 100).toFixed(0)}%
+              exposure · {signed(actualValue)} chips. The curve uses{' '}
+              {(selected.z * 100).toFixed(0)}% exposure.
+            </p>
+          )}
         </>
       )}
       <div className="point-explanation">

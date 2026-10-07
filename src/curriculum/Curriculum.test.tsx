@@ -24,6 +24,7 @@ function navigate(hash: string) {
 describe('learning workspace', () => {
   it('shows honest initial progress and filters modules', async () => {
     const user = userEvent.setup()
+    navigate('#learn/core')
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'A better way to think about risk.',
@@ -68,7 +69,7 @@ describe('learning workspace', () => {
 
   it('searches concept mappings, exposes boundaries, and clears empty results', async () => {
     const user = userEvent.setup()
-    navigate('#learn/map')
+    navigate('#learn/connections')
     render(<App />)
     await user.type(
       screen.getByRole('textbox', { name: 'Search concepts' }),
@@ -203,7 +204,7 @@ describe('learning workspace', () => {
       JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.completed,
     ).toEqual(['odds'])
     view.unmount()
-    navigate('#learn/path')
+    navigate('#learn/core')
     render(<App />)
     expect(
       screen.getByRole('link', { name: /Continue learning/ }),
@@ -220,11 +221,11 @@ describe('learning workspace', () => {
     await user.click(
       within(
         screen.getByRole('navigation', { name: 'Curriculum navigation' }),
-      ).getByRole('link', { name: 'Concept map' }),
+      ).getByRole('link', { name: 'Concept atlas' }),
     )
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-        'Follow the connections.',
+        '96-family concept atlas',
       ),
     )
     expect(
@@ -240,7 +241,7 @@ describe('learning workspace', () => {
     )
     navigate('#bad-route')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'A better way to think about risk.',
+      'Foundations for defensible decisions',
     )
   })
 

@@ -1,5 +1,17 @@
 import { useId } from 'react'
 import { DataTable } from './DataTable'
+const linePatterns = [
+  undefined,
+  '8 4',
+  '2 4',
+  '10 4 2 4',
+  '10 4 2 4 2 4',
+  '12 6',
+  '3 3',
+  '6 3 1 3',
+  '12 3 4 3',
+  '1 5',
+]
 export interface SeriesChartProps {
   title: string
   summary: string
@@ -48,6 +60,16 @@ export function SeriesChart({
       <figcaption id={id}>
         <strong>{title}</strong> — {summary}
       </figcaption>
+      <ul aria-label="Chart line key">
+        {series.map((s, i) => (
+          <li key={s.name}>
+            {s.name} —{' '}
+            {linePatterns[i]
+              ? `dash/gap pattern ${linePatterns[i]}`
+              : 'solid line'}
+          </li>
+        ))}
+      </ul>
       {ys.length ? (
         <svg
           viewBox="0 0 500 270"
@@ -76,7 +98,7 @@ export function SeriesChart({
                   fill="none"
                   stroke={['#176842', '#694c15', '#774083'][i % 3]}
                   strokeWidth={3}
-                  strokeDasharray={i < 3 ? undefined : '6 4'}
+                  strokeDasharray={linePatterns[i]}
                 >
                   {<title>{s.name}</title>}
                 </path>

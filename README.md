@@ -42,7 +42,7 @@ The app can be served by any static host. Build with `npm run build` and use `di
 - Explore **optionality**: compare committing capital with preserving the choice to fold. Connect the zero-EV frontier, local sensitivity, next-card uncertainty, and finite information clock to options concepts—with explicit limits on the analogy.
 - Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
-- Open the **Curriculum** for eight deeper poker-to-finance modules, live labs, a searchable concept map, mastery checkpoints, and a local notebook. Relevant lessons are linked from each finance lens.
+- Open **Foundations** for ten seven-step units and six specialist experiments; use the four pathway pages, searchable 96-family atlas, structured transfer/review cases and local notebook/evidence. The eight core modules and original lens mini-lessons remain available.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
 On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
@@ -51,7 +51,7 @@ On narrow screens, the side-by-side layout becomes a vertical stack with the tab
 
 ### Integrated curriculum
 
-The table remains the default experience (`#table`). The **Curriculum** navigation opens `#learn/path`; individual lessons support links such as `#learn/module/odds/learn`, with `lab` and `check` tabs. The concept map, standalone experiments, and notebook live at `#learn/map`, `#learn/lab/odds`, and `#learn/notebook`. Hash routes need no hosting rewrite configuration.
+The table remains the default experience (`#table`). **Curriculum** opens Foundations at `#learn/path` (also `#learn` and `#learn/foundations`). Unit URLs use `#learn/unit/f01/brief` and steps `brief`, `predict`, `worked`, `practice`, `experiment`, `transfer`, `review`. The atlas is `#learn/map` (also `#learn/atlas`), the lab catalog is `#learn/lab`, pathways are `#learn/pathways`, delayed review reminders are `#learn/reviews`, and notes/evidence/export are `#learn/notebook`. Hash routes need no hosting rewrites. The **Core library** is `#learn/core`: original URLs such as `#learn/module/odds/learn` retain `learn`, `lab` and `check` tabs. Its legacy connection diagram remains at `#learn/connections`.
 
 Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Finance-panel what-if controls and camera position reset when the table panel is remounted; the game itself does not. Reloading still starts a fresh guided hand.
 
@@ -81,15 +81,32 @@ Important distinctions are taught explicitly:
 
 Curriculum records now use `quantpoker.learning.v2`; valid learning-v1 notes and core completions migrate without becoming new foundation evidence. Normal migration leaves `quantpoker.learning.v1` untouched as a fallback. Table history and lens mini-lessons retain the separate `quantpoker.progress.v1` key, which curriculum reset never removes. Malformed records are preserved with recovery/export choices; storage failures retain work in the root session until the tab closes. JSON and Markdown exports, bounded retention, and multi-tab conflict warnings are included. There is no JSON importer, account, or cloud sync.
 
-### R1 shared foundation (A00)
+### R1 foundations and specialist laboratories
 
-The core library remains the default curriculum. `#learn/foundations` adds the ten-unit framework: F01–F04, F06 and F09 have seven-step lessons, worked/partial/practice cases, three finance transfers and three varied reviews apiece. F05/F07/F08/F10 remain visibly **partial** until their owners' required banks are integrated. The six specialist laboratories are **planned**, not shipped in this foundation commit. Four pathway pages at `#learn/pathways` and the kit-derived 96-family atlas at `#learn/atlas` describe coverage honestly; future capstones are not playable links.
+All ten introductory units have retrieval (including an explicitly recorded skip), persisted unaided predictions, a parallel worked example, a partial scaffold, changed practice, an experiment, at least three finance transfers and at least three changed reviews. They cover information/cash flows; conditional probability; price/EV; repetition and uncertainty; updating and forecasts; capital/compounding/preferences; dependence and pooling; contingent payments; protection/pricing/obligations; and independent finance transfer. Hints move through information, principle, computation and interpretation.
+
+| Specialist lab | What it isolates                                                                    | Main boundary                                                                           |
+| -------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Calibration    | Forecast groups, Brier/log scores, decisions, Bayes and Beta–Binomial updating      | Forecast quality is not decision value; finite samples do not certify calibration       |
+| Selection      | Observed versus target populations, unequal recording and inverse weighting         | Unknown or zero recording rates make correction unavailable; no causal imputation       |
+| Information    | Joint signal states, optional actions, EVSI/EVPI and research fees                  | Physical probabilities and specified terms; no endogenous price discovery               |
+| Contracts      | Deductible/limited layers, stock-plus-put, call spread, occurrence versus aggregate | State payoff/profit identities are not market pricing identities or legal advice        |
+| Solvency       | Exact independent/common-event mixture, claim funding, default and unpaid claims    | Fixed-loss homogeneous pool and stipulated pro-rata settlement, not regulatory capital  |
+| Backtest       | Candidate search, frozen protocol, unrevealed holdout, costs and repeated testing   | Synthetic independent null data, not empirical returns or an implementation of PBO/CSCV |
+
+The first F10 transfer/review bank contains three finance-only final cases: equipment service, seasonal inventory and a warranty book. Each has at least six scored items across setup, calculation, interpretation and limitation, plus critical ledger/probability checks, distinct hints and an ungraded written defense. Changed review regimes reverse research choice, floor feasibility or default. Original hypothetical contract terms are explicit; no external source is claimed to validate these businesses.
+
+The four pathways link real introductory resources and prerequisite bridges. Atlas filters cover domain, pathway, mathematical level, availability and text; the lab catalog searches question, role and concepts. **Available** means selected introductory assessed mechanisms—not the entire research family. Broader/research mechanisms remain **partial/planned**, and future capstones are not playable links or included in progress denominators. Sources show claim-specific locators and verification status; citations do not prove QuantPoker improves learning.
 
 Predictions are committed before structured answers/reveals. Hints and repeated exposed cases remain practice, not unaided demonstration. A fresh transfer needs at least 80% and all critical items correct; prose and simulated profits are never graded. Delayed review uses device-clock reminders at 3, then 10, then 30 days; failed/assisted reviews retry at 1 day. This editable local evidence is not secure certification.
 
-See the [frozen developer contract and runnable test fixture](src/curriculum/core/README.md) for manifest, controller, case-fragment, persistence, route, deterministic-stream, worker, source and accessibility APIs. Browser acceptance and complete R1 integration remain separate from unit/component checks.
+Learning persistence is local and best-effort: the bounded 1 MiB envelope retains active drafts, first/recent evidence receipts and exposure/search summaries while older detailed attempts may be compacted. Quota or blocked-storage failures keep this tab's work, but refresh durability is not promised. If another tab changes the saved revision, export the unsaved work or explicitly reload saved progress; there is no silent last-write-wins merge. Recovery/export does not advertise a JSON import. Learning reset never resets the current table or its separate storage.
 
-The curriculum is lazy-loaded and its CSS is scoped to `.curriculum-workspace`, so it does not restyle the table or 3D panel. Pure models live in `src/curriculum/lib/math.ts`, independent of poker-game transitions. Add new modules by extending the typed content and lab registry, then adding numerical and interaction tests.
+Specialist randomness uses versioned role-separated seeded streams, never the poker game's RNG. Backtest generates its holdout only after explicit protocol freeze/reveal, and worker messages carry run ID, parameter hash and generator version. Cancellation/parameter changes prevent stale results from publishing; a failed run retains committed inputs. Ordinary analytic recomputation is separate from mastery assessment.
+
+See the [frozen developer contract and runnable test fixture](src/curriculum/core/README.md) for manifest, controller, case-fragment, persistence, route, deterministic-stream, worker, source and accessibility APIs. Automated component tests are not browser proof. **Browser acceptance has not been run for this integration and awaits parent approval**, including mobile/zoom, keyboard/screen-reader behavior, actual browser workers and WebGL/fallback performance.
+
+The curriculum is lazy-loaded and its CSS is scoped to `.curriculum-workspace`, so it does not restyle the table or 3D panel. Specialist Entries/Views and workers are lazy chunks; case/source metadata is registered together. Core models live in `src/curriculum/lib/math.ts`, shared adapters in `src/curriculum/core/foundationMath.ts`, and specialist models under `src/curriculum/experiences/`. None receives the root game, opponent private cards or future deck. Add new resources through the typed registry and acceptance tests rather than marking static placeholders available.
 
 ### Showdown equity
 
@@ -169,6 +186,9 @@ Automated coverage includes:
 - Curriculum mathematics: exact outs, EV, variance, binomial replication, put-call parity, Black–Scholes benchmarks, and IV inversion.
 - Module integrity, checkpoint retry/completion, notebook export/reset, and malformed curriculum storage.
 - Table-to-lesson deep links, preserved hands and manual pause state, suspended/resumed bot turns, and isolation of legacy history from curriculum resets. Component tests mock the equity worker and WebGL renderer; engine and finance calculations are tested separately.
+- All ten registered banks, six lazy specialist Entries, F10 independent golden values/policy enumeration, critical-item grading, assistance/repeat exclusions and ungraded reflection.
+- v1→v2 migration/recovery, blocked/quota storage, conflict detection, bounded compaction, exports, deterministic stream separation, worker identity/cancel/stale messages, delayed review clocks and immutable snapshots.
+- Specialist numeric endpoints, impossible/undefined conditionals, state-ledger conservation, selected-label assumptions, capital/default mixture endpoints and frozen synthetic backtest protocols. Native browser worker/performance evidence is still unrun.
 
 These tests do not replace browser end-to-end, screen-reader, mobile-device, or cross-browser testing.
 

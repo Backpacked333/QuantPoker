@@ -1,5 +1,8 @@
 import { useState } from 'react'
 import type { LearningSession } from '../core/session'
+import { registry } from '../core/registry'
+import { evidenceState } from '../core/assessment'
+import { routes } from '../core/routes'
 function downloadText(content: string, name: string, mime: string) {
   const blob = new Blob([content], { type: mime })
   const url = URL.createObjectURL(blob)
@@ -109,6 +112,84 @@ export function LearningDataTools({ session }: { session: LearningSession }) {
         </p>
       ) : null}
       {error ? <p role="alert">{error}</p> : null}
+      <h2>Foundation notebook and evidence</h2>
+      <p>
+        Prior/core completion is separate. Predictions and reflection are
+        ungraded; assisted or exposed variants do not establish fresh
+        demonstration. Historical success remains visible after content changes.
+      </p>
+      {[...registry.units.values()].map((u) => (
+        <details key={u.id}>
+          <summary>
+            {u.id.toUpperCase()} {u.title} —{' '}
+            {evidenceState(
+              session.store,
+              u.id,
+              u.contentVersion,
+              u.rubricVersion,
+              session.clock,
+            )}
+          </summary>
+          <label>
+            {u.id.toUpperCase()} notes and changed beliefs (ungraded; 2,000
+            characters)
+            <textarea
+              maxLength={2000}
+              value={session.store.unitNotes[u.id] ?? ''}
+              onChange={(e) =>
+                session.update((s) => ({
+                  ...s,
+                  unitNotes: { ...s.unitNotes, [u.id]: e.target.value },
+                }))
+              }
+            />
+          </label>
+          <p>
+            Device-clock review due:{' '}
+            {session.store.reviewSchedule[u.id]?.dueAt ??
+              'after fresh demonstration'}
+            . <a href={routes.unit(u.id, 'review')}>Open review bank</a>
+          </p>
+          <ul>
+            {session.store.receipts
+              .filter((r) => r.unitId === u.id)
+              .map((r) => (
+                <li key={r.id}>
+                  {r.caseId}: {r.earned}/{r.max},{' '}
+                  {r.eligible ? 'eligible' : 'practice only'},{' '}
+                  {r.unaided ? 'unaided' : 'assisted/repeated'}; content
+                  {r.contentVersion}/rubric{r.rubricVersion}; {r.submittedAt}
+                </li>
+              ))}
+          </ul>
+          <h3>Recent prediction and reflection snapshots</h3>
+          {session.store.attempts
+            .filter((a) => a.unitId === u.id)
+            .slice(-10)
+            .reverse()
+            .map((a) => (
+              <article key={a.id}>
+                <h4>{a.caseId}</h4>
+                <p>
+                  {a.phase}; {a.mode}; model {a.modelVersion}; {a.createdAt}
+                </p>
+                <p>
+                  Prediction: {a.prediction?.actionId ?? 'none'};{' '}
+                  {a.prediction?.direction ?? 'not supplied'}; estimate{' '}
+                  {a.prediction?.numericEstimate ?? 'not supplied'}; confidence{' '}
+                  {a.prediction?.confidencePercent ?? 'not sure'}.{' '}
+                  {a.prediction?.rationale}
+                </p>
+                <p>Reflection (ungraded): {a.reflection ?? 'not supplied'}</p>
+                <p>
+                  {a.assistance.hintIds.length} hints; solution{' '}
+                  {a.assistance.solutionViewed ? 'exposed' : 'not exposed'}.
+                  Retained summaries are in JSON/Markdown exports.
+                </p>
+              </article>
+            ))}
+        </details>
+      ))}
     </section>
   )
 }

@@ -11,6 +11,8 @@ import { routes, type LearningRoute } from '../core/routes'
 import type { LearningSession } from '../core/session'
 import {
   unitSteps,
+  type AttemptSnapshot,
+  type Prediction,
   type ExperienceEntryProps,
   type FoundationUnit,
   type Question,
@@ -20,10 +22,43 @@ import { pathways } from '../content/pathways'
 import { connectionLabels } from '../content/foundations'
 import { CasePlayer } from './CasePlayer'
 import { PredictionForm } from './PredictionForm'
+import { modules } from '../curriculum'
 
-function Retrieval({ question: q }: { question: Question }) {
-  const [answer, setAnswer] = useState('')
-  const [revealed, setRevealed] = useState(false)
+function Retrieval({
+  question: q,
+  unit: u,
+  session,
+}: {
+  question: Question
+  unit: FoundationUnit
+  session: LearningSession
+}) {
+  const caseId = `retrieval:${u.id}`
+  const [attempt, setAttempt] = useState<AttemptSnapshot>(
+    () =>
+      [...session.store.attempts]
+        .reverse()
+        .find((a) => a.caseId === caseId) ?? {
+        id: crypto.randomUUID(),
+        caseId,
+        unitId: u.id,
+        contentVersion: u.contentVersion,
+        rubricVersion: u.rubricVersion,
+        modelVersion: 'retrieval-v1',
+        mode: 'practice',
+        createdAt: session.clock().toISOString(),
+        inputs: {},
+        answers: {},
+        assistance: { hintIds: [], solutionViewed: false },
+        phase: 'draft',
+      },
+  )
+  const answer = attempt.answers[q.id] ?? ''
+  const revealed = attempt.assistance.solutionViewed
+  function save(next: AttemptSnapshot) {
+    session.recordAttempt(next)
+    setAttempt(next)
+  }
   return (
     <section>
       <h3>Retrieve before studying</h3>
@@ -31,7 +66,13 @@ function Retrieval({ question: q }: { question: Question }) {
       {q.kind === 'choice' ? (
         <label>
           Retrieval response
-          <select value={answer} onChange={(e) => setAnswer(e.target.value)}>
+          <select
+            disabled={revealed}
+            value={String(answer)}
+            onChange={(e) =>
+              save({ ...attempt, answers: { [q.id]: e.target.value } })
+            }
+          >
             <option value="">Choose an answer</option>
             {q.options.map((o) => (
               <option key={o.id} value={o.id}>
@@ -41,16 +82,111 @@ function Retrieval({ question: q }: { question: Question }) {
           </select>
         </label>
       ) : null}
-      <button className="button secondary" onClick={() => setRevealed(true)}>
+      <button
+        disabled={revealed}
+        className="button secondary"
+        onClick={() =>
+          save({
+            ...attempt,
+            assistance: { ...attempt.assistance, solutionViewed: true },
+            phase: 'reflected',
+          })
+        }
+      >
         Check retrieval (practice only)
+      </button>
+      <button
+        className="text-button"
+        disabled={revealed}
+        onClick={() =>
+          save({
+            ...attempt,
+            answers: { [q.id]: 'skipped' },
+            assistance: { ...attempt.assistance, solutionViewed: true },
+            phase: 'reflected',
+          })
+        }
+      >
+        Skip retrieval (recorded; not success)
       </button>
       {revealed ? (
         <p role="status">
-          {answer === q.expected ? 'Supported. ' : 'Revisit the setup. '}
+          {answer === 'skipped'
+            ? 'Retrieval skipped. '
+            : answer === q.expected
+              ? 'Supported. '
+              : 'Revisit the setup. '}
           {q.rationale} Retrieval is not demonstration evidence.
         </p>
       ) : null}
     </section>
+  )
+}
+function GuidedPrediction({
+  unit: u,
+  session,
+  experiment = false,
+}: {
+  unit: FoundationUnit
+  session: LearningSession
+  experiment?: boolean
+}) {
+  const key = `lesson-${experiment ? 'experiment' : 'prediction'}:${u.id}`
+  const draft = session.store.drafts[key]?.attempt
+  function save(prediction: Prediction, committed: boolean) {
+    const next: AttemptSnapshot = {
+      ...(draft ?? {
+        id: crypto.randomUUID(),
+        unitId: u.id,
+        caseId: key,
+        contentVersion: u.contentVersion,
+        rubricVersion: u.rubricVersion,
+        modelVersion: 'guided-v1',
+        mode: 'explore',
+        createdAt: session.clock().toISOString(),
+        inputs: {
+          legacyId: u.lesson!.experiment.legacyId ?? null,
+          experienceId: u.lesson!.experiment.experienceId ?? null,
+        },
+        answers: {},
+        assistance: { hintIds: [], solutionViewed: false },
+        phase: 'draft',
+      }),
+      prediction,
+      ...(committed
+        ? {
+            committedAt: session.clock().toISOString(),
+            phase: 'prediction_committed',
+          }
+        : {}),
+    }
+    session.recordAttempt(next)
+    session.update((store) => ({
+      ...store,
+      drafts: { ...store.drafts, [key]: { attempt: next, protocol: {} } },
+    }))
+  }
+  return draft?.committedAt ? (
+    <p>
+      Committed prediction: {draft.prediction?.actionId};{' '}
+      {draft.prediction?.direction}; estimate{' '}
+      {draft.prediction?.numericEstimate ?? 'not supplied'}; confidence{' '}
+      {draft.prediction?.confidencePercent ?? 'not sure'}.{' '}
+      {draft.prediction?.rationale} This guided snapshot is exploration, not
+      demonstration.
+    </p>
+  ) : (
+    <PredictionForm
+      initial={draft?.prediction}
+      actions={['Test the stated model', 'Withhold judgment']}
+      question={
+        experiment
+          ? u.lesson!.experiment.question
+          : u.lesson!.predictionQuestion
+      }
+      onDraft={(p) => save(p, false)}
+      onCommit={(p) => save(p, true)}
+    />
   )
 }
 function CaseSelector({
@@ -113,8 +249,6 @@ function UnitLesson({
   session: LearningSession
 }) {
   const l = u.lesson
-  const experimentKey = `lesson-experiment:${u.id}`
-  const prediction = session.store.drafts[experimentKey]?.attempt
   return (
     <>
       <header className="page-heading">
@@ -181,12 +315,43 @@ function UnitLesson({
                 {l.brief.map((p) => (
                   <p key={p}>{p}</p>
                 ))}
-                <Retrieval key={u.id} question={l.retrieval} />
+                {(() => {
+                  const c = registry.cases.get(u.workedCaseIds[0])
+                  return c ? (
+                    <section>
+                      <h3>Decision brief</h3>
+                      <p>
+                        Role: {c.role}. Objective: {c.objective}
+                      </p>
+                      <ul>
+                        {c.information.map((info) => (
+                          <li key={info}>{info}</li>
+                        ))}
+                      </ul>
+                      <p>
+                        Allowed actions: {c.actions.join('; ')}.{' '}
+                        {c.assumptions.join(' ')}
+                      </p>
+                      <p>
+                        Cash flows are incremental net profits unless explicitly
+                        labeled as gross receipts or terminal wealth. Prior/sunk
+                        costs are excluded from the current action ledger.
+                      </p>
+                    </section>
+                  ) : null
+                })()}
+                <Retrieval
+                  key={u.id}
+                  question={l.retrieval}
+                  unit={u}
+                  session={session}
+                />
               </>
             ) : null}
             {step === 'predict' ? (
               <>
                 <p>{l.predictionQuestion}</p>
+                <GuidedPrediction unit={u} session={session} />
                 <p>
                   Prediction is recorded per case before structured questions
                   appear. Work through practice first or proceed to a fresh
@@ -245,51 +410,25 @@ function UnitLesson({
                 {l.experiment.instructions.map((p) => (
                   <p key={p}>{p}</p>
                 ))}
-                {!prediction?.committedAt ? (
-                  <PredictionForm
-                    initial={prediction?.prediction}
-                    actions={['Test the stated model', 'Withhold judgment']}
-                    question={l.predictionQuestion}
-                    onCommit={(p) => {
-                      const a = {
-                        id: crypto.randomUUID(),
-                        unitId: u.id,
-                        caseId: experimentKey,
-                        contentVersion: u.contentVersion,
-                        rubricVersion: u.rubricVersion,
-                        modelVersion: 'legacy-guided-v1',
-                        mode: 'explore' as const,
-                        createdAt: session.clock().toISOString(),
-                        committedAt: session.clock().toISOString(),
-                        inputs: { legacyId: l.experiment.legacyId ?? null },
-                        prediction: p,
-                        answers: {},
-                        assistance: { hintIds: [], solutionViewed: false },
-                        phase: 'prediction_committed' as const,
-                      }
-                      session.recordAttempt(a)
-                      session.update((store) => ({
-                        ...store,
-                        drafts: {
-                          ...store.drafts,
-                          [experimentKey]: { attempt: a, protocol: {} },
-                        },
-                      }))
-                    }}
-                  />
-                ) : (
-                  <p>
-                    Committed: {prediction.prediction?.direction}; estimate{' '}
-                    {prediction.prediction?.numericEstimate ?? 'not supplied'}.{' '}
-                    {prediction.prediction?.rationale}
-                  </p>
-                )}
+                <GuidedPrediction
+                  key={`${u.id}:experiment`}
+                  unit={u}
+                  session={session}
+                  experiment
+                />
                 {l.experiment.legacyId ? (
                   <a
                     className="button"
                     href={routes.module(l.experiment.legacyId, 'lab')}
                   >
                     Open the existing synthetic lab
+                  </a>
+                ) : l.experiment.experienceId ? (
+                  <a
+                    className="button"
+                    href={routes.lab(l.experiment.experienceId)}
+                  >
+                    Open the specialist experiment
                   </a>
                 ) : (
                   <p>Required specialist experiment pending.</p>
@@ -398,6 +537,145 @@ function RegisteredExperience({
     </Suspense>
   )
 }
+const labQuestions = {
+  calibration:
+    'Which forecast is well calibrated, and does that make its decision valuable?',
+  selection:
+    'Who made it into the observed sample, and whose outcomes are missing?',
+  information:
+    'Should I pay for a signal before choosing an irreversible project?',
+  contracts: 'What does the contract promise to pay in each state?',
+  solvency: 'Can pooled claims exhaust the seller’s available capital?',
+  backtest: 'Did choosing among many strategies create an apparent edge?',
+}
+function NextAction({ session }: { session: LearningSession }) {
+  const units = [...registry.units.values()]
+  const state = (u: FoundationUnit) =>
+    evidenceState(
+      session.store,
+      u.id,
+      u.contentVersion,
+      u.rubricVersion,
+      session.clock,
+    )
+  const due = units.find((u) => state(u) === 'review-due')
+  const next =
+    due ?? units.find((u) => !['demonstrated', 'retained'].includes(state(u)))
+  return (
+    <p>
+      Recommended next action:{' '}
+      {next ? (
+        <a href={routes.unit(next.id, due ? 'review' : 'brief')}>
+          {due ? 'Review' : 'Study'} {next.id.toUpperCase()} {next.title}
+        </a>
+      ) : (
+        <a href={routes.overview('reviews')}>
+          Check retention reminders or freely practice a changed case
+        </a>
+      )}
+      . Recommendations never lock access; realized profit is not learning
+      evidence.
+    </p>
+  )
+}
+function LabCatalog() {
+  const [search, setSearch] = useState('')
+  const query = search.trim().toLowerCase()
+  const rows = registry.experienceInventory
+    .map((e) => {
+      const cases = [...registry.cases.values()].filter((c) =>
+        c.id.includes(e.id),
+      )
+      const concepts = atlas.concepts
+        .filter((c) => c.r1_experience_links.includes(e.id))
+        .map((c) => c.id)
+      const roles = [...new Set(cases.map((c) => c.role))]
+      const units = [...new Set(cases.map((c) => c.unitId))]
+      return {
+        ...e,
+        question: labQuestions[e.id],
+        concepts,
+        roles,
+        units,
+        search: [
+          e.title,
+          labQuestions[e.id],
+          ...roles,
+          ...concepts,
+          ...concepts.map(
+            (id) => atlas.concepts.find((c) => c.id === id)?.title ?? '',
+          ),
+        ]
+          .join(' ')
+          .toLowerCase(),
+      }
+    })
+    .filter((e) => e.search.includes(query))
+  const core = modules.filter((m) =>
+    `${m.title} ${m.subtitle} ${m.tags.join(' ')} decision maker poker player ${atlas.concepts
+      .filter((c) => c.legacy_resources.includes(m.id))
+      .map((c) => `${c.id} ${c.title}`)
+      .join(' ')}`
+      .toLowerCase()
+      .includes(query),
+  )
+  return (
+    <>
+      <h1 tabIndex={-1}>Laboratories</h1>
+      <p>
+        Exploration is not assessment. Commit predictions inside specialist
+        labs; demonstrate learning on a fresh foundation transfer. Sliders do
+        not change your paused hand.
+      </p>
+      <label>
+        Search labs by question, role or concept
+        <input
+          type="search"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </label>
+      <p>
+        {rows.length} specialist and {core.length} core matches.
+      </p>
+      <ul>
+        {rows.map((e) => (
+          <li key={e.id}>
+            <h2>
+              <a href={routes.lab(e.id)}>{e.title}</a>
+            </h2>
+            <p>
+              {e.question} — {e.availability}
+            </p>
+            <p>
+              Concepts: {e.concepts.join(', ')}. Roles: {e.roles.join('; ')}.
+            </p>
+            <p>
+              Recommended for {e.units.join(', ').toUpperCase()} transfers;
+              prerequisites are recommendations, not access locks.
+            </p>
+          </li>
+        ))}
+      </ul>
+      <h2>Eight original core experiments</h2>
+      <p>
+        Core completion badges are independent prior-learning records, not R1
+        demonstration.
+      </p>
+      <ul>
+        {core.map((m) => (
+          <li key={m.id}>
+            <a href={routes.lab(m.id)}>{m.title}</a> — {m.subtitle} Role:
+            decision maker; concepts: {m.tags.join(', ')}.
+          </li>
+        ))}
+      </ul>
+      <a href="#learn/core">Core library</a> ·{' '}
+      <a href="#learn/connections">Core connection diagram</a>
+    </>
+  )
+}
+
 export function FoundationWorkspace({
   route,
   session,
@@ -406,6 +684,13 @@ export function FoundationWorkspace({
   session: LearningSession
 }) {
   const [query, setQuery] = useState('')
+  const [domain, setDomain] = useState('all')
+  const [pathway, setPathway] = useState('all')
+  const [level, setLevel] = useState<'introductory' | 'research'>(
+    'introductory',
+  )
+  const [availability, setAvailability] = useState('all')
+  if (route.kind === 'overview' && route.page === 'lab') return <LabCatalog />
   if (route.kind === 'unit')
     return (
       <UnitLesson
@@ -461,6 +746,29 @@ export function FoundationWorkspace({
                     </li>
                   ))}
               </ul>
+              <h3>Runnable introductory laboratories</h3>
+              <ul>
+                {registry.experienceInventory
+                  .filter((e) =>
+                    atlas.concepts.some(
+                      (c) =>
+                        c.pathways.includes(p.id) &&
+                        c.r1_experience_links.includes(e.id),
+                    ),
+                  )
+                  .map((e) => (
+                    <li key={e.id}>
+                      <a href={routes.lab(e.id)}>{e.title}</a> —{' '}
+                      {e.availability}; recommended because its assessed
+                      mechanisms support this track.
+                    </li>
+                  ))}
+              </ul>
+              <p>
+                Selected introductory coverage only; research-level families and
+                deeper laboratories remain planned. Sources and limitations are
+                displayed in each resource.
+              </p>
               <h3>Future capstone — planned, not playable</h3>
               <p>{p.capstone}</p>
               <p>
@@ -501,18 +809,70 @@ export function FoundationWorkspace({
       <>
         <h1 tabIndex={-1}>96-family concept atlas</h1>
         <p>
-          Kit inventory, not96 shipped lessons. Introductory resources cover
-          parts of a family; advanced/research depth remains planned.
+          Kit inventory, not 96 shipped lessons. Available means assessed
+          selected introductory coverage, not the whole research family.
+          Research depth remains planned.
         </p>
         <label>
           Search all concept families
           <input value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
+        <label>
+          Domain
+          <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+            <option value="all">All domains</option>
+            {atlas.domains.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Pathway
+          <select value={pathway} onChange={(e) => setPathway(e.target.value)}>
+            <option value="all">All pathways</option>
+            {pathways.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Mathematical level
+          <select
+            value={level}
+            onChange={(e) => setLevel(e.target.value as typeof level)}
+          >
+            <option value="introductory">
+              Selected introductory mechanisms
+            </option>
+            <option value="research">Advanced / research family</option>
+          </select>
+        </label>
+        <label>
+          Availability
+          <select
+            value={availability}
+            onChange={(e) => setAvailability(e.target.value)}
+          >
+            <option value="all">All statuses</option>
+            {['available', 'partial', 'planned'].map((s) => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </label>
         {atlas.concepts
-          .filter((c) =>
-            `${c.id} ${c.title} ${c.research_description}`
-              .toLowerCase()
-              .includes(query.toLowerCase()),
+          .filter(
+            (c) =>
+              `${c.id} ${c.title} ${c.research_description}`
+                .toLowerCase()
+                .includes(query.toLowerCase()) &&
+              (domain === 'all' || c.domain === domain) &&
+              (pathway === 'all' || c.pathways.includes(pathway)) &&
+              (availability === 'all' ||
+                registry.conceptAvailability(c.id, level) === availability),
           )
           .map((c) => (
             <article className="qp-case" key={c.id}>
@@ -521,7 +881,12 @@ export function FoundationWorkspace({
               </h2>
               <p>{c.research_description}</p>
               <p>
-                {registry.conceptAvailability(c.id)} — {c.coverage_note}
+                Learning question: How does {c.title.toLowerCase()} change a
+                defensible decision under uncertainty?
+              </p>
+              <p>
+                {registry.conceptAvailability(c.id, level)} at {level} level —{' '}
+                {c.coverage_note}
               </p>
               <p>
                 Suggested prerequisites:{' '}
@@ -546,14 +911,34 @@ export function FoundationWorkspace({
                 )}
               </p>
               <p>
-                {c.r1_experience_links.map((id) => (
-                  <span key={id}>
-                    {id}:{' '}
-                    {registry.experiences.get(id as never)?.passedGate
-                      ? 'available'
-                      : 'planned'}{' '}
-                  </span>
-                ))}
+                {c.r1_experience_links.map((id) =>
+                  registry.experiences.get(id as never)?.passedGate ? (
+                    <a key={id} href={routes.lab(id as never)}>
+                      {id} introductory lab{' '}
+                    </a>
+                  ) : (
+                    <span key={id}>{id}: planned </span>
+                  ),
+                )}
+              </p>
+              <p>
+                {c.r1_unit_links.map((id) => {
+                  const u = registry.units.get(id as never)!
+                  return (
+                    <span key={id}>
+                      {id}:{' '}
+                      {evidenceState(
+                        session.store,
+                        u.id,
+                        u.contentVersion,
+                        u.rubricVersion,
+                        session.clock,
+                      )}
+                      . Recommended to practice the selected mechanism; not a
+                      locked prerequisite.{' '}
+                    </span>
+                  )
+                })}
               </p>
             </article>
           ))}
@@ -563,10 +948,12 @@ export function FoundationWorkspace({
     <>
       <h1 tabIndex={-1}>Foundations for defensible decisions</h1>
       <p>
-        Ten-unit sequence; six complete base lessons, four partial units
-        awaiting specialist banks. Completion of core practice is not foundation
+        Ten complete introductory units and six specialist laboratories. Core
+        completion, exploration and realized profit are not foundation
         demonstration.
       </p>
+      <NextAction session={session} />
+      <a href={routes.overview('reviews')}>Check review reminders</a>
       {[...registry.units.values()].map((u) => (
         <article className="qp-case" key={u.id}>
           <h2>

@@ -68,6 +68,14 @@ describe('frozen route and registry contracts', () => {
       page: 'path',
     })
     expect(parseLearningRoute('#table')).toEqual({ kind: 'table' })
+    expect(parseLearningRoute('#learn/map')).toEqual({
+      kind: 'overview',
+      page: 'atlas',
+    })
+    expect(parseLearningRoute('#learn/connections')).toEqual({
+      kind: 'overview',
+      page: 'connections',
+    })
   })
   it.each([
     '#learn/unit/unknown',
@@ -100,7 +108,9 @@ describe('frozen route and registry contracts', () => {
         .map((u) => u.id),
     ).toEqual(['f01', 'f02', 'f03', 'f04', 'f06', 'f09'])
     expect(
-      atlas.concepts.every((c) => r.conceptAvailability(c.id) !== 'available'),
+      atlas.concepts.every(
+        (c) => r.conceptAvailability(c.id, 'research') === 'planned',
+      ),
     ).toBe(true)
     expect(atlas.concepts.find((c) => c.id === 'A01')?.title).toBe(
       'Legal states and information sets',

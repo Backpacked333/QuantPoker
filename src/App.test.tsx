@@ -79,7 +79,7 @@ describe('table and curriculum integration', () => {
     render(<App />)
     navigate('#learn/path')
     await screen.findByRole('heading', {
-      name: /A better way to think about risk/,
+      name: 'Foundations for defensible decisions',
     })
     navigate('#table')
     vi.useFakeTimers()

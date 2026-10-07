@@ -20,6 +20,7 @@ export type OverviewPage =
   | 'pathways'
   | 'foundations'
   | 'atlas'
+  | 'connections'
 export type LearningRoute =
   | { kind: 'table' }
   | { kind: 'overview'; page: OverviewPage }
@@ -45,6 +46,8 @@ export function parseLearningRoute(hash: string): LearningRoute {
   }
   const [, page = 'path', id = '', detail = ''] = parts
   if (parts[0] !== 'learn') return { kind: 'not-found', requested: hash }
+  if (page === 'map' && parts.length === 2)
+    return { kind: 'overview', page: 'atlas' }
   if (page === 'module')
     return {
       kind: 'module',
@@ -63,6 +66,7 @@ export function parseLearningRoute(hash: string): LearningRoute {
       'pathways',
       'foundations',
       'atlas',
+      'connections',
     ])
   )
     return { kind: 'overview', page: (page || 'path') as OverviewPage }

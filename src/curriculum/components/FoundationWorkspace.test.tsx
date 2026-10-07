@@ -17,6 +17,7 @@ import {
 } from '../core/__fixtures__/reference'
 import ReferenceView from '../core/__fixtures__/ReferenceView'
 import { LEARNING_KEY } from '../core/persistence'
+import { registry } from '../core/registry'
 
 function navigate(hash: string) {
   act(() => {
@@ -59,12 +60,25 @@ describe('accessible frozen primitives and reference fixture', () => {
               { x: 1, y: 100 },
             ],
           },
+          {
+            name: 'Decline',
+            points: [
+              { x: 0, y: 0 },
+              { x: 1, y: 0 },
+            ],
+          },
         ]}
       />,
     )
     expect(screen.getByRole('img')).toHaveAccessibleDescription(
       /Undefined branches are gaps/,
     )
+    expect(
+      view.container.querySelector('path[stroke-dasharray="8 4"]'),
+    ).not.toBeNull()
+    expect(
+      screen.getByRole('list', { name: 'Chart line key' }),
+    ).toHaveTextContent('Decline — dash/gap pattern 8 4')
     expect(
       screen.getByRole('table', {
         name: 'Expected profit — equivalent values',
@@ -197,20 +211,161 @@ describe('accessible frozen primitives and reference fixture', () => {
   })
 })
 describe('complete foundation bank interaction and honest availability', () => {
-  it('has all seven steps, keeps shells incomplete, and offers no fake planned lab links', () => {
+  it('searches specialist/core labs by question, role and concept with only real URLs', () => {
+    navigate('#learn/lab')
+    render(<Curriculum />)
+    expect(
+      screen.getByText('6 specialist and 8 core matches.'),
+    ).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('searchbox', { name: /Search labs/ }), {
+      target: { value: 'B05' },
+    })
+    expect(
+      screen.getByRole('link', { name: 'The observations you never see' }),
+    ).toHaveAttribute('href', '#learn/lab/selection')
+    fireEvent.change(screen.getByRole('searchbox', { name: /Search labs/ }), {
+      target: { value: 'irreversible' },
+    })
+    expect(
+      screen.getByRole('link', { name: 'Price the next piece of information' }),
+    ).toHaveAttribute('href', '#learn/lab/information')
+    fireEvent.change(screen.getByRole('searchbox', { name: /Search labs/ }), {
+      target: { value: 'Equipment' },
+    })
+    expect(
+      screen.getByRole('link', {
+        name: 'Freeze, test, and challenge a strategy',
+      }),
+    ).toBeInTheDocument()
+  })
+  it('keeps foundation notes and prediction evidence accessible in the legacy-compatible notebook', () => {
+    const ref = { current: new LearningSession(null, fixedClock) }
+    navigate('#learn/notebook')
+    render(<Curriculum session={ref} />)
+    fireEvent.click(
+      screen.getByText(/F10 Independent finance transfer — not-started/),
+    )
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /F10 notes and changed beliefs/ }),
+      {
+        target: {
+          value:
+            'My revised belief separates mean profit from an all-state cash floor.',
+        },
+      },
+    )
+    expect(ref.current.store.unitNotes.f10).toContain('all-state cash floor')
+    expect(ref.current.export('markdown')).toContain('all-state cash floor')
+    navigate('#learn/unit/f10/brief')
+    navigate('#learn/notebook')
+    fireEvent.click(
+      screen.getByText(/F10 Independent finance transfer — not-started/),
+    )
+    expect(
+      screen.getByRole('textbox', { name: /F10 notes and changed beliefs/ }),
+    ).toHaveValue(
+      'My revised belief separates mean profit from an all-state cash floor.',
+    )
+  })
+  it('records retrieval skips and guided prediction drafts across route round trips without granting mastery', async () => {
+    const ref = { current: new LearningSession(null, fixedClock) }
+    navigate('#learn/unit/f10/brief')
+    render(<Curriculum session={ref} />)
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Skip retrieval (recorded; not success)',
+      }),
+    )
+    expect(ref.current.store.attempts[0].answers).toEqual({
+      retrieval: 'skipped',
+    })
+    navigate('#learn/unit/f10/predict')
+    fireEvent.change(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+      {
+        target: {
+          value: 'Funding and all-state floors change the admissible choice.',
+        },
+      },
+    )
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: /Numeric estimate/ }),
+      { target: { value: '30' } },
+    )
+    fireEvent.change(
+      screen.getByRole('spinbutton', { name: /Numeric estimate/ }),
+      { target: { value: '' } },
+    )
+    navigate('#learn/unit/f01/brief')
+    navigate('#learn/unit/f10/predict')
+    expect(
+      screen.getByRole('textbox', { name: /Prediction rationale/ }),
+    ).toHaveValue('Funding and all-state floors change the admissible choice.')
+    expect(
+      screen.getByRole('spinbutton', { name: /Numeric estimate/ }),
+    ).toHaveValue(null)
+    fireEvent.click(screen.getByRole('button', { name: 'Commit prediction' }))
+    navigate('#learn/unit/f10/brief')
+    expect(screen.getByRole('status')).toHaveTextContent('Retrieval skipped')
+    expect(ref.current.store.receipts).toHaveLength(0)
+  })
+  it('loads all six production Entries, moves focus after lazy resolution and preserves root learning notes', async () => {
+    const ref = { current: new LearningSession(null, fixedClock) }
+    navigate('#learn/foundations')
+    render(<Curriculum session={ref} />)
+    for (const e of registry.experienceInventory) {
+      navigate(`#learn/lab/${e.id}`)
+      const heading = await screen.findByRole('heading', { level: 1 })
+      expect(heading).toHaveFocus()
+      expect(
+        screen.queryByText('Laboratory pending integration'),
+      ).not.toBeInTheDocument()
+      expect(ref.current.store.receipts).toHaveLength(0)
+    }
+  })
+  it('filters atlas by domain, pathway, level and honest availability and links real resources', () => {
+    navigate('#learn/atlas')
+    render(<Curriculum />)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Domain' }), {
+      target: { value: 'A' },
+    })
+    expect(
+      screen.getByRole('heading', { name: /A01 Legal/ }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /B01/ }),
+    ).not.toBeInTheDocument()
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Mathematical level' }),
+      { target: { value: 'research' } },
+    )
+    fireEvent.change(screen.getByRole('combobox', { name: 'Availability' }), {
+      target: { value: 'available' },
+    })
+    expect(
+      screen.queryByRole('heading', { name: /A01 Legal/ }),
+    ).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Availability' }), {
+      target: { value: 'planned' },
+    })
+    expect(
+      screen.getByRole('heading', { name: /A01 Legal/ }),
+    ).toBeInTheDocument()
+  })
+  it('has ten complete seven-step units, runnable labs and no playable future capstones', () => {
     navigate('#learn/foundations')
     render(<Curriculum />)
     expect(
-      screen.getByRole('link', { name: /F01 Information/ }),
+      screen.getByRole('link', { name: /^F01 Information/ }),
     ).toHaveAttribute('href', '#learn/unit/f01/brief')
     expect(
       screen.queryByRole('link', { name: /F05 Updating/ }),
-    ).not.toBeInTheDocument()
+    ).toHaveAttribute('href', '#learn/unit/f05/brief')
     expect(
       screen.queryByRole('link', {
         name: 'Price the next piece of information',
       }),
-    ).not.toBeInTheDocument()
+    ).toHaveAttribute('href', '#learn/lab/information')
     navigate('#learn/unit/f01/brief')
     expect(
       screen.getByRole('navigation', { name: 'Seven lesson steps' }),
@@ -220,17 +375,11 @@ describe('complete foundation bank interaction and honest availability', () => {
     ).toBeInTheDocument()
     navigate('#learn/unit/f05/transfer')
     expect(
-      screen.getByRole('heading', {
-        name: 'Partial — required cases are not integrated',
-      }),
+      screen.getByRole('combobox', { name: 'Case variant' }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Submit structured answers' }),
     ).not.toBeInTheDocument()
-    navigate('#learn/lab/calibration')
-    expect(
-      screen.getByRole('heading', { name: 'Laboratory pending integration' }),
-    ).toBeInTheDocument()
     navigate('#learn/atlas')
     expect(
       screen.getByRole('heading', { name: '96-family concept atlas' }),

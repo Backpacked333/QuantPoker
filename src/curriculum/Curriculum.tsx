@@ -52,8 +52,8 @@ const stages = [
   'Market mechanics',
 ] as const
 const navItems = [
-  { id: 'path', label: 'Learning path', icon: LayoutGrid },
-  { id: 'map', label: 'Concept map', icon: Network },
+  { id: 'path', label: 'Core library', icon: LayoutGrid },
+  { id: 'map', label: 'Concept atlas', icon: Network },
   { id: 'lab', label: 'Practice lab', icon: FlaskConical },
   { id: 'notebook', label: 'My notebook', icon: NotebookPen },
 ] as const
@@ -162,6 +162,7 @@ function LearningPath({ completed }: { completed: ModuleId[] }) {
           <div className="eyebrow">THE QUANTPOKER CURRICULUM</div>
           <h1 tabIndex={-1}>A better way to think about risk.</h1>
           <p>Start at the poker table. Build intuition for the markets.</p>
+          <a href="#learn/connections">Core connection diagram</a>
         </div>
         <span className="outline-badge">
           <GraduationCap size={15} /> Learn by doing
@@ -789,36 +790,85 @@ export default function Curriculum({
   const foundationPage =
     route.kind === 'unit' ||
     route.kind === 'pathway' ||
-    (route.kind === 'not-found' &&
-      /^#learn\/(unit|pathway|lab)\//.test(hash)) ||
+    route.kind === 'not-found' ||
     (route.kind === 'lab' && experienceIds.includes(route.id as never)) ||
     (route.kind === 'overview' &&
-      ['foundations', 'atlas', 'pathways', 'reviews'].includes(route.page))
+      ['path', 'foundations', 'atlas', 'pathways', 'reviews', 'lab'].includes(
+        route.page,
+      ))
   const [pagePart = 'path', idPart = 'odds', tabPart = 'learn'] = hash
     .replace(/^#learn\/?/, '')
     .split('/')
     .filter(Boolean)
-  const page: Page = ['path', 'map', 'lab', 'notebook', 'module'].includes(
-    pagePart,
-  )
-    ? (pagePart as Page)
-    : 'path'
-  const id = modules.some((module) => module.id === idPart)
-    ? (idPart as ModuleId)
-    : 'odds'
-  const tab = ['learn', 'lab', 'check'].includes(tabPart) ? tabPart : 'learn'
+  const page: Page =
+    pagePart === 'connections'
+      ? 'map'
+      : ['path', 'map', 'lab', 'notebook', 'module'].includes(pagePart)
+        ? (pagePart as Page)
+        : 'path'
+  const id =
+    route.kind === 'module'
+      ? route.id
+      : route.kind === 'lab' && modules.some((m) => m.id === route.id)
+        ? (route.id as ModuleId)
+        : modules.some((module) => module.id === idPart)
+          ? (idPart as ModuleId)
+          : 'odds'
+  const tab =
+    route.kind === 'module'
+      ? route.tab
+      : ['learn', 'lab', 'check'].includes(tabPart)
+        ? tabPart
+        : 'learn'
   const progress: Progress = { version: 1, ...learning.store.legacy }
   const [mobileOpen, setMobileOpen] = useState(false)
   const mainRef = useRef<HTMLElement>(null)
-  const activeNav = page === 'module' ? 'path' : page
+  const activeNav =
+    route.kind === 'lab' || (route.kind === 'overview' && route.page === 'lab')
+      ? 'lab'
+      : route.kind === 'overview' && route.page === 'atlas'
+        ? 'map'
+        : foundationPage
+          ? null
+          : page === 'module'
+            ? 'path'
+            : page
   const percentage = Math.round(
     (progress.completed.length / modules.length) * 100,
   )
   const selected = moduleById[id]
   useEffect(() => {
     document.title = `${page === 'module' ? selected.title : (navItems.find((item) => item.id === page)?.label ?? 'Learn')} · QuantPoker`
-    mainRef.current?.querySelector('h1')?.focus({ preventScroll: true })
+    const focusHeading = () => {
+      const h = [...(mainRef.current?.querySelectorAll('h1') ?? [])].find(
+        (heading) => {
+          for (
+            let node: HTMLElement | null = heading;
+            node;
+            node = node.parentElement
+          )
+            if (
+              node.hidden ||
+              node.getAttribute('aria-hidden') === 'true' ||
+              node.style.display === 'none'
+            )
+              return false
+          return true
+        },
+      )
+      if (!h) return false
+      h.tabIndex = -1
+      h.focus({ preventScroll: true })
+      document.title = `${h.textContent} · QuantPoker`
+      return true
+    }
+    const observer = new MutationObserver(() => {
+      if (focusHeading()) observer.disconnect()
+    })
+    if (!focusHeading() && mainRef.current)
+      observer.observe(mainRef.current, { childList: true, subtree: true })
     window.scrollTo({ top: 0, behavior: 'instant' })
+    return () => observer.disconnect()
   }, [hash, page, selected.title])
   useEffect(() => {
     const changed = (event: StorageEvent) =>
@@ -884,21 +934,48 @@ export default function Curriculum({
             <ArrowLeft size={15} /> Return to table
           </a>
           <nav aria-label="Curriculum navigation">
-            <a href="#learn/foundations" onClick={() => setMobileOpen(false)}>
+            <a
+              href="#learn/foundations"
+              aria-current={
+                route.kind === 'unit' ||
+                (route.kind === 'overview' &&
+                  ['path', 'foundations'].includes(route.page))
+                  ? 'page'
+                  : undefined
+              }
+              onClick={() => setMobileOpen(false)}
+            >
               Foundation units
             </a>
-            <a href="#learn/pathways" onClick={() => setMobileOpen(false)}>
+            <a
+              href="#learn/pathways"
+              aria-current={
+                route.kind === 'pathway' ||
+                (route.kind === 'overview' && route.page === 'pathways')
+                  ? 'page'
+                  : undefined
+              }
+              onClick={() => setMobileOpen(false)}
+            >
               Four pathways
             </a>
             <a href="#learn/atlas" onClick={() => setMobileOpen(false)}>
               96-family atlas
             </a>
-            <a href="#learn/reviews" onClick={() => setMobileOpen(false)}>
+            <a
+              href="#learn/reviews"
+              aria-current={
+                route.kind === 'overview' && route.page === 'reviews'
+                  ? 'page'
+                  : undefined
+              }
+              onClick={() => setMobileOpen(false)}
+            >
               Delayed reviews
             </a>
             {navItems.map(({ id: navId, label, icon: Icon }) => (
               <a
-                href={`#learn/${navId}`}
+                href={`#learn/${navId === 'path' ? 'core' : navId}`}
                 key={navId}
                 aria-current={activeNav === navId ? 'page' : undefined}
                 onClick={() => setMobileOpen(false)}

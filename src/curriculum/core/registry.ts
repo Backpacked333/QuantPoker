@@ -4,6 +4,19 @@ import { foundations, fragmentSlots } from '../content/foundations'
 import { pathways } from '../content/pathways'
 import { sources } from '../content/sources'
 import { validateCase } from './assessment'
+import { independentFragment } from '../content/foundationCases/independent'
+import { calibrationFragment } from '../experiences/calibration/cases'
+import { sourceRecords as calibrationSources } from '../experiences/calibration/sources'
+import { selectionFragment } from '../experiences/selection/cases'
+import { selectionSources } from '../experiences/selection/sources'
+import { informationFragments } from '../experiences/information/cases'
+import { informationSources } from '../experiences/information/sources'
+import { contractFragments } from '../experiences/contracts/cases'
+import { contractSources } from '../experiences/contracts/sources'
+import { solvencyFragments } from '../experiences/solvency/cases'
+import { solvencySources } from '../experiences/solvency/sources'
+import { backtestFragment } from '../experiences/backtest/cases'
+import { sources as backtestSources } from '../experiences/backtest/sources'
 import {
   experienceIds,
   legacyIds,
@@ -45,10 +58,22 @@ export class CurriculumRegistry {
         : ('planned' as const),
     }))
   }
-  conceptAvailability(id: string): Availability {
+  conceptAvailability(
+    id: string,
+    level: 'introductory' | 'research' = 'introductory',
+  ): Availability {
     const concept = atlas.concepts.find((c) => c.id === id)
     if (!concept) throw new RangeError('Unknown concept family.')
-    // A linked introductory case never means the entire research family has shipped.
+    if (level === 'research') return 'planned'
+    if (
+      [...this.units.values()].some(
+        (u) =>
+          u.availability === 'available' &&
+          u.conceptIds.includes(id) &&
+          u.transferCaseIds.length >= 3,
+      )
+    )
+      return 'available'
     return concept.legacy_resources.length ||
       concept.r1_unit_links.some(
         (id) => this.units.get(id as never)?.availability === 'available',
@@ -238,3 +263,77 @@ export class CurriculumRegistry {
   }
 }
 export const registry = new CurriculumRegistry()
+for (const records of [
+  calibrationSources,
+  selectionSources,
+  informationSources,
+  contractSources,
+  solvencySources,
+  backtestSources,
+])
+  registry.registerSources(records)
+for (const fragment of [
+  calibrationFragment,
+  selectionFragment,
+  ...informationFragments,
+  ...contractFragments,
+  ...solvencyFragments,
+  backtestFragment,
+  independentFragment,
+])
+  registry.installFragment(fragment)
+const f05 = registry.units.get('f05')!
+registry.units.set('f05', {
+  ...f05,
+  lesson: {
+    ...f05.lesson!,
+    brief: [
+      ...f05.lesson!.brief,
+      'Observed labels can be selected by funding, disclosure or survival. Before updating, define the target population and which outcomes were recorded. Zero observation rates make inverse corrections unavailable.',
+    ],
+    transfer: [
+      ...f05.lesson!.transfer,
+      'Selection variants contrast observed prevalence with a target-population correction under known positive observation rates; never silently fill missing counterfactual labels.',
+    ],
+    limitation: `${f05.lesson!.limitation} Selection corrections additionally assume known positive recording rates and comparable outcome labels.`,
+  },
+})
+const f10 = registry.units.get('f10')!
+registry.units.set('f10', {
+  ...f10,
+  transferCaseIds: [...f10.transferCaseIds].sort(
+    (a, b) =>
+      Number(b.startsWith('f10-independent')) -
+      Number(a.startsWith('f10-independent')),
+  ),
+  reviewCaseIds: [...f10.reviewCaseIds].sort(
+    (a, b) =>
+      Number(b.startsWith('f10-independent')) -
+      Number(a.startsWith('f10-independent')),
+  ),
+})
+const loaders: Record<ExperienceId, ExperienceRegistration['load']> = {
+  calibration: () => import('../experiences/calibration/Entry'),
+  selection: () => import('../experiences/selection/Entry'),
+  information: () => import('../experiences/information/Entry'),
+  contracts: () => import('../experiences/contracts/Entry'),
+  solvency: () => import('../experiences/solvency/Entry'),
+  backtest: () => import('../experiences/backtest/Entry'),
+}
+const versions: Record<ExperienceId, string> = {
+  calibration: 'calibration-model-v1',
+  selection: 'selection-v1',
+  information: '1.0.0',
+  contracts: '1.0',
+  solvency: 'solvency-v1',
+  backtest: 'bkt-1',
+}
+for (const id of experienceIds)
+  registry.registerExperience({
+    id,
+    title: titles[id],
+    version: versions[id],
+    passedGate: true,
+    load: loaders[id],
+  })
+registry.assertIntegrity()

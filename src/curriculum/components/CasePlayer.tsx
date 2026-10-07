@@ -187,6 +187,36 @@ export function CasePlayer({
       <p>
         <strong>Assumptions:</strong> {c.assumptions.join(' ')}
       </p>
+      {c.mode === 'partial' && !attempt.submittedAt ? (
+        <section>
+          <h4>Partial scaffold</h4>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() =>
+              save({
+                ...attempt,
+                assistance: {
+                  ...attempt.assistance,
+                  hintIds: [
+                    ...new Set([
+                      ...attempt.assistance.hintIds,
+                      ...c.questions.map((q) => `${q.id}:0`),
+                      ...c.questions.map((q) => `${q.id}:1`),
+                    ]),
+                  ],
+                },
+              })
+            }
+          >
+            Open the information and principle scaffold (marks assisted)
+          </button>
+          <p>
+            Finish the still-uncomputed quantities below; use a fresh transfer
+            for unaided evidence.
+          </p>
+        </section>
+      ) : null}
       {!attempt.committedAt ? (
         <PredictionForm
           initial={attempt.prediction}
@@ -281,6 +311,7 @@ export function CasePlayer({
             })}
             <label>
               Written defense (ungraded, up to2,000 characters)
+              <span>{c.reflectionPrompt}</span>
               <textarea
                 maxLength={2000}
                 disabled={!!attempt.submittedAt}
@@ -319,6 +350,34 @@ export function CasePlayer({
               <li key={s}>{s}</li>
             ))}
           </ol>
+          <button
+            type="button"
+            className="button secondary"
+            onClick={() =>
+              save({
+                id: crypto.randomUUID(),
+                parentAttemptId: attempt.id,
+                unitId: c.unitId,
+                caseId: c.id,
+                contentVersion: c.contentVersion,
+                rubricVersion: c.rubricVersion,
+                modelVersion: 'foundation-cases-v1',
+                mode:
+                  c.mode === 'review'
+                    ? 'review'
+                    : c.mode === 'transfer'
+                      ? 'transfer'
+                      : 'practice',
+                createdAt: session.clock().toISOString(),
+                inputs: { caseId: c.id },
+                answers: {},
+                assistance: { hintIds: [], solutionViewed: false },
+                phase: 'draft',
+              })
+            }
+          >
+            Practice this variant again (no fresh unaided credit)
+          </button>
         </section>
       ) : null}
       <p>{c.constraints}</p>

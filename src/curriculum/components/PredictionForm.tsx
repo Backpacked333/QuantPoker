@@ -109,11 +109,17 @@ export function PredictionForm({
         id={`${id}-estimate`}
         type="number"
         step="any"
+        aria-describedby={error ? `${id}-error` : undefined}
         value={estimate}
         onChange={(e) => {
           setEstimate(e.target.value)
           if (e.target.value.trim() && Number.isFinite(Number(e.target.value)))
             update({ ...prediction, numericEstimate: Number(e.target.value) })
+          else if (!e.target.value.trim()) {
+            const next = { ...prediction }
+            delete next.numericEstimate
+            update(next)
+          }
         }}
       />
       <label htmlFor={`${id}-confidence`}>
@@ -125,6 +131,7 @@ export function PredictionForm({
         min={0}
         max={100}
         step="any"
+        aria-describedby={error ? `${id}-error` : undefined}
         value={confidence}
         onChange={(e) => {
           setConfidence(e.target.value)
@@ -140,9 +147,14 @@ export function PredictionForm({
         id={`${id}-rationale`}
         value={prediction.rationale}
         maxLength={2000}
+        aria-describedby={error ? `${id}-error` : undefined}
         onChange={(e) => update({ ...prediction, rationale: e.target.value })}
       />
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <p id={`${id}-error`} role="alert">
+          {error}
+        </p>
+      ) : null}
       <button className="button" type="submit">
         Commit prediction
       </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { generateCoachEvents } from './coach'
+import { runCoach } from './coach'
 import { visibleCoachState } from '../src/lib/coach'
 import type { CoachSnapshot } from '../src/lib/coach'
 import { guidedHand, legalActions } from '../src/lib/poker'
@@ -45,7 +45,7 @@ async function configuration(changes: Partial<CoachSnapshot> = {}) {
     probe: null,
     ...changes,
   }
-  const events = generateCoachEvents(
+  const events = runCoach(
     { snapshot, messages: [{ role: 'user', content: 'Explain' }] },
     new AbortController().signal,
   )

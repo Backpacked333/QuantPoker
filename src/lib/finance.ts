@@ -103,19 +103,24 @@ export function bankrollRisk({
   const netOdds = profitOnWin / amountAtRisk
   const up = 1 + fraction * netOdds
   const down = 1 - fraction
-  const floor = bankroll * ruinFloor
-  let surviving = new Map<number, number>([[0, 1]])
-  let ruinProbability = 0
+  const logBankroll = Math.log(bankroll)
+  const logUp = Math.log(up)
+  const logDown = Math.log(down)
+  const logFloor = logBankroll + Math.log(ruinFloor)
+  const logWealth = (wins: number, losses: number) =>
+    logBankroll + (wins ? wins * logUp : 0) + (losses ? losses * logDown : 0)
+  let surviving = new Map<number, number>(ruinFloor === 1 ? [] : [[0, 1]])
+  let ruinProbability = ruinFloor === 1 ? 1 : 0
   for (let round = 0; round < horizon; round++) {
     const next = new Map<number, number>()
     for (const [wins, probability] of surviving) {
-      const upWealth = bankroll * up ** (wins + 1) * down ** (round - wins)
+      const upLogWealth = logWealth(wins + 1, round - wins)
       const upProbability = probability * equity
-      if (upWealth <= floor) ruinProbability += upProbability
+      if (upLogWealth <= logFloor) ruinProbability += upProbability
       else next.set(wins + 1, (next.get(wins + 1) ?? 0) + upProbability)
-      const downWealth = bankroll * up ** wins * down ** (round - wins + 1)
+      const downLogWealth = logWealth(wins, round - wins + 1)
       const downProbability = probability * (1 - equity)
-      if (downWealth <= floor) ruinProbability += downProbability
+      if (downLogWealth <= logFloor) ruinProbability += downProbability
       else next.set(wins, (next.get(wins) ?? 0) + downProbability)
     }
     surviving = next
@@ -128,10 +133,10 @@ export function bankrollRisk({
   const expectedBankroll = fraction === 0 ? bankroll : Math.exp(logExpected)
   const relativeVariance = Math.max(
     0,
-    1 - Math.exp(2 * logExpected - logSecondMoment),
+    -Math.expm1(2 * logExpected - logSecondMoment),
   )
   const finalDeviation =
-    relativeVariance === 0
+    fraction === 0 || equity === 1 || relativeVariance === 0
       ? 0
       : Math.exp(logSecondMoment / 2) * Math.sqrt(relativeVariance)
   let distribution = new Map<number, number>([[0, 1]])
@@ -145,7 +150,8 @@ export function bankrollRisk({
   }
   const outcomes = [...distribution]
     .map(([wins, probability]) => ({
-      wealth: bankroll * up ** wins * down ** (horizon - wins),
+      wealth:
+        fraction === 0 ? bankroll : Math.exp(logWealth(wins, horizon - wins)),
       probability,
     }))
     .sort((left, right) => left.wealth - right.wealth)

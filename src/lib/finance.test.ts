@@ -133,6 +133,38 @@ describe('finance models', () => {
     })
     expect(certain.logGrowth).toBeCloseTo(Math.log(2))
     expect(certain.ruinProbability).toBe(0)
+    expect(certain.finalDeviation).toBe(0)
+  })
+
+  it('keeps extreme bankroll quantiles finite without overflowing intermediate powers', () => {
+    const model = bankrollRisk({
+      bankroll: 1000,
+      equity: 0.55,
+      amountAtRisk: 10,
+      profitOnWin: 1000,
+      kellyScale: 1,
+      horizon: 300,
+      ruinFloor: 0.25,
+    })
+    expect(Math.log(model.fifthPercentile)).toBeCloseTo(
+      Math.log(2.6293161013587498e215),
+    )
+    expect(Math.log(model.median)).toBeCloseTo(Math.log(4.364608167401557e244))
+    expect(Math.log(model.ninetyFifthPercentile)).toBeCloseTo(
+      Math.log(7.245155668085713e273),
+    )
+    expect(Number.isFinite(model.ruinProbability)).toBe(true)
+    expect(
+      bankrollRisk({
+        bankroll: 1000,
+        equity: 0.55,
+        amountAtRisk: 100,
+        profitOnWin: 100,
+        kellyScale: 0,
+        horizon: 10,
+        ruinFloor: 1,
+      }).ruinProbability,
+    ).toBe(1)
   })
   it('models folds, calls, and raises from the current decision forward', () => {
     expect(

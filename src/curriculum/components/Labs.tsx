@@ -15,10 +15,13 @@ import { allInCashout, bankrollRisk } from '../../lib/finance'
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`
 const number = (value: number) =>
-  value.toLocaleString('en-US', {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-  })
+  Number.isFinite(value)
+    ? value.toLocaleString('en-US', {
+        notation: Math.abs(value) >= 1e9 ? 'scientific' : 'standard',
+        maximumFractionDigits: 2,
+        minimumFractionDigits: 2,
+      })
+    : 'Beyond numeric range'
 const signed = (value: number) => `${value > 0 ? '+' : ''}${number(value)}`
 
 function Slider({

@@ -2,7 +2,7 @@
 
 **Play the hand. Understand the odds.**
 
-QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. A heads-up Texas Hold’em table sits beside a live finance panel: estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance.
+QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. Play heads-up Texas Hold’em on a focused game screen with a live **Quant lab** alongside it on desktop: estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance. On smaller screens, open **Hand insights** for the same learning tools.
 
 This is a **single-player educational web app**, not an online gambling service, multiplayer platform, trading tool, or source of investment advice.
 
@@ -66,7 +66,69 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
-On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
+### The Decision Room
+
+The game uses a charcoal-and-lilac play surface instead of a simulated casino table.
+The opponent, community board and your own hand occupy separate rows; card ranks
+and suits never overlap, and stack labels never cover the cards. Pot size and a
+four-street progress indicator sit above the board. The action dock stays beneath
+your hand, with responsive sizing for desktop and portrait phones. Very short
+viewports or expanded custom controls can scroll rather than clip the game.
+
+- **Decision strip.** Next to the buttons: the price of calling (share of the final
+  pot), your estimated equity from visible cards, and the modeled EV of calling.
+  **Explain** opens the full analysis. Price is available immediately; equity is
+  marked approximate and appears when the worker finishes its visible-card estimate.
+- **Actions.** Large Fold, Check/Call and Bet/Raise buttons show the exact amount.
+  Min, ½ pot, ¾ pot, pot and all-in/effective-maximum presets update the raise
+  button in one tap. Select the chip-total dropdown for the slider, numeric entry
+  and ±1 big blind stepper; editing the amount updates the action button live.
+  Maximum-effective bets require confirmation. No action timer is imposed.
+- **Play and learn together.** At widths of 1100px and above, the **Learning studio** is
+  docked on the right by default, with its own scroll area. The game keeps playing
+  while the graphs and explanations follow the visible hand. Hide the panel for a
+  wider table, or use **Explain** to open/focus it without placing a bet. The table's
+  Pause control still stops play when you want time to study.
+- **A teaching surface, not just a dashboard.** A white/lilac learning studio and
+  light application frame separate education from the dark poker game. Each lens
+  follows **Understand → Predict → Explore → Apply**: a learning goal, a prediction,
+  misconception-specific feedback, a worked example, named graph experiments,
+  and a transfer question connecting poker to financial decisions. Call-price
+  examples use the current pot and capped call cost; insurance practice explicitly
+  labels its hypothetical probabilities. Free checks teach zero *additional*
+  exposure rather than inventing a bet. No AI key is required for these lessons.
+- **Explore without gates.** All teaching steps and the live graph remain available
+  without completing a quiz. **Experiment controls** exposes action comparisons,
+  hand context and raise assumptions; advanced details, next-card scenarios, 3D,
+  coach and full lessons remain available. A guided graph experiment restores the
+  call/check baseline and clears next-card hypotheticals without playing an action.
+  Practice answers survive model sizing/estimate updates and hiding the panel, but
+  reset when the hand, visible board, pot, call price or lens changes. The two-check
+  counter is per-decision practice, not persistent course completion or mastery.
+- **Small-screen insights.** Below 1100px, **Hand insights** opens a closed-by-default
+  drawer that pauses Atlas and the staged hand. A native modal dialog provides
+  focus containment, Escape dismissal and focus restoration. Desktop and mobile
+  visibility preferences are independent; resizing or hiding the panel keeps the
+  same mounted model and coach conversation until the hand/review changes.
+- **Pacing.** Dealing, chip movement, street reveals, opponent-card reveal and pot
+  settlement are choreographed separately; all-in boards reveal flop → turn → river.
+  The immutable engine determines every result; animation never changes cards or
+  payouts, and controls and Atlas wait for the sequence. Analysis and history follow
+  the **displayed** frame, so a runout never exposes future cards early. Folded
+  opponent cards stay hidden; showdowns spotlight the winner’s best five cards.
+- **Settings.** Quick play shortens presentation and bot delays. Optional keyboard
+  actions use F/C/R and N (next hand) and are disabled in dialogs and editable
+  controls. Optional synthesized sounds require a user gesture and default to muted.
+  Pause freezes presentation and Atlas; dialogs also suspend the table. Reduced
+  motion is respected live.
+
+These presentation settings are session-local. This does not introduce multiplayer,
+new poker rules, real money, or a stronger opponent model.
+
+On narrow screens, the game adapts to portrait and Hand insights fills the screen
+when opened. Reduced-motion preferences, keyboard-operable controls, native modal
+focus handling, and text equivalents for chart formulas are included. 3D requires
+WebGL; if unavailable, the calculations and lessons remain usable.
 
 ## The math and its limits
 
@@ -127,7 +189,7 @@ These are **conceptual connections**, not measured correlations with financial a
 | Equity       | Worker in `src/lib/equity.worker.ts`; visible-information Monte Carlo                                                    |
 | Finance      | Pure functions in `src/lib/finance.ts` shared with charts/tests                                                          |
 | 3D           | Lazy-loaded Three.js + OrbitControls; raycast inspection, numerical probes, animated marker; static under reduced motion |
-| Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts             |
+| Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts            |
 | Persistence  | Versioned, validated browser localStorage in `src/lib/storage.ts`                                                        |
 | Fonts        | Bundled DM Sans and Manrope (Fontsource, SIL Open Font License); no Google Fonts requests                                |
 | CI           | GitHub Actions: clean install, typecheck, lint, tests, production build                                                  |

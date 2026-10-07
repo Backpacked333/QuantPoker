@@ -1,47 +1,58 @@
 import { rankName, SUITS } from '../lib/poker'
 import type { Card } from '../lib/poker'
+import type { CSSProperties } from 'react'
+
+const SUIT_NAMES = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' }
 
 export function PlayingCard({
   card,
   back = false,
-  small = false,
   empty = false,
+  highlight = false,
+  delay = 0,
+  label,
 }: {
   card?: Card
   back?: boolean
-  small?: boolean
   empty?: boolean
+  highlight?: boolean
+  delay?: number
+  label?: string
 }) {
+  const style = { '--deal-delay': `${delay}ms` } as CSSProperties
   if (empty)
     return (
-      <div className="playing-card empty-card" aria-label="Card not dealt yet">
-        <span>♠</span>
+      <div className="pc pc-empty" aria-label="Card not dealt yet">
+        {label && <span>{label}</span>}
       </div>
     )
   if (back || !card)
     return (
       <div
-        className={`playing-card card-back ${small ? 'small-card' : ''}`}
+        className="pc pc-back"
+        role="img"
         aria-label="Hidden opponent card"
+        style={style}
       >
-        <div>♠</div>
+        <span aria-hidden="true">♠</span>
       </div>
     )
   const red = card.suit === 'h' || card.suit === 'd'
+  const rank = card.rank === 10 ? '10' : rankName(card.rank)
   return (
     <div
-      className={`playing-card ${red ? 'red-card' : ''} ${small ? 'small-card' : ''}`}
-      aria-label={`${rankName(card.rank)} of ${{ s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' }[card.suit]}`}
+      className={`pc pc-face ${red ? 'pc-red' : ''} ${highlight ? 'pc-win' : ''}`}
+      role="img"
+      aria-label={`${rankName(card.rank)} of ${SUIT_NAMES[card.suit]}`}
+      style={style}
     >
-      <div className="card-corner">
-        <b>{rankName(card.rank)}</b>
-        <span>{SUITS[card.suit]}</span>
-      </div>
-      <span className="card-pip">{SUITS[card.suit]}</span>
-      <div className="card-corner corner-bottom">
-        <b>{rankName(card.rank)}</b>
-        <span>{SUITS[card.suit]}</span>
-      </div>
+      <span className="pc-index" aria-hidden="true">
+        <span className="pc-rank">{rank}</span>
+        <span className="pc-suit-sm">{SUITS[card.suit]}</span>
+      </span>
+      <span className="pc-suit" aria-hidden="true">
+        {SUITS[card.suit]}
+      </span>
     </div>
   )
 }

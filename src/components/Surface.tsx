@@ -73,10 +73,10 @@ function addLabel(
   context.font = font
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.strokeStyle = '#071610'
+  context.strokeStyle = '#111219'
   context.lineWidth = 12
   context.strokeText(text, canvas.width / 2, 34)
-  context.fillStyle = '#eaf5dc'
+  context.fillStyle = '#f0eff7'
   context.fillText(text, canvas.width / 2, 34)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -159,7 +159,7 @@ export default function Surface({
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = 1.15
-    renderer.setClearColor(0x07140f, 1)
+    renderer.setClearColor(0x111219, 1)
     container.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
@@ -173,13 +173,13 @@ export default function Surface({
     controls.minPolarAngle = 0.01
     controls.maxPolarAngle = Math.PI / 2.05
     controls.update()
-    const ambient = new THREE.HemisphereLight(0xc9ffe5, 0x07100d, 2.1)
-    const key = new THREE.DirectionalLight(0xffefd0, 3.6)
+    const ambient = new THREE.HemisphereLight(0xded8ff, 0x0b0b11, 2.1)
+    const key = new THREE.DirectionalLight(0xf0eff7, 3.6)
     key.position.set(-3, 6, 4)
-    const rim = new THREE.DirectionalLight(0x59bfff, 2.4)
+    const rim = new THREE.DirectionalLight(0xb6a6ff, 2.4)
     rim.position.set(4, 2, -5)
     scene.add(ambient, key, rim)
-    const grid = new THREE.GridHelper(3.8, 12, 0x547567, 0x18352b)
+    const grid = new THREE.GridHelper(3.8, 12, 0x5d567c, 0x292836)
     grid.position.y = -0.92
     scene.add(grid)
     const zero = new THREE.GridHelper(2.8, 1, 0xe7bd63, 0xe7bd63)
@@ -208,7 +208,7 @@ export default function Surface({
     const mesh = new THREE.Mesh(geometry, material)
     scene.add(mesh)
     const wireMaterial = new THREE.MeshBasicMaterial({
-      color: 0xd8f5e9,
+      color: 0xf0eff7,
       wireframe: true,
       transparent: true,
       opacity: 0.1,
@@ -217,14 +217,14 @@ export default function Surface({
     const markerGeometry = new THREE.SphereGeometry(0.07, 20, 20)
     const markerMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      emissive: 0x8cffc8,
+      emissive: 0xd1efa0,
       emissiveIntensity: 2,
     })
     const marker = new THREE.Mesh(markerGeometry, markerMaterial)
     scene.add(marker)
     const probeMaterial = new THREE.MeshStandardMaterial({
-      color: 0xf3b6ff,
-      emissive: 0x8d38b0,
+      color: 0xded8ff,
+      emissive: 0x7868bd,
       emissiveIntensity: 1.4,
     })
     const probe = new THREE.Mesh(markerGeometry, probeMaterial)
@@ -255,7 +255,7 @@ export default function Surface({
     scene.add(annotations, frontier, slice)
     const haloGeometry = new THREE.RingGeometry(0.1, 0.14, 24)
     const haloMaterial = new THREE.MeshBasicMaterial({
-      color: 0xa9db86,
+      color: 0xd1efa0,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.75,
@@ -405,10 +405,10 @@ export default function Surface({
     if (!resources) return
     const positions = resources.geometry.attributes.position
     const colors = resources.geometry.attributes.color
-    const deepLoss = new THREE.Color('#8f2948'),
-      loss = new THREE.Color('#ed714d'),
-      neutral = new THREE.Color('#f0ce72'),
-      high = new THREE.Color('#25c887')
+    const deepLoss = new THREE.Color('#9e3854'),
+      loss = new THREE.Color('#ff9baf'),
+      neutral = new THREE.Color('#b6a6ff'),
+      high = new THREE.Color('#d1efa0')
     const heightScale = heightScaleFor(lens, scenario)
     const scale = lens === 'insurance' ? scenario.risk : scenario.pot
     const range = surfaceRiskRange(scenario)

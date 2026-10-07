@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import { Crosshair, Move, RotateCcw } from 'lucide-react'
+import { Crosshair, Move, RotateCcw, Box, Eye, Layers3 } from 'lucide-react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import {
@@ -64,10 +64,10 @@ function addLabel(
   context.font = '600 36px sans-serif'
   context.textAlign = 'center'
   context.textBaseline = 'middle'
-  context.strokeStyle = '#f3f6ed'
-  context.lineWidth = 10
+  context.strokeStyle = '#071610'
+  context.lineWidth = 12
   context.strokeText(text, 256, 48)
-  context.fillStyle = '#325849'
+  context.fillStyle = '#eaf5dc'
   context.fillText(text, 256, 48)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
@@ -109,6 +109,9 @@ export default function Surface({
   } | null>(null)
   const markerY = useRef(0)
   const animation = useRef(0)
+  const viewAnimation = useRef(0)
+  const heightTargets = useRef<Float32Array | null>(null)
+  const markerTargetY = useRef(0)
   const [unavailable, setUnavailable] = useState(false)
   const riskRange = surfaceRiskRange(scenario)
   const probePoint =
@@ -137,28 +140,39 @@ export default function Surface({
       return
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setClearColor(0xf7f8f5, 0)
+    renderer.outputColorSpace = THREE.SRGBColorSpace
+    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.15
+    renderer.setClearColor(0x07140f, 1)
     container.appendChild(renderer.domElement)
     const scene = new THREE.Scene()
     const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100)
-    camera.position.set(4.3, 3.2, 4.8)
+    camera.position.set(4.5, 3.35, 4.8)
     const controls = new OrbitControls(camera, renderer.domElement)
     controls.target.set(0, 0.12, 0)
     controls.enablePan = false
-    controls.enableZoom = false
+    controls.enableZoom = true
+    controls.minDistance = 3.8
+    controls.maxDistance = 8.5
     controls.minPolarAngle = 0.2
     controls.maxPolarAngle = Math.PI / 2.05
     controls.update()
     controls.saveState()
-    const grid = new THREE.GridHelper(3.4, 8, 0xbfcac3, 0xe1e6df)
+    const ambient = new THREE.HemisphereLight(0xc9ffe5, 0x07100d, 2.1)
+    const key = new THREE.DirectionalLight(0xffefd0, 3.6)
+    key.position.set(-3, 6, 4)
+    const rim = new THREE.DirectionalLight(0x59bfff, 2.4)
+    rim.position.set(4, 2, -5)
+    scene.add(ambient, key, rim)
+    const grid = new THREE.GridHelper(3.8, 12, 0x547567, 0x18352b)
     grid.position.y = -0.92
     scene.add(grid)
-    const zero = new THREE.GridHelper(2.8, 1, 0x789080, 0x789080)
+    const zero = new THREE.GridHelper(2.8, 1, 0xe7bd63, 0xe7bd63)
     const zeroMaterial = zero.material as THREE.Material
     zeroMaterial.transparent = true
-    zeroMaterial.opacity = 0.22
+    zeroMaterial.opacity = 0.38
     scene.add(zero)
-    const geometry = new THREE.PlaneGeometry(2.8, 2.8, 32, 32)
+    const geometry = new THREE.PlaneGeometry(2.8, 2.8, 48, 48)
     geometry.rotateX(-Math.PI / 2)
     geometry.setAttribute(
       'color',
@@ -167,26 +181,37 @@ export default function Surface({
         3,
       ),
     )
-    const material = new THREE.MeshBasicMaterial({
+    const material = new THREE.MeshPhysicalMaterial({
       vertexColors: true,
       side: THREE.DoubleSide,
+      roughness: 0.46,
+      metalness: 0.08,
+      clearcoat: 0.32,
       transparent: true,
-      opacity: 0.84,
+      opacity: 0.94,
     })
     const mesh = new THREE.Mesh(geometry, material)
     scene.add(mesh)
     const wireMaterial = new THREE.MeshBasicMaterial({
-      color: 0x38745f,
+      color: 0xd8f5e9,
       wireframe: true,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.1,
     })
     scene.add(new THREE.Mesh(geometry, wireMaterial))
     const markerGeometry = new THREE.SphereGeometry(0.07, 20, 20)
-    const markerMaterial = new THREE.MeshBasicMaterial({ color: 0x163f32 })
+    const markerMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0x8cffc8,
+      emissiveIntensity: 2,
+    })
     const marker = new THREE.Mesh(markerGeometry, markerMaterial)
     scene.add(marker)
-    const probeMaterial = new THREE.MeshBasicMaterial({ color: 0x72518f })
+    const probeMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf3b6ff,
+      emissive: 0x8d38b0,
+      emissiveIntensity: 1.4,
+    })
     const probe = new THREE.Mesh(markerGeometry, probeMaterial)
     probe.scale.setScalar(0.65)
     probe.visible = false
@@ -194,11 +219,21 @@ export default function Surface({
     const annotations = new THREE.Group()
     const frontier = new THREE.Line(
       new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0xbb8d38, depthTest: false }),
+      new THREE.LineBasicMaterial({
+        color: 0xffcb58,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.95,
+      }),
     )
     const slice = new THREE.Line(
       new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({ color: 0xf7ffee, depthTest: false }),
+      new THREE.LineBasicMaterial({
+        color: 0xffffff,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.92,
+      }),
     )
     frontier.renderOrder = 2
     slice.renderOrder = 2
@@ -219,6 +254,25 @@ export default function Surface({
       controls.reset()
       render()
     }
+    const moveCamera = (position: THREE.Vector3) => {
+      cancelAnimationFrame(viewAnimation.current)
+      const from = camera.position.clone(),
+        started = performance.now()
+      const frame = (now: number) => {
+        const progress = Math.min(1, (now - started) / 520)
+        const eased = 1 - Math.pow(1 - progress, 3)
+        camera.position.lerpVectors(from, position, eased)
+        camera.lookAt(controls.target)
+        controls.update()
+        render()
+        if (progress < 1) viewAnimation.current = requestAnimationFrame(frame)
+      }
+      viewAnimation.current = requestAnimationFrame(frame)
+    }
+    container.dataset.cameraReady = 'true'
+    ;(
+      container as HTMLDivElement & { moveCamera?: typeof moveCamera }
+    ).moveCamera = moveCamera
     world.current = {
       renderer,
       camera,
@@ -243,6 +297,24 @@ export default function Surface({
       '(prefers-reduced-motion: reduce)',
     ).matches
     const tick = (time: number) => {
+      const positions = geometry.attributes.position
+      const targets = heightTargets.current
+      if (targets && !reduceMotion) {
+        let moving = false
+        for (let index = 0; index < positions.count; index++) {
+          const next =
+            positions.getY(index) +
+            (targets[index] - positions.getY(index)) * 0.1
+          moving ||= Math.abs(targets[index] - next) > 0.0002
+          positions.setY(index, next)
+        }
+        if (moving) {
+          positions.needsUpdate = true
+          geometry.computeVertexNormals()
+        }
+      }
+      markerY.current +=
+        (markerTargetY.current - markerY.current) * (reduceMotion ? 1 : 0.12)
       marker.position.y =
         markerY.current + (reduceMotion ? 0 : Math.sin(time / 260) * 0.025)
       if (!reduceMotion)
@@ -253,6 +325,7 @@ export default function Surface({
     tick(0)
     return () => {
       cancelAnimationFrame(animation.current)
+      cancelAnimationFrame(viewAnimation.current)
       resize.disconnect()
       controls.dispose()
       geometry.dispose()
@@ -283,9 +356,10 @@ export default function Surface({
     if (!resources) return
     const positions = resources.geometry.attributes.position
     const colors = resources.geometry.attributes.color
-    const low = new THREE.Color('#bca7df'),
-      neutral = new THREE.Color('#d8e1c8'),
-      high = new THREE.Color('#48a989')
+    const deepLoss = new THREE.Color('#8f2948'),
+      loss = new THREE.Color('#ed714d'),
+      neutral = new THREE.Color('#f0ce72'),
+      high = new THREE.Color('#25c887')
     const heightScale = heightScaleFor(lens, scenario)
     const scale = lens === 'insurance' ? scenario.risk : scenario.pot
     const range = surfaceRiskRange(scenario)
@@ -371,17 +445,27 @@ export default function Surface({
           ),
       ),
     )
+    const targets = new Float32Array(positions.count)
+    const reduceMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
     for (let index = 0; index < positions.count; index++) {
       const x = (positions.getX(index) + 1.4) / 2.8
       const z = (positions.getZ(index) + 1.4) / 2.8
       const value = liveSurfaceValue(lens, x, z, scenario)
-      positions.setY(index, value * heightScale)
+      targets[index] = value * heightScale
+      if (reduceMotion || !heightTargets.current)
+        positions.setY(index, targets[index])
       const color =
         value < 0
-          ? low.clone().lerp(neutral, clamp(value + 1))
-          : neutral.clone().lerp(high, clamp(value))
+          ? deepLoss
+              .clone()
+              .lerp(loss, clamp(value + 1))
+              .lerp(neutral, clamp(value + 0.08))
+          : neutral.clone().lerp(high, clamp(value * 1.35))
       colors.setXYZ(index, color.r, color.g, color.b)
     }
+    heightTargets.current = targets
     positions.needsUpdate = true
     colors.needsUpdate = true
     resources.geometry.computeVertexNormals()
@@ -396,11 +480,12 @@ export default function Surface({
                 (Math.max(1, scenario.pot) * surfaceRiskRange(scenario)),
             ),
           }
-    markerY.current =
+    markerTargetY.current =
       liveSurfaceValue(lens, point.x, point.z, scenario) * heightScale + 0.06
+    if (markerY.current === 0) markerY.current = markerTargetY.current
     resources.marker.position.set(
       point.x * 2.8 - 1.4,
-      markerY.current,
+      markerTargetY.current,
       point.z * 2.8 - 1.4,
     )
     resources.render()
@@ -438,12 +523,29 @@ export default function Surface({
     onInspect({ x, z })
   }
 
+  function cameraView(view: 'overview' | 'top' | 'edge') {
+    const moveCamera = (
+      host.current as
+        | (HTMLDivElement & {
+            moveCamera?: (position: THREE.Vector3) => void
+          })
+        | null
+    )?.moveCamera
+    moveCamera?.(
+      view === 'top'
+        ? new THREE.Vector3(0.01, 6.2, 0.01)
+        : view === 'edge'
+          ? new THREE.Vector3(5.5, 1.45, 0.2)
+          : new THREE.Vector3(4.5, 3.35, 4.8),
+    )
+  }
+
   return (
     <>
       <div className="surface-card">
         <div className="surface-toolbar">
           <span>
-            <i className="tiny-dot" /> LIVE DECISION TERRAIN
+            <i className="tiny-dot" /> LIVE · ENGINE-PRICED TERRAIN
           </span>
           <button
             className="icon-button"
@@ -454,11 +556,26 @@ export default function Surface({
           </button>
         </div>
         <div
+          className="terrain-views"
+          role="group"
+          aria-label="3D camera views"
+        >
+          <button onClick={() => cameraView('overview')}>
+            <Box size={12} /> Perspective
+          </button>
+          <button onClick={() => cameraView('top')}>
+            <Layers3 size={12} /> Contours
+          </button>
+          <button onClick={() => cameraView('edge')}>
+            <Eye size={12} /> Break-even
+          </button>
+        </div>
+        <div
           className="surface-viewport"
           ref={host}
           role="img"
           aria-label={`${labels[lens][2]} surface, with ${labels[lens][0]} and ${labels[lens][1]}. Drag to rotate or point at the surface to inspect scenarios.`}
-          onPointerMove={inspect}
+          onClick={inspect}
         />
         {inspection && (
           <div className="surface-inspector" aria-live="polite">
@@ -490,12 +607,26 @@ export default function Surface({
             ? labels[lens][1]
             : `Capital / pot · 0–${surfaceRiskRange(scenario)}×`}
         </span>
+        <div className="terrain-key" aria-hidden="true">
+          <span>
+            <i className="loss" /> LOSS
+          </span>
+          <span>
+            <i className="edge" /> ZERO EV
+          </span>
+          <span>
+            <i className="gain" /> GAIN
+          </span>
+          <span>
+            <i className="slice" /> CURRENT RISK SLICE
+          </span>
+        </div>
         <div className="surface-footer">
           <span>
             <i className="scenario-dot" /> {markerLabel}
           </span>
           <span>
-            <Move size={12} /> Drag + point to explore
+            <Move size={12} /> Drag · zoom · click to inspect
           </span>
         </div>
       </div>

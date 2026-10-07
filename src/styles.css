@@ -3760,6 +3760,152 @@ input:disabled {
 .decision-chart .surface-viewport {
   min-height: 300px;
 }
+.decision-chart .surface-card {
+  height: 430px;
+  border: 1px solid #28493c;
+  border-radius: 14px;
+  background: #07140f;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 18px 42px rgba(13, 38, 28, 0.18);
+}
+.decision-chart .surface-card:after {
+  display: none;
+}
+.decision-chart .surface-toolbar {
+  top: 13px;
+  left: 15px;
+  z-index: 5;
+}
+.decision-chart .surface-toolbar > span {
+  color: #b8d5c7;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+}
+.decision-chart .surface-toolbar button {
+  color: #dbebdf;
+  background: rgba(255, 255, 255, 0.07);
+}
+.decision-chart .tiny-dot {
+  width: 6px;
+  height: 6px;
+  background: #63efad;
+  box-shadow: 0 0 12px #63efad;
+}
+.terrain-views {
+  position: absolute;
+  z-index: 5;
+  top: 48px;
+  left: 14px;
+  display: flex;
+  gap: 5px;
+}
+.terrain-views button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(177, 218, 197, 0.2);
+  border-radius: 999px;
+  padding: 6px 8px;
+  background: rgba(6, 20, 14, 0.76);
+  color: #c8dbcf;
+  font:
+    600 8px 'DM Sans',
+    sans-serif;
+  letter-spacing: 0.2px;
+  backdrop-filter: blur(8px);
+}
+.terrain-views button:hover,
+.terrain-views button:focus-visible {
+  border-color: #79dba9;
+  color: white;
+}
+.decision-chart .surface-inspector {
+  top: 84px;
+  right: 14px;
+  border-color: rgba(200, 236, 216, 0.25);
+  background: rgba(7, 20, 15, 0.82);
+  color: #b9cec1;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+}
+.decision-chart .surface-inspector strong {
+  color: #f4d482;
+}
+.decision-chart .axis {
+  display: none;
+}
+.terrain-key {
+  position: absolute;
+  z-index: 4;
+  left: 15px;
+  bottom: 42px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  pointer-events: none;
+  color: #9eb8aa;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+.terrain-key span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.terrain-key i {
+  width: 14px;
+  height: 3px;
+  border-radius: 4px;
+  background: #fff;
+}
+.terrain-key .loss {
+  background: #db4f54;
+}
+.terrain-key .edge {
+  background: #ffcb58;
+  box-shadow: 0 0 7px #ffcb58;
+}
+.terrain-key .gain {
+  background: #25c887;
+}
+.terrain-key .slice {
+  background: white;
+}
+.decision-chart .surface-footer {
+  z-index: 4;
+  color: #b8cbbf;
+  left: 15px;
+  right: 15px;
+  bottom: 13px;
+  font-size: 8px;
+}
+.decision-chart .surface-footer .scenario-dot {
+  background: #74f0b0;
+  box-shadow: 0 0 10px #74f0b0;
+}
+.decision-chart .surface-viewport canvas {
+  touch-action: none !important;
+}
+@media (max-width: 600px) {
+  .decision-chart .surface-card {
+    height: 380px;
+  }
+  .terrain-views button {
+    padding: 6px;
+    font-size: 0;
+  }
+  .terrain-views button svg {
+    width: 14px;
+    height: 14px;
+  }
+  .terrain-key {
+    gap: 8px;
+    right: 12px;
+  }
+}
 .decision-story {
   margin-top: 22px;
 }

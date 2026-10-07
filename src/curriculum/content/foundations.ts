@@ -137,6 +137,37 @@ export const fragmentSlots: readonly FragmentSlot[] = [
     ],
   },
   {
+    id: 'f09-solvency',
+    unitId: 'f09',
+    owner: 'A05',
+    purpose:
+      'Solvency qualification to contingent promises; base F09 remains complete.',
+    minTransfer: 1,
+    minReview: 1,
+    requiredTopics: [
+      'promise versus actual payment',
+      'funding is not revenue',
+      'state-by-state unpaid claim',
+      'counterparty limitation',
+    ],
+  },
+  {
+    id: 'f10-solvency',
+    unitId: 'f10',
+    owner: 'A05',
+    purpose:
+      'Required capital/funding fragments for the independent F10 warranty/common-event scenario; A07 supplies the complete lesson.',
+    minTransfer: 1,
+    minReview: 1,
+    requiredTopics: [
+      'warranty/common event',
+      'strict claims > funds default',
+      'payment plus unpaid claim equals promise',
+      'shortfall size and funding',
+      'decision-changing assumption',
+    ],
+  },
+  {
     id: 'f10-backtest',
     unitId: 'f10',
     owner: 'A06',

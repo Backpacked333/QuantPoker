@@ -143,7 +143,10 @@ describe('frozen route and registry contracts', () => {
         .filter((s) => ['f05', 'f07', 'f08', 'f10'].includes(s.unitId))
         .every(
           (s) =>
-            s.minTransfer === 3 && s.minReview === 3 && s.requiredTopics.length,
+            s.minTransfer ===
+              (s.id === 'f09-solvency' || s.id === 'f10-solvency' ? 1 : 3) &&
+            s.minReview === s.minTransfer &&
+            s.requiredTopics.length,
         ),
     ).toBe(true)
   })

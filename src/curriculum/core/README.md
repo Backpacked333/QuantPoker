@@ -192,28 +192,32 @@ installing; failed fragment validation is transactional.
 
 ### Exact fragment slots
 
-Every slot requires ≥3 transfer **and** ≥3 review cases, correct versions and sources.
+Main banks require ≥3 transfer **and** ≥3 review cases, correct versions and sources.
+The explicit A05 supplementary F09/F10 slots require ≥1 of each; they do not replace
+the main three-variant unit banks.
 `content/foundations.ts` contains the normative per-slot `requiredTopics` checklist.
 The installer validates structure/coverage; parent editorial review verifies topics
 and numerical variation rather than trusting keyword matching.
 
-| Slot              | Owner | Lesson responsibility / availability                                  |
-| ----------------- | ----- | --------------------------------------------------------------------- |
-| `f05-calibration` | A01   | full F05 lesson, Bayes/Beta worked/partial/practice, forecasting bank |
-| `f05-selection`   | A02   | selected-evidence/positivity bank; required for F05                   |
-| `f03-information` | A03   | optional signal extension to already-complete F03                     |
-| `f05-information` | A03   | optional Bayes/information-value bridge                               |
-| `f07-solvency`    | A05   | full F07 dependence/pooling/funding lesson and banks                  |
-| `f08-contracts`   | A04   | full F08 contingent-payoff lesson and banks                           |
-| `f09-contracts`   | A04   | optional protection/obligation extension to complete F09              |
-| `f10-information` | A03   | cross-cutting information-value banks                                 |
-| `f10-backtest`    | A06   | frozen-policy/held-out evidence reliability banks                     |
-| `f10-independent` | A07   | complete F10 lesson and6-item independent finance bank                |
+| Slot              | Owner | Lesson responsibility / availability                                            |
+| ----------------- | ----- | ------------------------------------------------------------------------------- |
+| `f05-calibration` | A01   | full F05 lesson, Bayes/Beta worked/partial/practice, forecasting bank           |
+| `f05-selection`   | A02   | selected-evidence/positivity bank; required for F05                             |
+| `f03-information` | A03   | optional signal extension to already-complete F03                               |
+| `f05-information` | A03   | optional Bayes/information-value bridge                                         |
+| `f07-solvency`    | A05   | full F07 dependence/pooling/funding lesson and banks                            |
+| `f08-contracts`   | A04   | full F08 contingent-payoff lesson and banks                                     |
+| `f09-contracts`   | A04   | optional protection/obligation extension to complete F09                        |
+| `f09-solvency`    | A05   | optional promise/payment/counterparty qualification; at least 1 transfer/review |
+| `f10-information` | A03   | cross-cutting information-value banks                                           |
+| `f10-backtest`    | A06   | frozen-policy/held-out evidence reliability banks                               |
+| `f10-solvency`    | A05   | required capital/common-event funding bank; at least 1 transfer/review          |
+| `f10-independent` | A07   | complete F10 lesson and6-item independent finance bank                          |
 
 F05 requires calibration+selection; F07 requires solvency; F08 requires contracts;
-F10 requires independent+information+backtest. Optional slots do not prevent existing
-base units from being available. A05 can request additional F09/F10 supplemental
-slots through the parent; it must not silently install into an A04/A07-owned slot.
+F10 requires independent+information+solvency+backtest. Optional slots do not prevent
+existing base units from being available. A05 has separate named F09/F10 slots and
+must not install into an A04/A07-owned slot.
 
 ## Assessment, evidence and storage
 

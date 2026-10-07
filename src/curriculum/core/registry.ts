@@ -140,7 +140,12 @@ export class CurriculumRegistry {
       f05: ['f05-calibration', 'f05-selection'],
       f07: ['f07-solvency'],
       f08: ['f08-contracts'],
-      f10: ['f10-independent', 'f10-information', 'f10-backtest'],
+      f10: [
+        'f10-independent',
+        'f10-information',
+        'f10-solvency',
+        'f10-backtest',
+      ],
     }
     if (
       next.lesson &&

@@ -61,7 +61,7 @@ function addLabel(
   x: number,
   y: number,
   z: number,
-  width = 1,
+  heightTick = false,
 ) {
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')
@@ -84,7 +84,13 @@ function addLabel(
     new THREE.SpriteMaterial({ map: texture, depthTest: false }),
   )
   sprite.position.set(x, y, z)
-  sprite.scale.set(width, (width * canvas.height) / canvas.width, 1)
+  const fontHeight = 0.18
+  sprite.scale.set(
+    (canvas.width / 42) * fontHeight,
+    (canvas.height / 42) * fontHeight,
+    1,
+  )
+  sprite.userData.heightTick = heightTick
   sprite.renderOrder = 3
   group.add(sprite)
 }
@@ -257,7 +263,18 @@ export default function Surface({
     const halo = new THREE.Mesh(haloGeometry, haloMaterial)
     halo.rotateX(-Math.PI / 2)
     marker.add(halo)
-    const render = () => renderer.render(scene, camera)
+    const viewDirection = new THREE.Vector3()
+    const render = () => {
+      const topView =
+        Math.abs(
+          viewDirection.copy(camera.position).sub(controls.target).normalize()
+            .y,
+        ) > 0.9
+      for (const label of annotations.children) {
+        label.visible = !label.userData.heightTick || !topView
+      }
+      renderer.render(scene, camera)
+    }
     controls.addEventListener('change', render)
     const motionPreference = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
@@ -403,7 +420,6 @@ export default function Surface({
         coordinate * 2.8 - 1.4,
         -0.96,
         -1.65,
-        0.65,
       )
       addLabel(
         resources.annotations,
@@ -413,7 +429,6 @@ export default function Surface({
         1.75,
         -0.96,
         coordinate * 2.8 - 1.4,
-        0.8,
       )
     }
     for (const height of [-0.78, 0, 0.78])
@@ -423,7 +438,7 @@ export default function Surface({
         -1.75,
         height,
         1.65,
-        0.95,
+        true,
       )
     const frontierPoints: THREE.Vector3[] = []
     for (

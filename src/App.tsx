@@ -1,0 +1,973 @@
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  BookOpen,
+  Check,
+  ChevronRight,
+  CircleCheck,
+  Clock3,
+  ExternalLink,
+  FlaskConical,
+  GitBranch,
+  GraduationCap,
+  LayoutGrid,
+  Menu,
+  Network,
+  NotebookPen,
+  Search,
+  ShieldCheck,
+  Spade,
+  Target,
+  X,
+} from "lucide-react";
+import {
+  modules,
+  moduleById,
+  totalMinutes,
+  type Module,
+  type ModuleId,
+} from "./curriculum";
+import { Checkpoint } from "./components/Checkpoint";
+import { Lab } from "./components/Labs";
+import {
+  emptyProgress,
+  loadProgress,
+  STORAGE_KEY,
+  type Progress,
+} from "./lib/progress";
+
+type Page = "path" | "map" | "lab" | "notebook" | "module";
+const stages = [
+  "All modules",
+  "Foundations",
+  "Decision science",
+  "Market mechanics",
+] as const;
+const navItems = [
+  { id: "path", label: "Learning path", icon: LayoutGrid },
+  { id: "map", label: "Concept map", icon: Network },
+  { id: "lab", label: "Practice lab", icon: FlaskConical },
+  { id: "notebook", label: "My notebook", icon: NotebookPen },
+] as const;
+const subscribe = (listener: () => void) => {
+  window.addEventListener("hashchange", listener);
+  return () => window.removeEventListener("hashchange", listener);
+};
+const getHash = () => window.location.hash;
+const moduleHref = (id: ModuleId, tab = "learn") => `#module/${id}/${tab}`;
+
+function HeroArt() {
+  return (
+    <div className="hero-art" aria-hidden="true">
+      <div className="art-grid" />
+      <div className="orbit orbit-one" />
+      <div className="orbit orbit-two" />
+      <svg className="art-line" viewBox="0 0 400 220">
+        <defs>
+          <linearGradient id="lineFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#a4cbb5" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#a4cbb5" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M20 190 L65 163 L97 177 L135 124 L170 142 L201 100 L232 118 L276 64 L315 74 L365 20 V220 H20Z"
+          fill="url(#lineFill)"
+        />
+        <path
+          d="M20 190 L65 163 L97 177 L135 124 L170 142 L201 100 L232 118 L276 64 L315 74 L365 20"
+          fill="none"
+          stroke="#80b69d"
+          strokeWidth="2"
+        />
+        <circle cx="365" cy="20" r="5" fill="#d5e8b8" />
+      </svg>
+      <div className="art-card card-back">
+        <span>
+          K<small>♣</small>
+        </span>
+        <b>♣</b>
+      </div>
+      <div className="art-card card-front">
+        <span>
+          A<small>♠</small>
+        </span>
+        <b>♠</b>
+        <span className="card-corner">A</span>
+      </div>
+      <div className="art-chip chip-one">+EV</div>
+      <div className="art-chip chip-two">Δ</div>
+      <div className="art-caption">
+        <span className="tiny-dot" /> SAME MATH. A NEW PERSPECTIVE.
+      </div>
+    </div>
+  );
+}
+
+function ModuleCard({
+  module,
+  completed,
+  next,
+}: {
+  module: Module;
+  completed: boolean;
+  next: boolean;
+}) {
+  return (
+    <a
+      className={`module-card ${next ? "recommended" : ""} ${completed ? "complete-card" : ""}`}
+      href={moduleHref(module.id)}
+    >
+      <div className="module-card-top">
+        <span className={`module-number ${completed ? "done" : ""}`}>
+          {completed ? <Check size={19} /> : module.number}
+        </span>
+        <span className="card-time">
+          <Clock3 size={12} /> {module.minutes} min
+        </span>
+      </div>
+      <div className="module-poker">{module.poker}</div>
+      <h3>{module.title}</h3>
+      <p>{module.subtitle}</p>
+      <div className="connection">
+        <GitBranch size={14} />
+        <span>{module.finance}</span>
+      </div>
+      <div className="module-card-bottom">
+        <span>
+          {completed
+            ? "Completed · revisit"
+            : next
+              ? "Start here"
+              : module.stage}
+        </span>
+        <ArrowUpRight size={18} />
+      </div>
+    </a>
+  );
+}
+
+function LearningPath({ completed }: { completed: ModuleId[] }) {
+  const [filter, setFilter] = useState<(typeof stages)[number]>("All modules");
+  const next = modules.find((module) => !completed.includes(module.id));
+  const visible = modules.filter(
+    (module) => filter === "All modules" || module.stage === filter,
+  );
+  return (
+    <>
+      <section className="page-heading">
+        <div>
+          <div className="eyebrow">THE QUANTPOKER CURRICULUM</div>
+          <h1 tabIndex={-1}>A better way to think about risk.</h1>
+          <p>Start at the poker table. Build intuition for the markets.</p>
+        </div>
+        <span className="outline-badge">
+          <GraduationCap size={15} /> Learn by doing
+        </span>
+      </section>
+      <section className="hero">
+        <div className="hero-copy">
+          <div className="hero-kicker">
+            <span /> FROM THE FELT TO THE MARKET
+          </div>
+          <h2>
+            Different games.
+            <br />
+            Same <em>edge.</em>
+          </h2>
+          <p>
+            Turn poker instincts into quantitative intuition. Explore the
+            mathematics behind every call, every hedge, and every calculated
+            risk.
+          </p>
+          <a
+            className="button hero-button"
+            href={moduleHref(next?.id ?? "odds")}
+          >
+            {completed.length === modules.length
+              ? "Revisit the curriculum"
+              : completed.length
+                ? "Continue learning"
+                : "Start your learning path"}
+            <ArrowRight size={17} />
+          </a>
+          <div className="hero-meta">
+            <span>7 connected modules</span>
+            <i /> <span>At your own pace</span>
+          </div>
+        </div>
+        <HeroArt />
+      </section>
+      <div className="curriculum-metrics">
+        <div>
+          <span className="stat-icon">
+            <BookOpen size={18} />
+          </span>
+          <strong>
+            7<span>Core modules</span>
+          </strong>
+        </div>
+        <div>
+          <span className="stat-icon">
+            <FlaskConical size={18} />
+          </span>
+          <strong>
+            7<span>Interactive labs</span>
+          </strong>
+        </div>
+        <div>
+          <span className="stat-icon">
+            <Clock3 size={18} />
+          </span>
+          <strong>
+            ~{Math.round(totalMinutes / 60)} hrs<span>Of focused learning</span>
+          </strong>
+        </div>
+        <div>
+          <span className="stat-icon">
+            <Target size={18} />
+          </span>
+          <strong>
+            {completed.length} / 7<span>Modules completed</span>
+          </strong>
+        </div>
+      </div>
+      <section className="path-section">
+        <div className="section-heading">
+          <div>
+            <div className="eyebrow">YOUR LEARNING PATH</div>
+            <h2>Build your edge, one concept at a time.</h2>
+          </div>
+          <a href="#map" className="text-button">
+            See the connections <ArrowUpRight size={15} />
+          </a>
+        </div>
+        <div
+          className="filter-tabs"
+          role="group"
+          aria-label="Filter modules by stage"
+        >
+          {stages.map((stage) => (
+            <button
+              key={stage}
+              aria-pressed={filter === stage}
+              onClick={() => setFilter(stage)}
+            >
+              {stage}
+              {stage === "All modules" ? <span>7</span> : null}
+            </button>
+          ))}
+        </div>
+        <div className="module-grid">
+          {visible.map((module) => (
+            <ModuleCard
+              key={module.id}
+              module={module}
+              completed={completed.includes(module.id)}
+              next={module.id === next?.id}
+            />
+          ))}
+        </div>
+      </section>
+      <section className="bridge-banner">
+        <span className="bridge-icon">
+          <ShieldCheck size={27} />
+        </span>
+        <div>
+          <h3>Good intuition knows its limits.</h3>
+          <p>
+            Poker isn’t a stock market. Every lesson explains the connection—and
+            exactly where the analogy stops.
+          </p>
+        </div>
+        <a className="text-button" href="#map">
+          Explore the map <ArrowRight size={16} />
+        </a>
+      </section>
+    </>
+  );
+}
+
+function ConceptMap({ completed }: { completed: ModuleId[] }) {
+  const [query, setQuery] = useState("");
+  const [focus, setFocus] = useState("All connections");
+  const filters = [
+    "All connections",
+    "Probability",
+    "Pricing",
+    "Risk & hedging",
+  ];
+  const focusIds: Record<string, ModuleId[]> = {
+    Probability: ["odds", "outs", "equity"],
+    Pricing: ["odds", "pricing", "replication"],
+    "Risk & hedging": ["fold", "variance", "replication"],
+  };
+  const visible = modules.filter(
+    (module) =>
+      (focus === "All connections" || focusIds[focus].includes(module.id)) &&
+      `${module.title} ${module.poker} ${module.finance} ${module.tags.join(" ")}`
+        .toLowerCase()
+        .includes(query.toLowerCase().trim()),
+  );
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">ONE IDEA, TWO PERSPECTIVES</div>
+          <h1 tabIndex={-1}>Follow the connections.</h1>
+          <p>A map of the shared mathematics—and the important differences.</p>
+        </div>
+        <Network size={32} className="heading-icon" />
+      </div>
+      <div className="map-toolbar">
+        <label className="search-field">
+          <Search size={18} />
+          <input
+            aria-label="Search concepts"
+            placeholder="Search equity, volatility, delta…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+        <div
+          className="filter-tabs"
+          role="group"
+          aria-label="Filter concept connections"
+        >
+          {filters.map((item) => (
+            <button
+              key={item}
+              aria-pressed={focus === item}
+              onClick={() => setFocus(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="map-column-labels">
+        <span>AT THE POKER TABLE</span>
+        <span>IN THE FINANCIAL MARKETS</span>
+      </div>
+      <div className="concept-map">
+        {visible.map((module) => (
+          <article className="map-row" key={module.id}>
+            <div className="map-connection">
+              <div>
+                <span className="map-number">{module.number}</span>
+                <h2>{module.poker}</h2>
+                {completed.includes(module.id) ? (
+                  <CircleCheck size={16} className="green" />
+                ) : null}
+              </div>
+              <div className="map-arrow">
+                <span />
+                <ArrowRight size={20} />
+                <span />
+              </div>
+              <h3>{module.finance}</h3>
+              <a
+                href={moduleHref(module.id)}
+                aria-label={`Explore ${module.poker}`}
+              >
+                <ArrowUpRight size={20} />
+              </a>
+            </div>
+            <p>{module.bridge}</p>
+            <details>
+              <summary>Where the analogy stops</summary>
+              <p>{module.boundary}</p>
+            </details>
+            <div className="prerequisite-links">
+              <span>Builds on</span>
+              {module.prerequisites.length ? (
+                module.prerequisites.map((id) => (
+                  <a href={moduleHref(id)} key={id}>
+                    {moduleById[id].poker}
+                    <ArrowUpRight size={12} />
+                  </a>
+                ))
+              ) : (
+                <span>No prerequisites</span>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+      {visible.length === 0 ? (
+        <div className="empty-state">
+          <Search size={30} />
+          <h2>No connections found</h2>
+          <p>Try a broader concept or clear your filters.</p>
+          <button
+            className="button secondary"
+            onClick={() => {
+              setQuery("");
+              setFocus("All connections");
+            }}
+          >
+            Clear filters
+          </button>
+        </div>
+      ) : null}
+      <p className="page-disclaimer">
+        Connections are teaching bridges, not equivalences. Open any module for
+        assumptions, examples, and a hands-on lab.
+      </p>
+    </>
+  );
+}
+
+function Lesson({
+  module,
+  tab,
+  progress,
+  onComplete,
+  onNote,
+}: {
+  module: Module;
+  tab: string;
+  progress: Progress;
+  onComplete: () => void;
+  onNote: (note: string) => void;
+}) {
+  const next = modules[modules.findIndex((item) => item.id === module.id) + 1];
+  const unmet = module.prerequisites.filter(
+    (id) => !progress.completed.includes(id),
+  );
+  return (
+    <>
+      <a className="back-link" href="#path">
+        <ArrowLeft size={15} /> Back to learning path
+      </a>
+      <div className="lesson-heading">
+        <div className="eyebrow">
+          MODULE {module.number} <span> / </span> {module.stage.toUpperCase()}
+        </div>
+        <h1 tabIndex={-1}>{module.title}</h1>
+        <p>{module.subtitle}</p>
+        <div className="lesson-meta">
+          <span>
+            <Clock3 size={14} /> {module.minutes} min
+          </span>
+          <span>
+            {module.poker}
+            <ArrowRight size={14} />
+            {module.finance}
+          </span>
+          {progress.completed.includes(module.id) ? (
+            <span className="green">
+              <CircleCheck size={14} /> Completed
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <nav className="lesson-tabs" aria-label="Module sections">
+        {[
+          { id: "learn", label: "The connection", icon: BookOpen },
+          { id: "lab", label: "Interactive lab", icon: FlaskConical },
+          { id: "check", label: "Checkpoint", icon: CircleCheck },
+        ].map(({ id, label, icon: Icon }) => (
+          <a
+            key={id}
+            href={moduleHref(module.id, id)}
+            aria-current={tab === id ? "page" : undefined}
+          >
+            <Icon size={16} />
+            {label}
+          </a>
+        ))}
+      </nav>
+      {tab === "lab" ? (
+        <Lab id={module.id} />
+      ) : tab === "check" ? (
+        <Checkpoint
+          key={module.id}
+          module={module}
+          completed={progress.completed.includes(module.id)}
+          onComplete={onComplete}
+          onNext={() => {
+            window.location.hash = next ? moduleHref(next.id) : "#path";
+          }}
+        />
+      ) : (
+        <div className="lesson-layout">
+          <div className="lesson-content">
+            {unmet.length ? (
+              <div className="prerequisite-note">
+                <GitBranch size={18} />
+                <div>
+                  Recommended first:{" "}
+                  {unmet.map((id, i) => (
+                    <span key={id}>
+                      {i ? ", " : ""}
+                      <a href={moduleHref(id)}>{moduleById[id].poker}</a>
+                    </span>
+                  ))}
+                  . You can still explore freely.
+                </div>
+              </div>
+            ) : null}
+            <section className="connection-panel">
+              <div className="eyebrow">THE CONNECTION</div>
+              <div className="connection-title">
+                <span>{module.poker}</span>
+                <ArrowRight size={20} />
+                <span>{module.finance}</span>
+              </div>
+              <p>{module.bridge}</p>
+            </section>
+            <div className="lesson-concepts">
+              {module.concepts.map((concept, i) => (
+                <section key={concept.title}>
+                  <span className="concept-step">0{i + 1}</span>
+                  <div>
+                    <h2>{concept.title}</h2>
+                    <p>{concept.body}</p>
+                  </div>
+                </section>
+              ))}
+            </div>
+            <section className="worked-example">
+              <div className="eyebrow">A WORKED EXAMPLE</div>
+              <h2>{module.scenario.title}</h2>
+              <p>{module.scenario.body}</p>
+              <div className="example-calculation">
+                {module.scenario.calculation}
+              </div>
+              <p>{module.scenario.takeaway}</p>
+            </section>
+            <section className="boundary-box">
+              <ShieldCheck size={21} />
+              <div>
+                <h3>Where the analogy stops</h3>
+                <p>{module.boundary}</p>
+              </div>
+            </section>
+            <div className="lesson-bottom">
+              <a
+                className="source-link"
+                href={module.source.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Further reading: {module.source.label}
+                <ExternalLink size={13} />
+              </a>
+              <a href={moduleHref(module.id, "lab")} className="button primary">
+                Try it in the lab
+                <ArrowRight size={16} />
+              </a>
+            </div>
+          </div>
+          <aside className="lesson-aside">
+            <section className="objective-card">
+              <Target size={21} />
+              <h3>What you’ll take away</h3>
+              <ul>
+                {module.objectives.map((objective) => (
+                  <li key={objective}>
+                    <Check size={14} />
+                    {objective}
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="formula-card">
+              <div className="eyebrow">KEEP THIS HANDY</div>
+              <p>{module.formula}</p>
+              <small>{module.formulaKey}</small>
+            </section>
+            <section className="note-card">
+              <label htmlFor={`note-${module.id}`}>
+                <NotebookPen size={16} /> Your field notes
+              </label>
+              <textarea
+                id={`note-${module.id}`}
+                placeholder="What clicked? What surprised you?"
+                maxLength={10000}
+                value={progress.notes[module.id] ?? ""}
+                onChange={(event) => onNote(event.target.value)}
+              />
+              <small>Private to this browser · saved as you type</small>
+            </section>
+          </aside>
+        </div>
+      )}
+      {tab === "lab" ? (
+        <div className="after-lab">
+          <span>Got a feel for the numbers?</span>
+          <a href={moduleHref(module.id, "check")} className="button primary">
+            Check your understanding
+            <ArrowRight size={16} />
+          </a>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function Practice({ selectedId }: { selectedId: ModuleId }) {
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">LESS THEORY. MORE WHAT-IF.</div>
+          <h1 tabIndex={-1}>Your decision playground.</h1>
+          <p>Change an assumption. See the consequences. Build intuition.</p>
+        </div>
+        <FlaskConical size={32} className="heading-icon" />
+      </div>
+      <label className="lab-picker">
+        Choose your experiment
+        <select
+          value={selectedId}
+          onChange={(event) => {
+            window.location.hash = `#lab/${event.target.value}`;
+          }}
+        >
+          {modules.map((module) => (
+            <option value={module.id} key={module.id}>
+              {module.number} · {module.poker} → {module.finance}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Lab key={selectedId} id={selectedId} />
+      <div className="after-lab">
+        <span>Want the reasoning behind the model?</span>
+        <a className="text-button" href={moduleHref(selectedId)}>
+          Read the lesson <ArrowUpRight size={15} />
+        </a>
+      </div>
+    </>
+  );
+}
+
+function Notebook({
+  progress,
+  onNote,
+  onReset,
+}: {
+  progress: Progress;
+  onNote: (id: ModuleId, note: string) => void;
+  onReset: () => void;
+}) {
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [exportError, setExportError] = useState(false);
+  function exportNotes() {
+    try {
+      const content =
+        "# QuantPoker field notes\n\n" +
+        modules
+          .map(
+            (module) =>
+              `## ${module.number}. ${module.title}\n${progress.completed.includes(module.id) ? "Completed" : "Not completed"}\n\n${progress.notes[module.id] || "(No notes yet)"}\n`,
+          )
+          .join("\n");
+      const url = URL.createObjectURL(
+        new Blob([content], { type: "text/markdown" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "quantpoker-notes.md";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setExportError(false);
+    } catch {
+      setExportError(true);
+    }
+  }
+  return (
+    <>
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">MAKE THE CONNECTIONS YOUR OWN</div>
+          <h1 tabIndex={-1}>Your field notes.</h1>
+          <p>Capture the ideas you’ll want to come back to.</p>
+        </div>
+        <button className="button secondary" onClick={exportNotes}>
+          <ArrowDown size={15} /> Export notes
+        </button>
+      </div>
+      {exportError ? (
+        <p role="alert">
+          Export is unavailable in this browser. Your notes remain here; you can
+          select and copy them.
+        </p>
+      ) : null}
+      <div className="notebook-grid">
+        {modules.map((module) => (
+          <section className="notebook-card" key={module.id}>
+            <div>
+              <span className="eyebrow">MODULE {module.number}</span>
+              {progress.completed.includes(module.id) ? (
+                <CircleCheck size={16} className="green" />
+              ) : null}
+            </div>
+            <a href={moduleHref(module.id)}>
+              {module.title}
+              <ArrowUpRight size={15} />
+            </a>
+            <label className="sr-only" htmlFor={`notebook-${module.id}`}>
+              Notes for {module.title}
+            </label>
+            <textarea
+              id={`notebook-${module.id}`}
+              value={progress.notes[module.id] ?? ""}
+              maxLength={10000}
+              onChange={(event) => onNote(module.id, event.target.value)}
+              placeholder="An insight, a question, a connection…"
+            />
+            <small>
+              {(progress.notes[module.id] ?? "").length.toLocaleString()} /
+              10,000 characters
+            </small>
+          </section>
+        ))}
+      </div>
+      <section className="local-data-panel">
+        <div>
+          <ShieldCheck size={20} />
+          <h3>Your learning stays with you.</h3>
+        </div>
+        <p>
+          Progress and notes are stored only in this browser. There’s no account
+          or cloud sync. Export your notes before clearing browser data.
+        </p>
+        {confirmReset ? (
+          <div className="reset-confirm" role="alert">
+            <p>
+              Delete all notes and completed checkpoints from this browser? This
+              cannot be undone.
+            </p>
+            <button
+              className="button danger"
+              onClick={() => {
+                onReset();
+                setConfirmReset(false);
+              }}
+            >
+              Delete my local learning data
+            </button>
+            <button
+              className="button secondary"
+              onClick={() => setConfirmReset(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            className="text-button danger-text"
+            onClick={() => setConfirmReset(true)}
+          >
+            Reset local learning data
+          </button>
+        )}
+      </section>
+    </>
+  );
+}
+
+export default function App() {
+  const hash = useSyncExternalStore(subscribe, getHash);
+  const [pagePart = "path", idPart = "odds", tabPart = "learn"] = hash
+    .replace(/^#/, "")
+    .split("/")
+    .filter(Boolean);
+  const page: Page = ["path", "map", "lab", "notebook", "module"].includes(
+    pagePart,
+  )
+    ? (pagePart as Page)
+    : "path";
+  const id = modules.some((module) => module.id === idPart)
+    ? (idPart as ModuleId)
+    : "odds";
+  const tab = ["learn", "lab", "check"].includes(tabPart) ? tabPart : "learn";
+  const [initial] = useState(loadProgress);
+  const [progress, setProgress] = useState(initial.progress);
+  const [storageAvailable, setStorageAvailable] = useState(initial.available);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const activeNav = page === "module" ? "path" : page;
+  const percentage = Math.round(
+    (progress.completed.length / modules.length) * 100,
+  );
+  const selected = moduleById[id];
+  useEffect(() => {
+    document.title = `${page === "module" ? selected.title : (navItems.find((item) => item.id === page)?.label ?? "Learn")} · QuantPoker`;
+    mainRef.current?.querySelector("h1")?.focus({ preventScroll: true });
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [hash, page, selected.title]);
+  function save(updated: Progress) {
+    setProgress(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      setStorageAvailable(true);
+    } catch {
+      setStorageAvailable(false);
+    }
+  }
+  function saveNote(noteId: ModuleId, note: string) {
+    save({ ...progress, notes: { ...progress.notes, [noteId]: note } });
+  }
+  return (
+    <div className="app-shell">
+      <a
+        href="#main-content"
+        className="skip-link"
+        onClick={(event) => {
+          event.preventDefault();
+          mainRef.current?.focus();
+        }}
+      >
+        Skip to content
+      </a>
+      {mobileOpen ? (
+        <button
+          className="sidebar-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
+      <aside className={`sidebar ${mobileOpen ? "open" : ""}`}>
+        <a className="brand" href="#path" onClick={() => setMobileOpen(false)}>
+          <span className="brand-icon">
+            <Spade size={21} fill="currentColor" />
+          </span>
+          <span>
+            Quant<span>Poker</span>
+            <small>THE MATHEMATICS OF AN EDGE</small>
+          </span>
+        </a>
+        <button
+          className="close-menu"
+          aria-label="Close navigation"
+          onClick={() => setMobileOpen(false)}
+        >
+          <X size={20} />
+        </button>
+        <div className="sidebar-label">YOUR WORKSPACE</div>
+        <nav aria-label="Main navigation">
+          {navItems.map(({ id: navId, label, icon: Icon }) => (
+            <a
+              href={`#${navId}`}
+              key={navId}
+              aria-current={activeNav === navId ? "page" : undefined}
+              onClick={() => setMobileOpen(false)}
+            >
+              <Icon size={18} />
+              <span>{label}</span>
+              {navId === "path" ? <span className="nav-count">7</span> : null}
+            </a>
+          ))}
+        </nav>
+        <div className="sidebar-progress">
+          <div>
+            <span>Your progress</span>
+            <strong>{percentage}%</strong>
+          </div>
+          <progress
+            value={progress.completed.length}
+            max={modules.length}
+            aria-label="Curriculum completion"
+          />
+          <small>{progress.completed.length} of 7 modules completed</small>
+        </div>
+        <div className="sidebar-bottom">
+          <div className="sidebar-quote">
+            <span>♠</span>
+            <p>
+              Don’t play the outcome.
+              <br />
+              <strong>Understand the odds.</strong>
+            </p>
+          </div>
+          <div className="learner">
+            <div className="learner-avatar">
+              <GraduationCap size={20} />
+            </div>
+            <div>
+              Independent learner<small>Local learning workspace</small>
+            </div>
+            <span className="online-dot" />
+          </div>
+        </div>
+      </aside>
+      <div className="main-shell">
+        <header className="topbar">
+          <div>
+            <button
+              className="menu-button"
+              aria-label="Open navigation"
+              aria-expanded={mobileOpen}
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu size={21} />
+            </button>
+            <span>Workspace</span>
+            <ChevronRight size={13} />
+            <strong>
+              {navItems.find((item) => item.id === activeNav)?.label}
+            </strong>
+            {page === "module" ? (
+              <>
+                <ChevronRight size={13} />
+                <span className="breadcrumb-module">
+                  Module {selected.number}
+                </span>
+              </>
+            ) : null}
+          </div>
+          <span className="topbar-note">
+            <span className="tiny-dot" /> A little more calculated.
+          </span>
+        </header>
+        <main ref={mainRef} id="main-content" tabIndex={-1}>
+          {!storageAvailable ? (
+            <div className="storage-warning" role="alert">
+              Browser storage is unavailable. You can keep learning, but changes
+              won’t survive a reload. Export your notes before leaving.
+            </div>
+          ) : null}
+          {page === "path" ? (
+            <LearningPath completed={progress.completed} />
+          ) : page === "map" ? (
+            <ConceptMap completed={progress.completed} />
+          ) : page === "lab" ? (
+            <Practice selectedId={id} />
+          ) : page === "notebook" ? (
+            <Notebook
+              progress={progress}
+              onNote={saveNote}
+              onReset={() => save(emptyProgress())}
+            />
+          ) : (
+            <Lesson
+              key={id}
+              module={selected}
+              tab={tab}
+              progress={progress}
+              onComplete={() => {
+                if (!progress.completed.includes(id))
+                  save({ ...progress, completed: [...progress.completed, id] });
+              }}
+              onNote={(note) => saveNote(id, note)}
+            />
+          )}
+          <footer>
+            <span>
+              <Spade size={13} /> QuantPoker{" "}
+              <span className="footer-divider">/</span> Better decisions start
+              with better questions.
+            </span>
+            <span>Educational models. Not financial advice.</span>
+          </footer>
+        </main>
+      </div>
+    </div>
+  );
+}

@@ -66,6 +66,37 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
+### The Decision Room
+
+The poker table is a cinematic, responsive play surface: illuminated textured felt,
+stitched and layered rails, custom card backs and court artwork, denomination-colored
+chip piles, visible street bets, dealer markers, and a highlighted active seat.
+Exact chip labels are authoritative; decorative stacks are visually capped, not a
+one-chip-per-chip rendering of the bankroll.
+
+- Dealing, chip movement, street reveals, opponent-card reveal, and pot settlement
+  are choreographed separately. All-in boards reveal flop → turn → river before
+  showdown. The original immutable engine determines the result; animation never
+  determines cards or changes payouts. Controls and Atlas wait for the sequence.
+- Analysis and history follow the **displayed** information, so a cinematic runout
+  does not expose future cards or final results early. Folded opponent cards stay
+  hidden. Showdowns spotlight the winner’s best five cards (one equivalent best
+  selection in a tied hand).
+- The action dock offers an editable chip total, a slider, minimum/half-pot/three-
+  quarter-pot/pot/effective-maximum presets, and explicit additional-chip costs.
+  Maximum-effective bets require confirmation, whether or not they exhaust the
+  hero’s stack. No automatic next hand or action timer is imposed.
+- **Focus mode** gives the table the full workspace without discarding the finance
+  panel’s state. **Quick play** shortens presentation and bot delays. Optional
+  keyboard actions use F/C/R and are disabled in dialogs and editable controls.
+- Optional synthesized card/chip/win cues require a user gesture and default to
+  muted. No external audio or image services are used. Pause freezes presentation
+  as well as Atlas; dialogs also suspend the table. Reduced-motion changes are
+  respected live, with short sequential reveals and no travel/flip animations.
+
+These presentation settings are session-local. This does not introduce multiplayer,
+new poker rules, real money, or a stronger opponent model.
+
 On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
 
 ## The math and its limits
@@ -127,7 +158,7 @@ These are **conceptual connections**, not measured correlations with financial a
 | Equity       | Worker in `src/lib/equity.worker.ts`; visible-information Monte Carlo                                                    |
 | Finance      | Pure functions in `src/lib/finance.ts` shared with charts/tests                                                          |
 | 3D           | Lazy-loaded Three.js + OrbitControls; raycast inspection, numerical probes, animated marker; static under reduced motion |
-| Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts             |
+| Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts            |
 | Persistence  | Versioned, validated browser localStorage in `src/lib/storage.ts`                                                        |
 | Fonts        | Bundled DM Sans and Manrope (Fontsource, SIL Open Font License); no Google Fonts requests                                |
 | CI           | GitHub Actions: clean install, typecheck, lint, tests, production build                                                  |

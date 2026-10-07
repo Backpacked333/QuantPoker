@@ -187,30 +187,44 @@ export function CasePlayer({
       <p>
         <strong>Assumptions:</strong> {c.assumptions.join(' ')}
       </p>
-      {c.mode === 'partial' && !attempt.submittedAt ? (
+      {c.mode === 'partial' ? (
         <section>
           <h4>Partial scaffold</h4>
-          <button
-            type="button"
-            className="button secondary"
-            onClick={() =>
-              save({
-                ...attempt,
-                assistance: {
-                  ...attempt.assistance,
-                  hintIds: [
-                    ...new Set([
-                      ...attempt.assistance.hintIds,
-                      ...c.questions.map((q) => `${q.id}:0`),
-                      ...c.questions.map((q) => `${q.id}:1`),
-                    ]),
-                  ],
-                },
-              })
-            }
-          >
-            Open the information and principle scaffold (marks assisted)
-          </button>
+          {attempt.assistance.hintIds.includes('scaffold:open') ? (
+            <ul>
+              {c.scaffold?.map((row) => (
+                <li key={row}>{row}</li>
+              ))}
+            </ul>
+          ) : null}
+          {!attempt.submittedAt ? (
+            <button
+              type="button"
+              className="button secondary"
+              disabled={attempt.assistance.hintIds.includes('scaffold:open')}
+              onClick={() =>
+                save({
+                  ...attempt,
+                  assistance: {
+                    ...attempt.assistance,
+                    hintIds: [
+                      ...new Set([
+                        ...attempt.assistance.hintIds,
+                        ...(c.scaffold
+                          ? ['scaffold:open']
+                          : c.questions.flatMap((q) => [
+                              `${q.id}:0`,
+                              `${q.id}:1`,
+                            ])),
+                      ]),
+                    ],
+                  },
+                })
+              }
+            >
+              Open the partial scaffold (marks assisted)
+            </button>
+          ) : null}
           <p>
             Finish the still-uncomputed quantities below; use a fresh transfer
             for unaided evidence.

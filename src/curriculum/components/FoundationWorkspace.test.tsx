@@ -211,6 +211,87 @@ describe('accessible frozen primitives and reference fixture', () => {
   })
 })
 describe('complete foundation bank interaction and honest availability', () => {
+  it.each([
+    ['f01', 'calculate', -10, 'currency units'],
+    ['f02', 'calculate', 46, 'unseen cards'],
+    ['f03', 'calculate', 30, 'currency units'],
+    ['f04', 'calculate', 400, 'currency units squared'],
+    ['f06', 'calculate', 0.06, 'fraction of current wealth'],
+    ['f09', 'calculate', 20, 'currency units'],
+    ['f10', 'ev', 6, 'currency units'],
+  ])(
+    'authors %s partial rows with the quantity promised by the lesson',
+    (unitId, questionId, expected, units) => {
+      const c = [...registry.cases.values()].find(
+        (c) => c.unitId === unitId && c.mode === 'partial',
+      )!
+      const q = c.questions.find((q) => q.id === questionId)!
+      expect(q).toMatchObject({ kind: 'numeric', expected, units })
+      expect(c.scaffold!.length).toBeGreaterThanOrEqual(3)
+      expect(c.contentVersion).toBe(2)
+      expect(c.rubricVersion).toBe(2)
+    },
+  )
+  it.each([
+    [-10, true],
+    [35, false],
+  ])(
+    'shows the supplied purchase row and grades failure profit %s, not success profit',
+    async (value, correct) => {
+      const c = baseCases.find((c) => c.id === 'f01-partial-1')!,
+        session = new LearningSession(new MemoryStorage(), fixedClock),
+        user = userEvent.setup()
+      const view = render(<CasePlayer caseRecord={c} session={session} />)
+      expect(
+        screen.queryByText(/Supplied purchase row:/),
+      ).not.toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: /Open the partial scaffold/ }),
+      )
+      expect(
+        screen.getByText(/Supplied purchase row: pay 10/),
+      ).toBeInTheDocument()
+      expect(screen.getByText(/Missing failure row:/)).toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: /Open the partial scaffold/ }),
+      ).toBeDisabled()
+      expect(session.store.attempts[0].assistance.hintIds).toContain(
+        'scaffold:open',
+      )
+      view.unmount()
+      render(
+        <CasePlayer
+          caseRecord={c}
+          session={new LearningSession(session.storage, fixedClock)}
+        />,
+      )
+      expect(
+        screen.getByText(/Supplied purchase row: pay 10/),
+      ).toBeInTheDocument()
+      await user.type(
+        screen.getByRole('textbox', { name: /Prediction rationale/ }),
+        'The purchase cost remains in the failure state.',
+      )
+      await user.click(
+        screen.getByRole('button', { name: 'Commit prediction' }),
+      )
+      fireEvent.change(
+        screen.getByRole('spinbutton', { name: /Complete the failure row/ }),
+        { target: { value: String(value) } },
+      )
+      await user.click(
+        screen.getByRole('button', { name: 'Submit structured answers' }),
+      )
+      const reloaded = new LearningSession(session.storage, fixedClock)
+      expect(
+        reloaded.store.attempts[0].evaluation?.components.find(
+          (q) => q.questionId === 'calculate',
+        )?.correct,
+      ).toBe(correct)
+      expect(reloaded.store.receipts[0].eligible).toBe(false)
+      expect(reloaded.store.reviewSchedule.f01).toBeUndefined()
+    },
+  )
   it('searches specialist/core labs by question, role and concept with only real URLs', () => {
     navigate('#learn/lab')
     render(<Curriculum />)

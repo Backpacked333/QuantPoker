@@ -397,9 +397,9 @@ function UnitLesson({
                   <p key={p}>{p}</p>
                 ))}
                 <p>
-                  Partial scaffold: list purchase cash flow first, then fill the
-                  still-uncomputed settlement, expectation or denominator. Hints
-                  reveal progressively and label assistance.
+                  Use the partial scaffold to work from supplied inputs toward
+                  the requested quantity. Opening a scaffold or hint marks
+                  assistance; a fresh transfer is needed for unaided evidence.
                 </p>
                 <CaseSelector ids={u.practiceCaseIds} session={session} />
               </>

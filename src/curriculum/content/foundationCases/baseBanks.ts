@@ -2,6 +2,20 @@ import type { Scenario } from './builders'
 import { bank } from './builders'
 import { kellySource, pricingSource, probabilitySource } from '../sources'
 
+function partial(
+  scenario: Scenario,
+  scaffold: readonly string[],
+  calculation: Partial<Scenario['calculation']> = {},
+  overrides: Partial<Scenario> = {},
+): Scenario {
+  return {
+    ...scenario,
+    ...overrides,
+    scaffold,
+    calculation: { ...scenario.calculation, ...calculation },
+  }
+}
+
 function ledger(
   title: string,
   cost: number,
@@ -717,7 +731,33 @@ export const baseCases = [
     f01Transfer,
     f01Review,
     ledger('Terminal call ledger', 25, 125, 100, { poker: true }),
-    ledger('License ledger: complete the failure row', 10, 45, 35),
+    partial(
+      ledger('License ledger: complete the failure row', 10, 45, 35),
+      [
+        'Supplied purchase row: pay 10 currency units now (cash flow −10).',
+        'Supplied success row: receive 45 at settlement; net success profit = 45 − 10 = 35.',
+        'Missing failure row: receive 0 at settlement. Combine that receipt with the purchase row to find net failure profit.',
+      ],
+      {
+        prompt:
+          'Complete the failure row: compute incremental net profit on failure.',
+        expected: -10,
+        rationale:
+          'Failure receives zero but the purchase payment is still incurred: 0 − 10 = −10.',
+      },
+      {
+        setup: {
+          prompt:
+            'Which ledger counts only cash flows changed by today’s action?',
+          correct:
+            'Subtract today’s purchase cost from each settlement receipt; decline adds zero.',
+          wrong:
+            'Count gross success receipts as profit and omit the purchase cost on failure.',
+          rationale:
+            'The current payment occurs in both settlement states; it is not a sunk cost at decision time.',
+        },
+      },
+    ),
     ledger('Storage permit with a known salvage payment', 15, 40, 25, {
       salvage: 4,
     }),
@@ -737,15 +777,31 @@ export const baseCases = [
       'a spade on the next card',
       'A spade improving a flush is not the same event as winning; opponent ranges conditioned on actions need another model.',
     ),
-    event(
-      'Missed-turn denominator',
-      'A non-spade turn has been observed; nine spades remain among 46 unseen cards.',
-      '9 spades',
-      '46 unseen cards',
-      9 / 46,
-      '9/46; the miss removed a non-spade, not an out.',
-      'river spade',
-      'Uniform deck arithmetic is not a model of strategic selection.',
+    partial(
+      event(
+        'Missed-turn denominator',
+        'There were 47 unseen cards including nine spades. A non-spade turn has now been observed; no spade was removed.',
+        '9 spades',
+        '46 unseen cards',
+        9 / 46,
+        '9/46; the miss removed a non-spade, not an out.',
+        'river spade',
+        'Uniform deck arithmetic is not a model of strategic selection.',
+      ),
+      [
+        'Supplied numerator: nine spades remain because the observed turn was a non-spade.',
+        'Supplied update: remove one observed card from the original 47 unseen cards.',
+        'Missing denominator: complete 9 / ___ for the river-spade probability.',
+      ],
+      {
+        prompt:
+          'Complete 9 / ___: how many unseen cards remain after the observed turn?',
+        expected: 46,
+        units: 'unseen cards',
+        tolerance: 0,
+        rationale:
+          '47 − 1 = 46 unseen cards. The numerator remains nine; the river-spade probability is 9/46.',
+      },
     ),
     event(
       'Paid option event',
@@ -764,7 +820,21 @@ export const baseCases = [
     f03Transfer,
     f03Review,
     value('Call-equivalent receipt', 0.3, 125, 25, 12.5),
-    value('Complete the EV ledger', 0.5, 60, 20, 10),
+    partial(
+      value('Complete the EV ledger', 0.5, 60, 20, 10),
+      [
+        'Supplied states: gross receipt 60 with probability .5, otherwise gross receipt 0.',
+        'Supplied purchase row: pay 20 once, regardless of settlement.',
+        'Missing expected-receipt row: .5 × 60 + .5 × 0 = ___. Then subtract 20 to obtain expected profit.',
+      ],
+      {
+        prompt:
+          'Complete the expected gross receipt before subtracting purchase price.',
+        expected: 30,
+        rationale:
+          'Expected gross receipt = .5 × 60 + .5 × 0 = 30. Expected profit is a different quantity: 30 − 20 = 10.',
+      },
+    ),
     value('An overpriced receipt', 0.3, 50, 20, -5),
     [probabilitySource, pricingSource],
   ),
@@ -780,13 +850,26 @@ export const baseCases = [
       'currency units',
       'Five independent losses have probability .7^5=.16807; a positive mean is not a short-run promise.',
     ),
-    variation(
-      'Finish the total-variance row',
-      'Four iid payoffs +10/−10 equally likely. Compute total standard deviation.',
-      20,
-      'One SD10, variance100; total variance4×100; SD20.',
-      'currency units',
-      'Total risk and average risk are different quantities.',
+    partial(
+      variation(
+        'Finish the total-variance row',
+        'Four iid payoffs +10/−10 equally likely. Compute total variance.',
+        400,
+        'One SD10, variance100; total variance4×100=400 currency units squared; total SD20 currency units.',
+        'currency units squared',
+        'Total risk and average risk are different quantities.',
+      ),
+      [
+        'Supplied one-trial mean: 0. One-trial variance: .5 × 10² + .5 × (−10)² = 100.',
+        'Independence allows variances to add: total variance = 4 × 100 = ___.',
+        'Total SD is the square root of total variance; do not enter SD in the variance row.',
+      ],
+      {
+        expected: 400,
+        units: 'currency units squared',
+        rationale:
+          'Four independent trials have total variance 4 × 100 = 400 currency units squared; total SD is 20 currency units.',
+      },
     ),
     variation(
       'Average of nine independent outcomes',
@@ -811,14 +894,21 @@ export const baseCases = [
       'Full nominal Kelly risks10% for the log-growth objective; half Kelly risks5%. Neither is a legal-action prescription.',
       'Understand nominal sizing versus protection preferences.',
     ),
-    preference(
-      'Complete current-wealth stake sizing',
-      'Known iid even-money p=.56. Compute HALF Kelly as a fraction of current wealth.',
-      0.06,
-      'Full =2×.56−1=.12; half=.06.',
-      'fraction of current wealth',
-      'Use6% of current wealth under the specified half-Kelly rule.',
-      'Apply a supplied fractional sizing rule.',
+    partial(
+      preference(
+        'Complete current-wealth stake sizing',
+        'Known iid even-money p=.56. Compute HALF Kelly as a fraction of current wealth.',
+        0.06,
+        'Full =2×.56−1=.12; half=.06.',
+        'fraction of current wealth',
+        'Use6% of current wealth under the specified half-Kelly rule.',
+        'Apply a supplied fractional sizing rule.',
+      ),
+      [
+        'Supplied full-Kelly fraction for known iid even-money p=.56: 2 × .56 − 1 = .12.',
+        'Missing half-Kelly row: divide the full fraction .12 by two.',
+        'Apply the resulting fraction to current wealth, not the initial bankroll; this is not a legal poker raise.',
+      ],
     ),
     preference(
       'Preference and affordability',
@@ -836,7 +926,33 @@ export const baseCases = [
     f09Transfer,
     f09Review,
     replicate('Stock100 and call100', 100, 120, 80, 100, 0.7, 10),
-    replicate('Complete the borrowing ledger', 50, 60, 40, 50, 0.6, 5),
+    partial(
+      replicate('Complete the borrowing ledger', 50, 60, 40, 50, 0.6, 5),
+      [
+        'Supplied call-payment rows: up pays 10; down pays 0.',
+        'Supplied share row: delta = (10 − 0)/(60 − 40) = .5 shares. These shares settle at 30 up and 20 down.',
+        'Missing borrowing row: choose debt so .5 × 40 − debt = 0. Check the same debt in the up state.',
+      ],
+      {
+        prompt:
+          'Complete the borrowing row: how much debt is owed at settlement?',
+        expected: 20,
+        rationale:
+          'Debt = .5 × 40 − 0 = 20. Up: 30 − 20 = 10; down: 20 − 20 = 0. Today’s hedge cost is 25 − 20 = 5.',
+      },
+      {
+        cashFlows:
+          'Hold .5 shares and subtract the same debt from their value in each terminal state. Compute the debt that reproduces the call payments.',
+        setup: {
+          prompt: 'Which equation determines the missing borrowing row?',
+          correct: '.5 × 40 − debt = 0, then check .5 × 60 − debt = 10.',
+          wrong:
+            'Use the physical up probability .6 as the share quantity and omit debt.',
+          rationale:
+            'The hedge must match both state payments, not just their physical expected value.',
+        },
+      },
+    ),
     replicate('Priced hedge versus physical claim', 60, 80, 40, 60, 0.8, 10),
     [pricingSource, probabilitySource],
   ),

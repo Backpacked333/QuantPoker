@@ -32,6 +32,7 @@ export interface Scenario {
   assumptions: readonly string[]
   connection: CaseRecord['connection']
   actions: readonly string[]
+  scaffold?: readonly string[]
 }
 function choice(
   id: string,
@@ -92,8 +93,8 @@ export function authorCase(
   return {
     id: `${unitId}-${mode}-${variant}`,
     unitId,
-    contentVersion: 1,
-    rubricVersion: 1,
+    contentVersion: s.scaffold ? 2 : 1,
+    rubricVersion: s.scaffold ? 2 : 1,
     title: s.title,
     mode,
     role: s.role,
@@ -115,6 +116,7 @@ export function authorCase(
       choice('limit', 'limitation', s.limitation, true),
       choice('reverse', 'interpretation', s.reversal),
     ],
+    ...(s.scaffold ? { scaffold: s.scaffold } : {}),
     workedSolution: s.solution,
     reflectionPrompt:
       'Defend the action in your own words. What information was missing, and which assumption would you investigate? This reflection is saved, never keyword-scored.',

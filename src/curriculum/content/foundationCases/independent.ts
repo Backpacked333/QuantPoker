@@ -614,7 +614,7 @@ function bridge(
   p: number,
 ): CaseRecord {
   const ev = p * receipt - cost
-  return authored(id, mode, {
+  const c = authored(id, mode, {
     title: `${mode === 'worked' ? 'Worked' : mode === 'partial' ? 'Partial' : 'Practice'} bridge — Single service permit`,
     role: 'Permit purchaser',
     objective:
@@ -650,10 +650,12 @@ function bridge(
       ),
       numeric(
         'ev',
-        'Expected incremental profit?',
-        ev,
         mode === 'partial'
-          ? `Partial scaffold: expected gross=${p}×${receipt}. Subtract the purchase cost once.`
+          ? 'Expected gross receipt before subtracting cost?'
+          : 'Expected incremental profit?',
+        mode === 'partial' ? p * receipt : ev,
+        mode === 'partial'
+          ? `Expected gross receipt=${p}×${receipt}=${p * receipt}. Expected profit then subtracts the purchase cost once: ${p * receipt}−${cost}=${ev}.`
           : `${p}×${receipt}−${cost}=${ev}.`,
         true,
       ),
@@ -693,6 +695,18 @@ function bridge(
     decisionReversal:
       'At which price or probability does buying become unattractive? What if payment is not guaranteed?',
   })
+  return mode === 'partial'
+    ? {
+        ...c,
+        contentVersion: 2,
+        rubricVersion: 2,
+        scaffold: [
+          `Supplied purchase row: pay ${cost} now; the prior application expense 7 is sunk.`,
+          `Supplied receipt states: ${receipt} on acceptance with probability ${p}, otherwise 0.`,
+          `Missing expected gross receipt: ${p} × ${receipt} + ${1 - p} × 0 = ___. Subtract the purchase cost only afterward.`,
+        ],
+      }
+    : c
 }
 export const independentCases = [
   bridge('worked', 'worked', 12, 50, 0.4),

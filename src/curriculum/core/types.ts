@@ -148,6 +148,7 @@ export interface CaseRecord {
   connection: ConnectionKind
   mode: 'worked' | 'partial' | 'practice' | 'transfer' | 'review'
   questions: readonly Question[]
+  scaffold?: readonly string[]
   workedSolution: readonly string[]
   reflectionPrompt: string
   decisionReversal: string

@@ -211,6 +211,18 @@ describe('accessible frozen primitives and reference fixture', () => {
   })
 })
 describe('complete foundation bank interaction and honest availability', () => {
+  it.each(['f02', 'f04'])(
+    'labels %s worked poker quantities as direct connections',
+    (unitId) => {
+      navigate(`#learn/unit/${unitId}/worked`)
+      render(<Curriculum />)
+      expect(screen.getByText('Same decision mathematics')).toBeInTheDocument()
+      const c = baseCases.find(
+        (c) => c.unitId === unitId && c.mode === 'worked',
+      )!
+      expect(c.connection).toBe('direct')
+    },
+  )
   it.each([
     ['f01', 'calculate', -10, 'currency units'],
     ['f02', 'calculate', 46, 'unseen cards'],

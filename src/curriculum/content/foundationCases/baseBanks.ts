@@ -100,6 +100,7 @@ function event(
   formula: string,
   eventName: string,
   boundary: string,
+  connection: Scenario['connection'] = 'separate-finance',
 ): Scenario {
   return {
     title,
@@ -164,7 +165,7 @@ function event(
       'Counts are equally weighted unless weights are explicitly given.',
       'No unseen private state is used to condition the forecast.',
     ],
-    connection: 'separate-finance',
+    connection,
     actions: [
       'Report the named event probability',
       'Withhold an unsupported profit forecast',
@@ -260,6 +261,7 @@ function variation(
   formula: string,
   units: string,
   interpretation: string,
+  connection: Scenario['connection'] = 'separate-finance',
 ): Scenario {
   return {
     title,
@@ -324,7 +326,7 @@ function variation(
     assumptions: [
       'Explicit finite two-outcome distribution; independence is stipulated, not inferred from more simulation.',
     ],
-    connection: 'separate-finance',
+    connection,
     actions: [
       'Report a modeled distribution',
       'Do not promise a guaranteed realized return',
@@ -776,6 +778,7 @@ export const baseCases = [
       'P(next spade) =9/47. Across two cards: 1−(38/47)(37/46)=.3496762257169288; after a missed turn:9/46.',
       'a spade on the next card',
       'A spade improving a flush is not the same event as winning; opponent ranges conditioned on actions need another model.',
+      'direct',
     ),
     partial(
       event(
@@ -787,6 +790,7 @@ export const baseCases = [
         '9/46; the miss removed a non-spade, not an out.',
         'river spade',
         'Uniform deck arithmetic is not a model of strategic selection.',
+        'direct',
       ),
       [
         'Supplied numerator: nine spades remain because the observed turn was a non-spade.',
@@ -849,6 +853,7 @@ export const baseCases = [
       'Mean =12.5; variance=.3×87.5^2+.7×(−37.5)^2=3281.25; SD=sqrt(3281.25).',
       'currency units',
       'Five independent losses have probability .7^5=.16807; a positive mean is not a short-run promise.',
+      'direct',
     ),
     partial(
       variation(

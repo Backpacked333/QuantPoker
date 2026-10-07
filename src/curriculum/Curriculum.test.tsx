@@ -100,6 +100,9 @@ describe('learning workspace', () => {
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Risk & hedging' }))
     expect(
+      screen.getByRole('heading', { name: 'All-in cashouts & bankroll' }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('heading', { name: 'Variance' }),
     ).toBeInTheDocument()
     expect(

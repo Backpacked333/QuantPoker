@@ -767,7 +767,7 @@ export default function App() {
             href="#learn/path"
             onClick={() => setDialog(null)}
           >
-            Explore the full seven-module curriculum <ArrowRight size={15} />
+            Explore the full curriculum <ArrowRight size={15} />
           </a>
         </Modal>
       )}

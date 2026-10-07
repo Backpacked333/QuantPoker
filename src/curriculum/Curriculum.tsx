@@ -304,7 +304,7 @@ function ConceptMap({ completed }: { completed: ModuleId[] }) {
   const focusIds: Record<string, ModuleId[]> = {
     Probability: ['odds', 'outs', 'equity'],
     Pricing: ['odds', 'pricing', 'replication'],
-    'Risk & hedging': ['fold', 'variance', 'replication'],
+    'Risk & hedging': ['fold', 'variance', 'replication', 'risk'],
   }
   const visible = modules.filter(
     (module) =>

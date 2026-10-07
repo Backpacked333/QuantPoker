@@ -84,11 +84,27 @@ viewports or expanded custom controls can scroll rather than clip the game.
   button in one tap. Select the chip-total dropdown for the slider, numeric entry
   and ±1 big blind stepper; editing the amount updates the action button live.
   Maximum-effective bets require confirmation. No action timer is imposed.
-- **Play and learn together.** At widths of 1100px and above, the **Quant lab** is
+- **Play and learn together.** At widths of 1100px and above, the **Learning studio** is
   docked on the right by default, with its own scroll area. The game keeps playing
   while the graphs and explanations follow the visible hand. Hide the panel for a
   wider table, or use **Explain** to open/focus it without placing a bet. The table's
   Pause control still stops play when you want time to study.
+- **A teaching surface, not just a dashboard.** A white/lilac learning studio and
+  light application frame separate education from the dark poker game. Each lens
+  follows **Understand → Predict → Explore → Apply**: a learning goal, a prediction,
+  misconception-specific feedback, a worked example, named graph experiments,
+  and a transfer question connecting poker to financial decisions. Call-price
+  examples use the current pot and capped call cost; insurance practice explicitly
+  labels its hypothetical probabilities. Free checks teach zero *additional*
+  exposure rather than inventing a bet. No AI key is required for these lessons.
+- **Explore without gates.** All teaching steps and the live graph remain available
+  without completing a quiz. **Experiment controls** exposes action comparisons,
+  hand context and raise assumptions; advanced details, next-card scenarios, 3D,
+  coach and full lessons remain available. A guided graph experiment restores the
+  call/check baseline and clears next-card hypotheticals without playing an action.
+  Practice answers survive model sizing/estimate updates and hiding the panel, but
+  reset when the hand, visible board, pot, call price or lens changes. The two-check
+  counter is per-decision practice, not persistent course completion or mastery.
 - **Small-screen insights.** Below 1100px, **Hand insights** opens a closed-by-default
   drawer that pauses Atlas and the staged hand. A native modal dialog provides
   focus containment, Escape dismissal and focus restoration. Desktop and mobile

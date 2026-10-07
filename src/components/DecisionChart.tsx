@@ -181,11 +181,21 @@ export function DecisionChart({
           >
             <defs>
               <linearGradient id={`${id}-gain`} x1="0" y1="0" x2="0" y2="1">
-                <stop stopColor="#d1efa0" stopOpacity=".32" />
-                <stop offset="1" stopColor="#d1efa0" stopOpacity=".02" />
+                <stop
+                  stopColor="var(--learn-positive, #287657)"
+                  stopOpacity=".22"
+                />
+                <stop
+                  offset="1"
+                  stopColor="var(--learn-positive, #287657)"
+                  stopOpacity=".02"
+                />
               </linearGradient>
               <clipPath id={`${id}-negative`}>
                 <rect x="60" y={py(0)} width="630" height="300" />
+              </clipPath>
+              <clipPath id={`${id}-positive`}>
+                <rect x="60" y="0" width="630" height={py(0)} />
               </clipPath>
             </defs>
             {Array.from(
@@ -229,10 +239,14 @@ export function DecisionChart({
                 </text>
               </g>
             ))}
-            <path d={area} fill={`url(#${id}-gain)`} />
             <path
               d={area}
-              fill="#ff9baf"
+              fill={`url(#${id}-gain)`}
+              clipPath={`url(#${id}-positive)`}
+            />
+            <path
+              d={area}
+              fill="var(--learn-negative, #b53860)"
               opacity=".2"
               clipPath={`url(#${id}-negative)`}
             />
@@ -244,7 +258,7 @@ export function DecisionChart({
               className="zero-frontier"
             />
             <text x="688" y={py(0) - 7} textAnchor="end" className="zero-label">
-              ZERO · NO EDGE
+              {lens === 'insurance' ? 'ZERO · NO NET LOSS' : 'ZERO · NO EDGE'}
             </text>
             <path d={line} className="payoff-curve" />
             <path

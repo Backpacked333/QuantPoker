@@ -354,7 +354,9 @@ export default function App() {
           }}
         >
           <div className="qp-analysis-head">
-            <strong>Quant lab</strong>
+            <strong>
+              <BookOpen size={15} /> Learning studio
+            </strong>
             <span>
               {analysisModal || paused
                 ? 'Game paused · Take your time'

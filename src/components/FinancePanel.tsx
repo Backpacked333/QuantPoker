@@ -45,6 +45,8 @@ import { Coach } from './Coach'
 import type { CoachSnapshot, Demonstration } from '../lib/coach'
 import { visibleCoachState } from '../lib/coach'
 import { surfaceRiskRange } from '../lib/finance'
+import { createHandLesson } from '../lib/hand-lesson'
+import { HandLesson } from './HandLesson'
 
 const format = (value: number) =>
   `${value < 0 ? '−' : '+'}${Math.abs(value).toFixed(1)}`
@@ -77,6 +79,7 @@ export function FinancePanel({
   const [showAssumptions, setShowAssumptions] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const graphHost = useRef<HTMLDivElement>(null)
+  const lessonHost = useRef<HTMLDivElement>(null)
   const [actionChoice, setAction] = useState<DecisionAction>(
     playedAction?.type === 'fold'
       ? 'fold'
@@ -293,11 +296,12 @@ export function FinancePanel({
 
   return (
     <aside className="finance-panel" aria-label="Live finance learning panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Read the decision</h2>
-          <p>Price, probability, payoff—and the market connection.</p>
-        </div>
+      <div className="learning-meta">
+        <span>
+          HAND {game.id} <span aria-hidden="true">/</span>{' '}
+          {game.street.toUpperCase()} <span aria-hidden="true">/</span>{' '}
+          {settledResult ? 'DECISION REVIEW' : 'GUIDED PRACTICE'}
+        </span>
         <button
           className="icon-button help-button"
           aria-label="Explain model assumptions"
@@ -306,103 +310,6 @@ export function FinancePanel({
           <CircleHelp size={18} />
         </button>
       </div>
-
-      {settledResult && (
-        <div className="decision-review">
-          <span className="eyebrow">
-            HAND COMPLETE · {format(settledResult.net)} REALIZED CHIPS
-          </span>
-          <h4>Judge the choice, not the outcome.</h4>
-          <p>
-            {playedAction
-              ? 'This model is frozen at your final decision, using only the cards you knew then. Compare alternative actions without hindsight.'
-              : 'This hand ended without another decision. The model is a reference, not an action you can take.'}{' '}
-            A single win or loss cannot prove a strategy is good.
-          </p>
-        </div>
-      )}
-      <div className="hand-snapshot">
-        <div>
-          <span>{settledResult ? 'AT YOUR DECISION' : 'NOW'}</span>
-          <strong>
-            {game.street.toUpperCase()} · {handName}
-          </strong>
-        </div>
-        <div>
-          <span>POT</span>
-          <strong>{pot} chips</strong>
-        </div>
-        <div>
-          <span>UNCERTAINTY LEFT</span>
-          <strong>
-            {cardsToCome} card{cardsToCome === 1 ? '' : 's'} to come
-          </strong>
-        </div>
-      </div>
-
-      <div className="decision-simulator">
-        <span className="eyebrow">MODEL A DECISION — DOES NOT PLAY IT</span>
-        <div className="decision-buttons">
-          <button
-            className={action === 'fold' ? 'selected' : ''}
-            onClick={() => setAction('fold')}
-          >
-            Fold<small>EV 0</small>
-          </button>
-          <button
-            className={action === 'continue' ? 'selected' : ''}
-            onClick={() => setAction('continue')}
-          >
-            {call ? `Call ${call}` : 'Check'}
-            <small>{format(decisionEV(models.continue, equity))} EV</small>
-          </button>
-          <button
-            disabled={!canModelRaise}
-            className={action === 'raise' ? 'selected' : ''}
-            onClick={() => setAction('raise')}
-          >
-            Raise {raiseTo}
-            <small>
-              {canModelRaise
-                ? `${format(decisionEV(models.raise, equity))} EV*`
-                : 'Unavailable'}
-            </small>
-          </button>
-        </div>
-        {action === 'raise' && (
-          <div className="model-control">
-            <label htmlFor="fold-equity">
-              Assumed chance Atlas folds{' '}
-              <strong>{Math.round(foldProbability * 100)}%</strong>
-            </label>
-            <input
-              id="fold-equity"
-              type="range"
-              min="0"
-              max="0.8"
-              step="0.01"
-              value={foldProbability}
-              onChange={(event) =>
-                setFoldProbability(Number(event.target.value))
-              }
-            />
-            <small>
-              *A scenario, not a read on Atlas. Move it to stress-test the
-              raise.
-            </small>
-          </div>
-        )}
-      </div>
-
-      {selectedNext && (
-        <div className="what-if-banner">
-          <span>
-            <Sparkles size={14} /> What if <b>{cardLabel(selectedNext.card)}</b>{' '}
-            comes next? <strong>{percent(equity)}</strong> equity
-          </span>
-          <button onClick={() => setNextCard(null)}>Back to live hand</button>
-        </div>
-      )}
 
       <div
         className="lens-tabs"
@@ -436,15 +343,151 @@ export function FinancePanel({
       </div>
 
       <div id="lens-content" role="tabpanel" aria-labelledby={`tab-${lens}`}>
+        <div
+          ref={lessonHost}
+          className="learning-anchor"
+          tabIndex={-1}
+          aria-label="Guided lesson"
+        >
+          <HandLesson
+            key={`${boardKey}:${pot}:${call}:${lens}`}
+            lesson={createHandLesson(lens, pot, call)}
+            ready={Boolean(analysis)}
+            onLesson={() => onLesson(lens)}
+            onExplore={(x) => {
+              if (x !== null) {
+                setAction('continue')
+                setNextCard(null)
+                setChart('payoff')
+                if (lens === 'insurance') setCoverageFraction(0.75)
+                setProbe({
+                  x,
+                  z:
+                    lens === 'insurance'
+                      ? 0.75
+                      : call /
+                        (Math.max(1, pot) *
+                          surfaceRiskRange({ ...scenario, risk: call })),
+                })
+              }
+              graphHost.current?.focus({ preventScroll: true })
+              graphHost.current?.scrollIntoView({
+                block: 'start',
+                behavior: 'auto',
+              })
+            }}
+          />
+        </div>
+
+        {settledResult && (
+          <div className="decision-review">
+            <span className="eyebrow">
+              HAND COMPLETE · {format(settledResult.net)} REALIZED CHIPS
+            </span>
+            <h4>Judge the choice, not the outcome.</h4>
+            <p>
+              {playedAction
+                ? 'This model is frozen at your final decision, using only the cards you knew then. Compare alternative actions without hindsight.'
+                : 'This hand ended without another decision. The model is a reference, not an action you can take.'}{' '}
+              A single win or loss cannot prove a strategy is good.
+            </p>
+          </div>
+        )}
+        <details className="learning-model-inputs">
+          <summary>
+            Experiment controls{' '}
+            <span>
+              {actionLabel} · pot {pot}
+            </span>
+          </summary>
+          <div className="hand-snapshot">
+            <div>
+              <span>{settledResult ? 'AT YOUR DECISION' : 'NOW'}</span>
+              <strong>
+                {game.street.toUpperCase()} · {handName}
+              </strong>
+            </div>
+            <div>
+              <span>POT</span>
+              <strong>{pot} chips</strong>
+            </div>
+            <div>
+              <span>UNCERTAINTY LEFT</span>
+              <strong>
+                {cardsToCome} card{cardsToCome === 1 ? '' : 's'} to come
+              </strong>
+            </div>
+          </div>
+
+          <div className="decision-simulator">
+            <span className="eyebrow">MODEL A DECISION — DOES NOT PLAY IT</span>
+            <div className="decision-buttons">
+              <button
+                className={action === 'fold' ? 'selected' : ''}
+                onClick={() => setAction('fold')}
+              >
+                Fold<small>EV 0</small>
+              </button>
+              <button
+                className={action === 'continue' ? 'selected' : ''}
+                onClick={() => setAction('continue')}
+              >
+                {call ? `Call ${call}` : 'Check'}
+                <small>{format(decisionEV(models.continue, equity))} EV</small>
+              </button>
+              <button
+                disabled={!canModelRaise}
+                className={action === 'raise' ? 'selected' : ''}
+                onClick={() => setAction('raise')}
+              >
+                Raise {raiseTo}
+                <small>
+                  {canModelRaise
+                    ? `${format(decisionEV(models.raise, equity))} EV*`
+                    : 'Unavailable'}
+                </small>
+              </button>
+            </div>
+            {action === 'raise' && (
+              <div className="model-control">
+                <label htmlFor="fold-equity">
+                  Assumed chance Atlas folds{' '}
+                  <strong>{Math.round(foldProbability * 100)}%</strong>
+                </label>
+                <input
+                  id="fold-equity"
+                  type="range"
+                  min="0"
+                  max="0.8"
+                  step="0.01"
+                  value={foldProbability}
+                  onChange={(event) =>
+                    setFoldProbability(Number(event.target.value))
+                  }
+                />
+                <small>
+                  *A scenario, not a read on Atlas. Move it to stress-test the
+                  raise.
+                </small>
+              </div>
+            )}
+          </div>
+        </details>
+
+        {selectedNext && (
+          <div className="what-if-banner">
+            <span>
+              <Sparkles size={14} /> What if{' '}
+              <b>{cardLabel(selectedNext.card)}</b> comes next?{' '}
+              <strong>{percent(equity)}</strong> equity
+            </span>
+            <button onClick={() => setNextCard(null)}>Back to live hand</button>
+          </div>
+        )}
+
         <div className="model-title">
           <div>
-            <span className="eyebrow">
-              {lens === 'equity'
-                ? 'PROBABILITY × PAYOFF × BEHAVIOR'
-                : lens === 'options'
-                  ? 'PREMIUM · STRIKE · VOLATILITY · TIME'
-                  : 'PROBABILITY × SEVERITY × COVERAGE'}
-            </span>
+            <span className="eyebrow">YOUR INTERACTIVE WORKSPACE</span>
             <h3>{titles[lens]}</h3>
           </div>
           <button
@@ -455,7 +498,27 @@ export function FinancePanel({
             <Maximize2 size={16} />
           </button>
         </div>
-        <div ref={graphHost}>{graph}</div>
+        <div
+          ref={graphHost}
+          className="learning-graph"
+          tabIndex={-1}
+          role="region"
+          aria-label="Interactive workspace"
+        >
+          {graph}
+        </div>
+        <button
+          className="learning-text-button learning-return"
+          onClick={() => {
+            lessonHost.current?.focus({ preventScroll: true })
+            lessonHost.current?.scrollIntoView({
+              block: 'start',
+              behavior: 'auto',
+            })
+          }}
+        >
+          Return to learning steps <ArrowRight size={14} />
+        </button>
 
         <section className="decision-story" aria-label="Guided explanation">
           <div className="story-tabs" aria-label="Explanation step">
@@ -573,7 +636,7 @@ export function FinancePanel({
               <div className="outcome-legend">
                 <span>Green: win</span>
                 <span>Gold: tie</span>
-                <span>Purple: loss</span>
+                <span>Rose: loss</span>
               </div>
             </>
           ) : (
@@ -987,9 +1050,15 @@ export function FinancePanel({
         <Modal title={titles[lens]} onClose={() => setExpanded(false)} wide>
           <div className="expanded-surface">{graph}</div>
           <p className="modal-note">
-            Drag to rotate, point at scenarios, and change the action controls
-            behind the model. The pulsing point is your live hand; the zero
-            plane separates value from cost.
+            {chart === 'terrain'
+              ? 'Drag to rotate, or use the probability and exposure sliders to inspect a scenario.'
+              : 'Move across the curve, or focus it and use the arrow keys to inspect a scenario.'}{' '}
+            The live marker is your current model; the lilac marker is your
+            what-if point.
+            {lens === 'insurance'
+              ? ' This view shows the losing-state result, not overall expected value.'
+              : ' The zero line separates positive and negative modeled value.'}{' '}
+            Close this view to change the action controls.
           </p>
         </Modal>
       )}

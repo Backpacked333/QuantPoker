@@ -22,7 +22,7 @@ Open the URL printed by Vite (normally `http://localhost:5173`). No API keys, da
 ```sh
 npm run typecheck    # strict TypeScript
 npm run lint         # ESLint and React hooks checks
-npm test             # deterministic engine, finance, and storage tests
+npm test             # engine, finance, curriculum, storage and component tests
 npm run build        # type-check + production assets in dist/
 npm run preview      # locally serve the production build
 ```
@@ -42,11 +42,43 @@ The app can be served by any static host. Build with `npm run build` and use `di
 - Explore **optionality**: compare committing capital with preserving the choice to fold. Connect the zero-EV frontier, local sensitivity, next-card uncertainty, and finite information clock to options concepts—with explicit limits on the analogy.
 - Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
 - Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
+- Open the **Curriculum** for seven deeper poker-to-finance modules, live labs, a searchable concept map, mastery checkpoints, and a local notebook. Relevant lessons are linked from each finance lens.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
 On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
 
 ## The math and its limits
+
+### Integrated curriculum
+
+The table remains the default experience (`#table`). The **Curriculum** navigation opens `#learn/path`; individual lessons support links such as `#learn/module/odds/learn`, with `lab` and `check` tabs. The concept map, standalone experiments, and notebook live at `#learn/map`, `#learn/lab/odds`, and `#learn/notebook`. Hash routes need no hosting rewrite configuration.
+
+Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Finance-panel what-if controls and camera position reset when the table panel is remounted; the game itself does not. Reloading still starts a fresh guided hand.
+
+| Stage            | Poker mechanic    | Finance connection                      | Experiment                                                                |
+| ---------------- | ----------------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| Foundations      | Pot odds          | Expected payoff and entry price         | Change pot, call cost, and equity                                         |
+| Foundations      | Outs              | State spaces and probability            | Exact draws without replacement vs. rule of two/four                      |
+| Foundations      | Equity            | Physical vs. risk-neutral probabilities | Combine wins and split pots                                               |
+| Decision science | Expected value    | Risk-neutral pricing                    | Separate physical forecasts from binomial pricing weights                 |
+| Decision science | Fold equity       | Contingent payoff trees                 | Mix folds with equity conditional on a call                               |
+| Market mechanics | Variance          | Implied volatility                      | Compare poker dispersion with a synthetic option premium and IV inversion |
+| Market mechanics | Payoff accounting | Delta hedging and put-call parity       | Replicate terminal payoffs and compare parity portfolios                  |
+
+Each typed module in `src/curriculum/curriculum.ts` defines three objectives, recommended prerequisites, conceptual explanations, an explicit analogy boundary, a worked numerical example, formula notation, a lab, two mastery questions with feedback, notes, and a further-reading link. Prerequisites guide sequencing but never lock access. Both questions must be correct for local completion; retries are unlimited. The original three lens mini-lessons remain available from the table and retain their existing completion records.
+
+Important distinctions are taught explicitly:
+
+- Poker equity is **not** option delta; physical probabilities are **not** necessarily risk-neutral probabilities.
+- The binomial lab assumes `0 < d < 1+r < u`, a frictionless non-dividend stock, and a simple risk-free rate for the full period. It prices by replication: `q = (1+r-d)/(u-d)` and `V = [qVu + (1-q)Vd]/(1+r)`.
+- Delta is the stock quantity in an exact two-state hedge, not a probability. Put-call parity is `C-P = S-K/(1+r)` for matching European claims. This does not make real-world discrete hedging riskless.
+- The variance experiment assumes independent binary ±100-chip payoffs; total mean scales with the number of hands and standard deviation with its square root.
+- The separate Black–Scholes example assumes spot = strike = 100, one year, a 5% continuously compounded rate, and no dividends. It generates a **synthetic** premium and recovers IV by bisection; it does not fetch market prices or convert chip variance into annualized volatility.
+- The fold-equity lab assumes equal new bets, no subsequent betting, and equity conditional on being called. It is a strategic payoff tree, not an arbitrage-pricing identity.
+
+Curriculum progress and notes use `quantpoker.learning.v1`; table hand history and lens mini-lessons retain `quantpoker.progress.v1`. Resetting the curriculum does not erase table history. Notes are capped at 10,000 characters per module and exportable as Markdown. Invalid records are normalized safely, and storage failures display a warning. All persistence is browser-local, without cloud sync or accounts.
+
+The curriculum is lazy-loaded and its CSS is scoped to `.curriculum-workspace`, so it does not restyle the table or 3D panel. Pure models live in `src/curriculum/lib/math.ts`, independent of poker-game transitions. Add new modules by extending the typed content and lab registry, then adding numerical and interaction tests.
 
 ### Showdown equity
 
@@ -123,6 +155,9 @@ Automated coverage includes:
 - Known equity cases, conditional next-card distributions, fold/call/raise arithmetic, sensitivity surfaces, and unclamped overbet markers.
 - Fair protection preserving expected wealth with ties and opponent folds; reduced payoff dispersion; premium-inclusive vanilla option payoffs in the lesson utilities.
 - Corrupt/unavailable browser storage and bounded saved history.
+- Curriculum mathematics: exact outs, EV, variance, binomial replication, put-call parity, Black–Scholes benchmarks, and IV inversion.
+- Module integrity, checkpoint retry/completion, notebook export/reset, and malformed curriculum storage.
+- Table-to-lesson deep links, preserved hands and manual pause state, suspended/resumed bot turns, and isolation of legacy history from curriculum resets. Component tests mock the equity worker and WebGL renderer; engine and finance calculations are tested separately.
 
 These tests do not replace browser end-to-end, screen-reader, mobile-device, or cross-browser testing.
 

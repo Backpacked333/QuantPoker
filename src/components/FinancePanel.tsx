@@ -730,6 +730,50 @@ export function FinancePanel({
           </span>
           <ArrowRight size={17} />
         </button>
+        <div
+          className="curriculum-connections"
+          aria-label="Related curriculum modules"
+        >
+          <strong>Take this hand further</strong>
+          {lens === 'equity' ? (
+            <>
+              <a href="#learn/module/odds/learn">
+                Pot odds → expected payoff <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/outs/learn">
+                Outs → possible future states <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/equity/learn">
+                Equity → probability weights <ArrowRight size={14} />
+              </a>
+            </>
+          ) : lens === 'options' ? (
+            <>
+              <a href="#learn/module/fold/learn">
+                Fold equity → response trees <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/pricing/learn">
+                Expected value → risk-neutral pricing <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/replication/learn">
+                Replication → delta & parity <ArrowRight size={14} />
+              </a>
+            </>
+          ) : (
+            <>
+              <a href="#learn/module/variance/learn">
+                Variance → implied volatility <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/replication/learn">
+                Hedging → payoff replication <ArrowRight size={14} />
+              </a>
+            </>
+          )}
+          <small>
+            Your hand pauses while you learn. These are teaching connections,
+            not pricing equivalences.
+          </small>
+        </div>
         <div className="panel-footnote">
           <ArrowDownRight size={12} /> One hand. Three professional ways to
           frame uncertainty.

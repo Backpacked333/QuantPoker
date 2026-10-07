@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react'
 import {
   ArrowRight,
   ChartNoAxesCombined,
+  ChevronDown,
+  CircleDot,
   History,
   Lightbulb,
   Minus,
@@ -126,8 +128,9 @@ export function PokerTable({
   onDismissTip?: () => void
   notice?: string
 }) {
-  const legal = legalActions(game)
+  const legal = legalActions({ ...game, turn: 0 })
   const [confirmation, setConfirmation] = useState('')
+  const [customSizing, setCustomSizing] = useState(false)
   const [draft, setDraft] = useState<{ key: string; value: string } | null>(
     null,
   )
@@ -201,7 +204,7 @@ export function PokerTable({
         event.shiftKey ||
         (event.target instanceof HTMLElement &&
           event.target.closest(
-            'input, textarea, select, button, a, [contenteditable="true"], [role="dialog"]',
+            'input, textarea, select, button, a, dialog, [contenteditable="true"], [role="dialog"]',
           ))
       )
         return
@@ -250,14 +253,20 @@ export function PokerTable({
       <div
         className={`pt-seat ${hero ? 'pt-seat-hero' : 'pt-seat-opp'} ${active ? 'pt-active' : ''} ${winner === player ? 'pt-winner' : ''}`}
       >
-        <div className="pt-hole">
+        <div
+          className="pt-hole"
+          aria-label={hero ? 'Your hole cards' : 'Atlas hole cards'}
+        >
           {game.cards[player].map((card, i) => (
             <PlayingCard
               key={`${game.id}-${i}-${revealed ? 'face' : 'back'}`}
               card={card}
               back={!revealed}
-              delay={i * 220 + (hero ? 110 : 0)}
-              highlight={winner === player && best.has(cardKey(card))}
+              delay={frame.phase === 'deal' ? i * 160 : 0}
+              highlight={
+                (winner === player || (winner === 'tie' && hero)) &&
+                best.has(cardKey(card))
+              }
             />
           ))}
         </div>
@@ -266,42 +275,52 @@ export function PokerTable({
             {hero ? <Spade size={17} fill="currentColor" /> : 'A'}
           </span>
           <span className="pt-identity">
-            <span className="pt-name">{hero ? 'You' : 'Atlas'}</span>
+            <span className="pt-name">
+              {hero ? 'Your stack' : 'Atlas'}
+              {!hero && <span className="pt-bot-label">Practice bot</span>}
+            </span>
             <strong key={game.stacks[player]} className="pt-stack">
-              {chips(game.stacks[player])}
+              {chips(game.stacks[player])} <small>chips</small>
             </strong>
           </span>
-          {hero && <span className="pt-strength">{heroHand}</span>}
           {game.dealer === player && (
             <span className="pt-dealer" aria-label="Dealer">
               D
             </span>
           )}
         </div>
-        {game.bets[player] > 0 && !result && (
-          <div
-            className="pt-bet"
-            key={`${game.id}-${player}-${game.bets[player]}`}
-          >
-            <Chips amount={game.bets[player]} />
-            <span>{chips(game.bets[player])}</span>
-          </div>
-        )}
-        <span
-          className={`pt-tag ${tagKind} ${tag ? '' : 'pt-tag-empty'}`}
-          aria-hidden={!tag}
-        >
-          {tag === 'Thinking' ? (
-            <>
-              Thinking
-              <i />
-              <i />
-              <i />
-            </>
-          ) : (
-            tag || '·'
+        <div className="pt-seat-detail">
+          {hero && (
+            <span className="pt-strength">
+              <small>Your hand</small>
+              {heroHand}
+            </span>
           )}
-        </span>
+          {game.bets[player] > 0 && !result && (
+            <div
+              className="pt-bet"
+              key={`${game.id}-${player}-${game.bets[player]}`}
+            >
+              <CircleDot size={13} aria-hidden="true" />
+              <span>{chips(game.bets[player])} in play</span>
+            </div>
+          )}
+          <span
+            className={`pt-tag ${tagKind} ${tag ? '' : 'pt-tag-empty'}`}
+            aria-hidden={!tag}
+          >
+            {tag === 'Thinking' ? (
+              <>
+                Thinking
+                <i />
+                <i />
+                <i />
+              </>
+            ) : (
+              tag || '·'
+            )}
+          </span>
+        </div>
       </div>
     )
   }
@@ -335,7 +354,7 @@ export function PokerTable({
         <div className="pt-hand-info">
           <span className="pt-live" />
           <strong>{game.guided ? 'Guided hand' : `Hand #${game.id}`}</strong>
-          <span>NLH · 10/20</span>
+          <span className="pt-stakes">Heads-up · 10/20</span>
           <span className="pt-street-chip">
             {result
               ? 'Settled'
@@ -377,28 +396,47 @@ export function PokerTable({
           </button>
           <button
             className="pt-analysis-toggle"
-            aria-pressed={analysisOpen}
+            aria-expanded={analysisOpen}
+            aria-controls="hand-analysis"
             aria-label={analysisOpen ? 'Hide analysis' : 'Show analysis'}
             onClick={onToggleAnalysis}
           >
             <ChartNoAxesCombined size={16} />
-            <span>{analysisOpen ? 'Hide analysis' : 'Analysis'}</span>
+            <span>{analysisOpen ? 'Close coach' : 'Hand insights'}</span>
           </button>
         </div>
       </div>
 
       <div className="pt-stage" aria-label={`Hand ${game.id}, ${game.street}`}>
-        <div className="pt-felt" aria-hidden="true" />
         {seat(1)}
         <div className="pt-center">
-          <div className="pt-pot" key={`${game.id}-${game.pot}`}>
-            <Chips
-              amount={result ? game.invested[0] + game.invested[1] : game.pot}
-            />
-            <span>{result ? 'Final pot' : 'Pot'}</span>
-            <strong>
-              {chips(result ? game.invested[0] + game.invested[1] : game.pot)}
-            </strong>
+          <div className="pt-board-heading">
+            <div className="pt-pot" key={`${game.id}-${game.pot}`}>
+              <span>{result ? 'Final pot' : 'Total pot'}</span>
+              <strong>
+                <CircleDot size={23} aria-hidden="true" />
+                {chips(result ? game.invested[0] + game.invested[1] : game.pot)}
+                <small>chips</small>
+              </strong>
+            </div>
+            <ol className="pt-streets" aria-label="Hand progress">
+              {(['preflop', 'flop', 'turn', 'river'] as const).map(
+                (street, i) => {
+                  const current =
+                    game.board.length === 0 ? 0 : game.board.length - 2
+                  return (
+                    <li
+                      key={street}
+                      className={i <= current ? 'reached' : ''}
+                      aria-current={i === current ? 'step' : undefined}
+                    >
+                      <i aria-hidden="true" />
+                      {street === 'preflop' ? 'Pre' : street}
+                    </li>
+                  )
+                },
+              )}
+            </ol>
           </div>
           <div className="pt-board" aria-label="Community cards">
             {Array.from({ length: 5 }, (_, i) =>
@@ -418,6 +456,9 @@ export function PokerTable({
               ),
             )}
           </div>
+          <span className="pt-board-caption">
+            Community cards <span>· Shared by both players</span>
+          </span>
         </div>
         {frame.phase === 'bet' && !!frame.amount && (
           <div
@@ -434,17 +475,6 @@ export function PokerTable({
           </div>
         )}
         {seat(0)}
-        {tip && (
-          <div className="pt-toast">
-            <Lightbulb size={15} />
-            <span>{tip}</span>
-            {onDismissTip && (
-              <button aria-label="Dismiss table tip" onClick={onDismissTip}>
-                <X size={14} />
-              </button>
-            )}
-          </div>
-        )}
         {paused && !result && (
           <div className="pt-pause">
             <Pause size={26} />
@@ -458,6 +488,17 @@ export function PokerTable({
       </div>
 
       <div className="pt-dock">
+        {tip && !result && (
+          <div className="pt-tip">
+            <Lightbulb size={15} aria-hidden="true" />
+            <span>{tip}</span>
+            {onDismissTip && (
+              <button aria-label="Dismiss table tip" onClick={onDismissTip}>
+                <X size={15} />
+              </button>
+            )}
+          </div>
+        )}
         <div className={`pt-insight ${result ? 'pt-insight-result' : ''}`}>
           <div className="pt-status" role="status">
             <i className={yourTurn ? 'live' : ''} />
@@ -465,23 +506,23 @@ export function PokerTable({
           </div>
           {!result && (
             <div className="pt-metrics">
+              {legal.toCall > 0 && (
+                <span
+                  className="pt-metric"
+                  title="Share of the final pot you must pay to call"
+                >
+                  Price <strong>{percent(price)}</strong>
+                </span>
+              )}
               {equity === undefined ? (
                 <span className="pt-metric">Estimating equity…</span>
               ) : (
                 <>
-                  {legal.toCall > 0 && (
-                    <span
-                      className="pt-metric"
-                      title="Share of the final pot you must pay to call"
-                    >
-                      Price <strong>{percent(price)}</strong>
-                    </span>
-                  )}
                   <span
                     className="pt-metric"
                     title="Estimated share of the pot you win at showdown"
                   >
-                    Equity <strong>{percent(equity)}</strong>
+                    Equity <strong>~{percent(equity)}</strong>
                   </span>
                   {legal.toCall > 0 && callEV !== null && (
                     <span
@@ -494,14 +535,15 @@ export function PokerTable({
                 </>
               )}
               <button className="pt-why" onClick={onToggleAnalysis}>
-                {analysisOpen ? 'Hide' : 'Why?'}
+                {analysisOpen ? 'Close insights' : 'Explain'}{' '}
+                <ArrowRight size={13} />
               </button>
             </div>
           )}
         </div>
 
         {result ? (
-          <div className="pt-next">
+          <div className="pt-next" role="status">
             <div className="pt-outcome">
               <strong>
                 {winner === 'tie'
@@ -526,6 +568,7 @@ export function PokerTable({
           <>
             {legal.canRaise && (
               <div className="pt-sizing">
+                <span className="pt-sizing-label">{raiseVerb}</span>
                 <div
                   className="pt-presets"
                   role="group"
@@ -545,58 +588,78 @@ export function PokerTable({
                     )
                   })}
                 </div>
-                <input
-                  className="pt-slider"
-                  aria-label="Raise size"
-                  type="range"
-                  min={legal.minRaiseTo}
-                  max={Math.max(legal.minRaiseTo, legal.maxRaiseTo)}
-                  step="1"
-                  value={betAmount}
+                <button
+                  className="pt-custom-toggle"
+                  aria-label={`Custom bet size: ${chips(betAmount)} chips`}
+                  aria-expanded={customSizing}
+                  aria-controls="custom-bet-size"
                   disabled={sizingDisabled}
-                  onChange={(e) => onRaise(Number(e.target.value))}
-                  style={{ '--progress': `${progress}%` } as CSSProperties}
-                />
-                <div className="pt-amount">
-                  <button
-                    aria-label="Decrease bet by one big blind"
-                    disabled={sizingDisabled || betAmount <= legal.minRaiseTo}
-                    onClick={() => onRaise(clampBet(betAmount - BIG_BLIND))}
-                  >
-                    <Minus size={14} />
-                  </button>
+                  onClick={() => setCustomSizing(!customSizing)}
+                >
+                  {chips(betAmount)} <ChevronDown size={15} />
+                </button>
+                <div
+                  className="pt-custom"
+                  id="custom-bet-size"
+                  hidden={!customSizing}
+                >
                   <input
-                    aria-label="Bet or raise total in chips"
-                    type="number"
-                    inputMode="numeric"
+                    className="pt-slider"
+                    aria-label="Raise size"
+                    type="range"
                     min={legal.minRaiseTo}
-                    max={legal.maxRaiseTo}
+                    max={Math.max(legal.minRaiseTo, legal.maxRaiseTo)}
                     step="1"
-                    value={draft?.key === decisionKey ? draft.value : betAmount}
+                    value={betAmount}
                     disabled={sizingDisabled}
-                    onChange={(e) =>
-                      setDraft({ key: decisionKey, value: e.target.value })
-                    }
-                    onBlur={(e) => {
-                      const value = Number(e.target.value)
-                      onRaise(
-                        clampBet(
-                          Number.isFinite(value) ? value : legal.minRaiseTo,
-                        ),
-                      )
-                      setDraft(null)
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur()
-                    }}
+                    onChange={(e) => onRaise(Number(e.target.value))}
+                    style={{ '--progress': `${progress}%` } as CSSProperties}
                   />
-                  <button
-                    aria-label="Increase bet by one big blind"
-                    disabled={sizingDisabled || betAmount >= legal.maxRaiseTo}
-                    onClick={() => onRaise(clampBet(betAmount + BIG_BLIND))}
-                  >
-                    <Plus size={14} />
-                  </button>
+                  <div className="pt-amount">
+                    <button
+                      aria-label="Decrease bet by one big blind"
+                      disabled={sizingDisabled || betAmount <= legal.minRaiseTo}
+                      onClick={() => onRaise(clampBet(betAmount - BIG_BLIND))}
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <input
+                      aria-label="Bet or raise total in chips"
+                      type="number"
+                      inputMode="numeric"
+                      min={legal.minRaiseTo}
+                      max={legal.maxRaiseTo}
+                      step="1"
+                      value={
+                        draft?.key === decisionKey ? draft.value : betAmount
+                      }
+                      disabled={sizingDisabled}
+                      onChange={(e) => {
+                        setDraft({ key: decisionKey, value: e.target.value })
+                        const value = e.target.valueAsNumber
+                        if (Number.isFinite(value)) onRaise(clampBet(value))
+                      }}
+                      onBlur={(e) => {
+                        const value = Number(e.target.value)
+                        onRaise(
+                          clampBet(
+                            Number.isFinite(value) ? value : legal.minRaiseTo,
+                          ),
+                        )
+                        setDraft(null)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                      }}
+                    />
+                    <button
+                      aria-label="Increase bet by one big blind"
+                      disabled={sizingDisabled || betAmount >= legal.maxRaiseTo}
+                      onClick={() => onRaise(clampBet(betAmount + BIG_BLIND))}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

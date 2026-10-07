@@ -34,7 +34,7 @@ export function PlayingCard({
         aria-label="Hidden opponent card"
         style={style}
       >
-        <span>QP</span>
+        <span aria-hidden="true">♠</span>
       </div>
     )
   const red = card.suit === 'h' || card.suit === 'd'
@@ -46,11 +46,9 @@ export function PlayingCard({
       aria-label={`${rankName(card.rank)} of ${SUIT_NAMES[card.suit]}`}
       style={style}
     >
-      <span className="pc-rank" aria-hidden="true">
-        {rank}
-      </span>
-      <span className="pc-suit-sm" aria-hidden="true">
-        {SUITS[card.suit]}
+      <span className="pc-index" aria-hidden="true">
+        <span className="pc-rank">{rank}</span>
+        <span className="pc-suit-sm">{SUITS[card.suit]}</span>
       </span>
       <span className="pc-suit" aria-hidden="true">
         {SUITS[card.suit]}

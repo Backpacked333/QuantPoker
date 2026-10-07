@@ -71,22 +71,24 @@ export default function App() {
   const [storageAvailable, setStorageAvailable] = useState(true)
   const [sound, setSound] = useState(false)
   const [fast, setFast] = useState(false)
-  const [analysisOpen, setAnalysisOpen] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.matchMedia('(min-width: 1400px)').matches,
-  )
+  const [analysisOpen, setAnalysisOpen] = useState(false)
+  const analysisDialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    const element = analysisDialog.current
+    if (analysisOpen) element?.showModal()
+    else element?.close()
+  }, [analysisOpen])
   const [shortcuts, setShortcuts] = useState(false)
   const presentation = useTablePresentation(
     engineGame,
-    paused || dialog !== null,
+    paused || dialog !== null || analysisOpen,
     fast,
   )
   const game = presentation.game
   const unlockAudio = useTableSound(
     presentation,
     sound,
-    paused || dialog !== null,
+    paused || dialog !== null || analysisOpen,
   )
   const [notice, setNotice] = useState('')
   const [lastDecision, setLastDecision] = useState<{
@@ -100,7 +102,12 @@ export default function App() {
   const analysis = useEquity(review?.game ?? game)
   const legal = legalActions(game)
   const yourTurn =
-    game.turn === 0 && !game.result && !paused && !presentation.busy && !dialog
+    game.turn === 0 &&
+    !game.result &&
+    !paused &&
+    !presentation.busy &&
+    !dialog &&
+    !analysisOpen
   const betAmount = Math.max(
     legal.minRaiseTo,
     Math.min(legal.maxRaiseTo, raiseTo),
@@ -111,14 +118,21 @@ export default function App() {
   const sessionNet = activeRecords.reduce((sum, hand) => sum + hand.net, 0)
 
   useEffect(() => {
-    if (game.turn !== 1 || game.result || paused || presentation.busy || dialog)
+    if (
+      game.turn !== 1 ||
+      game.result ||
+      paused ||
+      presentation.busy ||
+      dialog ||
+      analysisOpen
+    )
       return
     const timeout = window.setTimeout(
       () => setGame(act(game, botAction(game))),
       fast ? 600 : 1300,
     )
     return () => window.clearTimeout(timeout)
-  }, [game, paused, presentation.busy, fast, dialog])
+  }, [game, paused, presentation.busy, fast, dialog, analysisOpen])
 
   useEffect(() => {
     if (!game.result) return
@@ -193,12 +207,14 @@ export default function App() {
         </a>
         <nav aria-label="Main navigation" className="qp-nav">
           <button
+            aria-label="Play poker"
             className={!dialog || dialog === 'history' ? 'active' : ''}
             onClick={() => setDialog(null)}
           >
             <Diamond size={14} /> <span>Play</span>
           </button>
           <button
+            aria-label="Learning library"
             className={dialog === 'library' ? 'active' : ''}
             onClick={() => openLesson(null)}
           >
@@ -206,6 +222,7 @@ export default function App() {
             <span className="qp-count">{progress.lessons.length}/3</span>
           </button>
           <button
+            aria-label="Your progress"
             className={dialog === 'stats' ? 'active' : ''}
             onClick={() => setDialog('stats')}
           >
@@ -264,11 +281,11 @@ export default function App() {
             onToggleAnalysis={() => setAnalysisOpen(!analysisOpen)}
             onUnlock={unlockAudio}
             shortcuts={shortcuts}
-            dialogOpen={dialog !== null}
+            dialogOpen={dialog !== null || analysisOpen}
             tip={
               showTip
-                ? game.guided
-                  ? 'Guided hand: you hold a flush draw facing a bet. Compare the price with your equity below.'
+                ? game.guided && game.street === 'flop'
+                  ? 'A flush draw, facing a bet. Is the price worth it? Compare your equity below.'
                   : 'Judge the decision, not the result. Good calls still lose sometimes.'
                 : undefined
             }
@@ -281,21 +298,27 @@ export default function App() {
             }
           />
         </section>
-        {analysisOpen && (
-          <button
-            className="qp-scrim"
-            aria-label="Close analysis"
-            onClick={() => setAnalysisOpen(false)}
-          />
-        )}
-        <aside
+        <dialog
+          ref={analysisDialog}
+          id="hand-analysis"
           className="qp-analysis"
           aria-label="Analysis and coach"
-          hidden={!analysisOpen}
+          onCancel={() => setAnalysisOpen(false)}
+          onClick={(event) => {
+            if (event.target !== event.currentTarget) return
+            const bounds = event.currentTarget.getBoundingClientRect()
+            if (
+              event.clientX < bounds.left ||
+              event.clientX > bounds.right ||
+              event.clientY < bounds.top ||
+              event.clientY > bounds.bottom
+            )
+              setAnalysisOpen(false)
+          }}
         >
           <div className="qp-analysis-head">
-            <strong>Analysis</strong>
-            <span>Uses only the cards you can see</span>
+            <strong>Hand insights</strong>
+            <span>Game paused · Take your time</span>
             <button
               className="qp-icon"
               aria-label="Close analysis"
@@ -318,7 +341,7 @@ export default function App() {
           <p className="qp-disclaimer">
             For learning, not financial advice · No deposits · No withdrawals
           </p>
-        </aside>
+        </dialog>
       </main>
       {dialog === 'library' && (
         <Modal

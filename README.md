@@ -2,7 +2,7 @@
 
 **Play the hand. Understand the odds.**
 
-QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. A heads-up Texas Hold’em table sits beside a live finance panel: estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance.
+QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. Play heads-up Texas Hold’em on a focused game screen, then open **Hand insights** to estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance.
 
 This is a **single-player educational web app**, not an online gambling service, multiplayer platform, trading tool, or source of investment advice.
 
@@ -68,22 +68,27 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 
 ### The Decision Room
 
-The game is one screen: a modern dark table fills the viewport and the action dock
-is always visible beneath it, so every decision can be made without scrolling.
-Large flat cards, seat plates with stacks and the latest action, visible street
-bets, and a dealer marker keep the hand readable at a glance. Exact chip labels are
-authoritative; chip stacks are decorative and visually capped.
+The game uses a charcoal-and-lilac play surface instead of a simulated casino table.
+The opponent, community board and your own hand occupy separate rows; card ranks
+and suits never overlap, and stack labels never cover the cards. Pot size and a
+four-street progress indicator sit above the board. The action dock stays beneath
+your hand, with responsive sizing for desktop and portrait phones. Very short
+viewports or expanded custom controls can scroll rather than clip the game.
 
 - **Decision strip.** Next to the buttons: the price of calling (share of the final
   pot), your estimated equity from visible cards, and the modeled EV of calling.
-  **Why?** opens the full analysis.
+  **Explain** opens the full analysis. Price is available immediately; equity is
+  marked approximate and appears when the worker finishes its visible-card estimate.
 - **Actions.** Large Fold, Check/Call and Bet/Raise buttons show the exact amount.
   Min, ½ pot, ¾ pot, pot and all-in/effective-maximum presets update the raise
-  button in one tap; the slider and ±1 big blind stepper are there for fine control.
+  button in one tap. Select the chip-total dropdown for the slider, numeric entry
+  and ±1 big blind stepper; editing the amount updates the action button live.
   Maximum-effective bets require confirmation. No action timer is imposed.
-- **Analysis on demand.** The finance lens and coach live in a side panel: docked
-  beside the table on wide screens (open by default at 1400px and wider) and a
-  slide-over drawer elsewhere. It stays mounted when hidden, so its state is kept.
+- **Analysis on demand.** The finance lens and coach live in a closed-by-default
+  **Hand insights** drawer at every screen size. Opening it pauses both Atlas and
+  the staged hand; closing it resumes play. A native modal dialog provides focus
+  containment, Escape dismissal and focus restoration. Its content stays mounted
+  so closing and reopening does not discard the current model or coach conversation.
 - **Pacing.** Dealing, chip movement, street reveals, opponent-card reveal and pot
   settlement are choreographed separately; all-in boards reveal flop → turn → river.
   The immutable engine determines every result; animation never changes cards or
@@ -99,7 +104,10 @@ authoritative; chip stacks are decorative and visually capped.
 These presentation settings are session-local. This does not introduce multiplayer,
 new poker rules, real money, or a stronger opponent model.
 
-On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
+On narrow screens, the game adapts to portrait and Hand insights fills the screen
+when opened. Reduced-motion preferences, keyboard-operable controls, native modal
+focus handling, and text equivalents for chart formulas are included. 3D requires
+WebGL; if unavailable, the calculations and lessons remain usable.
 
 ## The math and its limits
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   ArrowDownRight,
   ArrowRight,
@@ -38,6 +38,13 @@ import { Lessons } from './components/Lessons'
 
 type Dialog = 'library' | 'stats' | 'history' | 'help' | 'settings' | null
 const chips = (n: number) => n.toLocaleString('en-US')
+const wideLayoutQuery = '(min-width: 1100px)'
+const subscribeLayout = (listener: () => void) => {
+  const media = window.matchMedia(wideLayoutQuery)
+  media.addEventListener('change', listener)
+  return () => media.removeEventListener('change', listener)
+}
+const getWideLayout = () => window.matchMedia(wideLayoutQuery).matches
 
 function useEquity(game: Game) {
   const key = JSON.stringify({ hole: game.cards[0], board: game.board })
@@ -71,24 +78,47 @@ export default function App() {
   const [storageAvailable, setStorageAvailable] = useState(true)
   const [sound, setSound] = useState(false)
   const [fast, setFast] = useState(false)
-  const [analysisOpen, setAnalysisOpen] = useState(false)
+  const wideLayout = useSyncExternalStore(
+    subscribeLayout,
+    getWideLayout,
+    () => false,
+  )
+  const [desktopAnalysisOpen, setDesktopAnalysisOpen] = useState(true)
+  const [mobileAnalysisOpen, setMobileAnalysisOpen] = useState(false)
+  const analysisOpen = wideLayout ? desktopAnalysisOpen : mobileAnalysisOpen
+  const analysisModal = analysisOpen && !wideLayout
+  function setAnalysisOpen(open: boolean) {
+    if (wideLayout) setDesktopAnalysisOpen(open)
+    else setMobileAnalysisOpen(open)
+  }
   const analysisDialog = useRef<HTMLDialogElement>(null)
+  const focusAnalysisOnOpen = useRef(false)
   useEffect(() => {
     const element = analysisDialog.current
-    if (analysisOpen) element?.showModal()
-    else element?.close()
-  }, [analysisOpen])
+    if (!element) return
+    element.close()
+    if (analysisOpen) {
+      // A docked panel must not steal focus or make the table inert.
+      if (wideLayout) element.open = true
+      else element.showModal()
+      if (focusAnalysisOnOpen.current) {
+        element.focus()
+        focusAnalysisOnOpen.current = false
+      }
+    }
+    return () => element.close()
+  }, [analysisOpen, wideLayout])
   const [shortcuts, setShortcuts] = useState(false)
   const presentation = useTablePresentation(
     engineGame,
-    paused || dialog !== null || analysisOpen,
+    paused || dialog !== null || analysisModal,
     fast,
   )
   const game = presentation.game
   const unlockAudio = useTableSound(
     presentation,
     sound,
-    paused || dialog !== null || analysisOpen,
+    paused || dialog !== null || analysisModal,
   )
   const [notice, setNotice] = useState('')
   const [lastDecision, setLastDecision] = useState<{
@@ -107,7 +137,7 @@ export default function App() {
     !paused &&
     !presentation.busy &&
     !dialog &&
-    !analysisOpen
+    !analysisModal
   const betAmount = Math.max(
     legal.minRaiseTo,
     Math.min(legal.maxRaiseTo, raiseTo),
@@ -124,7 +154,7 @@ export default function App() {
       paused ||
       presentation.busy ||
       dialog ||
-      analysisOpen
+      analysisModal
     )
       return
     const timeout = window.setTimeout(
@@ -132,7 +162,7 @@ export default function App() {
       fast ? 600 : 1300,
     )
     return () => window.clearTimeout(timeout)
-  }, [game, paused, presentation.busy, fast, dialog, analysisOpen])
+  }, [game, paused, presentation.busy, fast, dialog, analysisModal])
 
   useEffect(() => {
     if (!game.result) return
@@ -255,7 +285,7 @@ export default function App() {
       </header>
       <main
         id="table"
-        className={`qp-main ${analysisOpen ? 'analysis-open' : ''}`}
+        className={`qp-main ${wideLayout && analysisOpen ? 'qp-with-analysis' : ''} ${analysisModal ? 'analysis-open' : ''}`}
       >
         <section className="qp-game" aria-label="Poker table">
           <PokerTable
@@ -279,9 +309,14 @@ export default function App() {
             }}
             analysisOpen={analysisOpen}
             onToggleAnalysis={() => setAnalysisOpen(!analysisOpen)}
+            onExplain={() => {
+              if (analysisOpen) analysisDialog.current?.focus()
+              else focusAnalysisOnOpen.current = true
+              setAnalysisOpen(true)
+            }}
             onUnlock={unlockAudio}
             shortcuts={shortcuts}
-            dialogOpen={dialog !== null || analysisOpen}
+            dialogOpen={dialog !== null || analysisModal}
             tip={
               showTip
                 ? game.guided && game.street === 'flop'
@@ -301,11 +336,13 @@ export default function App() {
         <dialog
           ref={analysisDialog}
           id="hand-analysis"
-          className="qp-analysis"
+          className={`qp-analysis ${wideLayout ? 'qp-analysis-docked' : ''}`}
           aria-label="Analysis and coach"
+          aria-modal={analysisModal || undefined}
+          tabIndex={-1}
           onCancel={() => setAnalysisOpen(false)}
           onClick={(event) => {
-            if (event.target !== event.currentTarget) return
+            if (wideLayout || event.target !== event.currentTarget) return
             const bounds = event.currentTarget.getBoundingClientRect()
             if (
               event.clientX < bounds.left ||
@@ -317,8 +354,12 @@ export default function App() {
           }}
         >
           <div className="qp-analysis-head">
-            <strong>Hand insights</strong>
-            <span>Game paused · Take your time</span>
+            <strong>Quant lab</strong>
+            <span>
+              {analysisModal || paused
+                ? 'Game paused · Take your time'
+                : 'Live with this hand'}
+            </span>
             <button
               className="qp-icon"
               aria-label="Close analysis"

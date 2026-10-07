@@ -97,6 +97,7 @@ export function PokerTable({
   onSound,
   analysisOpen,
   onToggleAnalysis,
+  onExplain,
   onUnlock,
   shortcuts,
   dialogOpen,
@@ -121,6 +122,7 @@ export function PokerTable({
   onSound: () => void
   analysisOpen: boolean
   onToggleAnalysis: () => void
+  onExplain: () => void
   onUnlock: () => void
   shortcuts: boolean
   dialogOpen: boolean
@@ -402,7 +404,7 @@ export function PokerTable({
             onClick={onToggleAnalysis}
           >
             <ChartNoAxesCombined size={16} />
-            <span>{analysisOpen ? 'Close coach' : 'Hand insights'}</span>
+            <span>{analysisOpen ? 'Hide insights' : 'Hand insights'}</span>
           </button>
         </div>
       </div>
@@ -534,9 +536,8 @@ export function PokerTable({
                   )}
                 </>
               )}
-              <button className="pt-why" onClick={onToggleAnalysis}>
-                {analysisOpen ? 'Close insights' : 'Explain'}{' '}
-                <ArrowRight size={13} />
+              <button className="pt-why" onClick={onExplain}>
+                Explain <ArrowRight size={13} />
               </button>
             </div>
           )}

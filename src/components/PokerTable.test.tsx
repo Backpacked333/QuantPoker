@@ -37,6 +37,7 @@ function render(game: Game, busy = false) {
       onSound={noop}
       analysisOpen={false}
       onToggleAnalysis={noop}
+      onExplain={noop}
       onUnlock={noop}
       shortcuts={false}
       dialogOpen={false}

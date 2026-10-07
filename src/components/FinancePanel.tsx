@@ -303,11 +303,7 @@ export function FinancePanel({
       </div>
       <div className="panel-heading">
         <div>
-          <h2>
-            A better way to
-            <br />
-            read your hand.
-          </h2>
+          <h2>A better way to read your hand.</h2>
           <p>Understand the price. See the possibilities. Ask why.</p>
         </div>
         <button

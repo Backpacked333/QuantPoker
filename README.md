@@ -2,7 +2,7 @@
 
 **Play the hand. Understand the odds.**
 
-QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. Play heads-up Texas Hold’em on a focused game screen, then open **Hand insights** to estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance.
+QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. Play heads-up Texas Hold’em on a focused game screen with a live **Quant lab** alongside it on desktop: estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance. On smaller screens, open **Hand insights** for the same learning tools.
 
 This is a **single-player educational web app**, not an online gambling service, multiplayer platform, trading tool, or source of investment advice.
 
@@ -84,11 +84,16 @@ viewports or expanded custom controls can scroll rather than clip the game.
   button in one tap. Select the chip-total dropdown for the slider, numeric entry
   and ±1 big blind stepper; editing the amount updates the action button live.
   Maximum-effective bets require confirmation. No action timer is imposed.
-- **Analysis on demand.** The finance lens and coach live in a closed-by-default
-  **Hand insights** drawer at every screen size. Opening it pauses both Atlas and
-  the staged hand; closing it resumes play. A native modal dialog provides focus
-  containment, Escape dismissal and focus restoration. Its content stays mounted
-  so closing and reopening does not discard the current model or coach conversation.
+- **Play and learn together.** At widths of 1100px and above, the **Quant lab** is
+  docked on the right by default, with its own scroll area. The game keeps playing
+  while the graphs and explanations follow the visible hand. Hide the panel for a
+  wider table, or use **Explain** to open/focus it without placing a bet. The table's
+  Pause control still stops play when you want time to study.
+- **Small-screen insights.** Below 1100px, **Hand insights** opens a closed-by-default
+  drawer that pauses Atlas and the staged hand. A native modal dialog provides
+  focus containment, Escape dismissal and focus restoration. Desktop and mobile
+  visibility preferences are independent; resizing or hiding the panel keeps the
+  same mounted model and coach conversation until the hand/review changes.
 - **Pacing.** Dealing, chip movement, street reveals, opponent-card reveal and pot
   settlement are choreographed separately; all-in boards reveal flop → turn → river.
   The immutable engine determines every result; animation never changes cards or

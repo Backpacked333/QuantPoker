@@ -38,6 +38,7 @@ function setup({
         onSound={vi.fn()}
         analysisOpen={false}
         onToggleAnalysis={onToggleAnalysis}
+        onExplain={onToggleAnalysis}
         onUnlock={vi.fn()}
         shortcuts
         dialogOpen={dialogOpen}

@@ -1,0 +1,69 @@
+.curriculum-workspace .qp-contracts-lab {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e3e7df);
+  border-radius: 16px;
+  padding: clamp(14px, 3vw, 28px);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curriculum-workspace .qp-contracts-lab :is(h1, h2, h3, p) {
+  margin-block: 0.8rem;
+}
+.curriculum-workspace .qp-contracts-lab button {
+  border: 1px solid var(--green, #23624f);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  min-height: 44px;
+  background: #f1f6eb;
+}
+.curriculum-workspace .qp-contracts-lab > label,
+.curriculum-workspace .qp-contracts-lab section > label {
+  display: block;
+  margin-block: 0.5rem;
+  font-weight: 600;
+}
+.curriculum-workspace .qp-contracts-lab select,
+.curriculum-workspace .qp-contracts-lab textarea {
+  border: 1px solid #82948a;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink, #203930);
+  padding: 0.6rem;
+  min-height: 44px;
+  max-width: 100%;
+}
+.curriculum-workspace .qp-contracts-lab textarea {
+  display: block;
+  width: 100%;
+  min-height: 100px;
+  margin-block: 0.75rem;
+}
+.curriculum-workspace .qp-contracts-lab fieldset {
+  border: 1px solid var(--line, #e3e7df);
+  border-radius: 8px;
+  padding: 1rem;
+  min-width: 0;
+}
+.curriculum-workspace .qp-contracts-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.curriculum-workspace .qp-contracts-state,
+.curriculum-workspace .qp-contracts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+  margin-block: 0.75rem;
+}
+.curriculum-workspace .qp-contracts-state > .qp-numeric {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.curriculum-workspace .qp-contracts-distribution {
+  margin-block: 1.25rem;
+}
+.curriculum-workspace .qp-contracts-lab > p {
+  max-width: 80ch;
+}

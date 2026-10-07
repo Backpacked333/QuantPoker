@@ -12,7 +12,7 @@ import App from './Curriculum'
 import { modules } from './curriculum'
 import { Lab } from './components/Labs'
 import { Checkpoint } from './components/Checkpoint'
-import { STORAGE_KEY } from './lib/progress'
+import { LEARNING_KEY as STORAGE_KEY } from './core/persistence'
 
 function navigate(hash: string) {
   act(() => {
@@ -24,6 +24,7 @@ function navigate(hash: string) {
 describe('learning workspace', () => {
   it('shows honest initial progress and filters modules', async () => {
     const user = userEvent.setup()
+    navigate('#learn/core')
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'A better way to think about risk.',
@@ -68,7 +69,7 @@ describe('learning workspace', () => {
 
   it('searches concept mappings, exposes boundaries, and clears empty results', async () => {
     const user = userEvent.setup()
-    navigate('#learn/map')
+    navigate('#learn/connections')
     render(<App />)
     await user.type(
       screen.getByRole('textbox', { name: 'Search concepts' }),
@@ -118,9 +119,9 @@ describe('learning workspace', () => {
       screen.getByRole('textbox', { name: 'Your field notes' }),
       'Count the call in the final pot.',
     )
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).notes.odds).toBe(
-      'Count the call in the final pot.',
-    )
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.notes.odds,
+    ).toBe('Count the call in the final pot.')
     navigate('#learn/notebook')
     expect(
       screen.getByRole('textbox', {
@@ -154,7 +155,9 @@ describe('learning workspace', () => {
         name: 'Notes for The price of a decision',
       }),
     ).toHaveValue('')
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).completed).toEqual([])
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.completed,
+    ).toEqual([])
   })
 
   it('survives unavailable storage and warns without blocking notes', async () => {
@@ -197,11 +200,11 @@ describe('learning workspace', () => {
     )
     expect(screen.getByRole('status')).toHaveTextContent('Connection made.')
     expect(screen.getByRole('progressbar')).toHaveAttribute('value', '1')
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).completed).toEqual([
-      'odds',
-    ])
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY)!).legacy.completed,
+    ).toEqual(['odds'])
     view.unmount()
-    navigate('#learn/path')
+    navigate('#learn/core')
     render(<App />)
     expect(
       screen.getByRole('link', { name: /Continue learning/ }),
@@ -218,11 +221,11 @@ describe('learning workspace', () => {
     await user.click(
       within(
         screen.getByRole('navigation', { name: 'Curriculum navigation' }),
-      ).getByRole('link', { name: 'Concept map' }),
+      ).getByRole('link', { name: 'Concept atlas' }),
     )
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-        'Follow the connections.',
+        '96-family concept atlas',
       ),
     )
     expect(
@@ -238,7 +241,7 @@ describe('learning workspace', () => {
     )
     navigate('#bad-route')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'A better way to think about risk.',
+      'Foundations for defensible decisions',
     )
   })
 

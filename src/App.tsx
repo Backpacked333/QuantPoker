@@ -42,7 +42,7 @@ import { FinancePanel } from './components/FinancePanel'
 import { Modal } from './components/Modal'
 import { Lessons } from './components/Lessons'
 import { isLearningRoute, useHash } from './lib/navigation'
-import type { LearningSession } from './curriculum/lib/progress'
+import type { LearningSession } from './curriculum/core/session'
 
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
 

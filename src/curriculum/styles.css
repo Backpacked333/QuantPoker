@@ -1,4 +1,162 @@
 .curriculum-workspace {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+body:has(.curriculum-workspace) {
+  min-width: 320px;
+}
+.curriculum-workspace select {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+.curriculum-workspace fieldset {
+  min-width: 0;
+}
+.curriculum-workspace .qp-case,
+.curriculum-workspace .qp-lesson-step,
+.curriculum-workspace .qp-data-tools {
+  background: var(--surface, #fff);
+  border: 1px solid #dce2dc;
+  border-radius: 16px;
+  padding: clamp(14px, 3vw, 28px);
+  margin-block: 18px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curriculum-workspace .qp-case h3,
+.curriculum-workspace .qp-lesson-step h2 {
+  margin-block: 0 14px;
+}
+.curriculum-workspace .qp-step-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 20px;
+}
+.curriculum-workspace .qp-step-nav a {
+  border: 1px solid #cbd7ce;
+  padding: 9px 14px;
+  border-radius: 8px;
+  text-transform: capitalize;
+}
+.curriculum-workspace .qp-step-nav a[aria-current] {
+  background: #e0eee2;
+  font-weight: 700;
+}
+.curriculum-workspace .qp-case label,
+.curriculum-workspace .qp-prediction label,
+.curriculum-workspace .qp-data-tools label,
+.curriculum-workspace .qp-lesson-step > label,
+.curriculum-workspace .qp-numeric label {
+  display: block;
+  margin-block: 10px 6px;
+  font-weight: 600;
+}
+.curriculum-workspace .qp-case fieldset {
+  border: 1px solid #dce2dc;
+  border-radius: 8px;
+  margin-block: 18px;
+  min-width: 0;
+}
+.curriculum-workspace .qp-case input[type='number'],
+.curriculum-workspace .qp-prediction input,
+.curriculum-workspace .qp-numeric input[type='number'],
+.curriculum-workspace .qp-case select,
+.curriculum-workspace .qp-lesson-step select,
+.curriculum-workspace .qp-prediction select,
+.curriculum-workspace .qp-case textarea,
+.curriculum-workspace .qp-data-tools textarea,
+.curriculum-workspace .qp-lesson-step input[type='search'],
+.curriculum-workspace .qp-lesson-step textarea {
+  width: 100%;
+  max-width: 560px;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #82948a;
+  border-radius: 6px;
+  background: #fff;
+  color: #192c22;
+  font: inherit;
+}
+.curriculum-workspace .qp-case textarea,
+.curriculum-workspace .qp-data-tools textarea,
+.curriculum-workspace .qp-lesson-step textarea {
+  min-height: 100px;
+}
+.curriculum-workspace .qp-numeric input[type='range'] {
+  width: 100%;
+}
+.curriculum-workspace .qp-case input[type='radio'],
+.curriculum-workspace .qp-case input[type='checkbox'] {
+  margin-inline-end: 10px;
+}
+.curriculum-workspace .qp-data-tools .button {
+  margin: 4px;
+}
+.curriculum-workspace .qp-data-tools details {
+  margin-block: 14px;
+  border-top: 1px solid #dce2dc;
+  padding-block: 12px;
+}
+.curriculum-workspace .qp-data-tools summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.curriculum-workspace .qp-data-tools article {
+  margin-block: 16px;
+}
+.curriculum-workspace .qp-data-table {
+  min-width: 0;
+}
+.curriculum-workspace .qp-series-chart {
+  margin: 20px 0;
+  min-width: 0;
+}
+.curriculum-workspace .qp-series-chart svg {
+  display: block;
+  width: 100%;
+  max-width: 700px;
+  height: auto;
+  margin-block: 12px;
+}
+.curriculum-workspace .qp-table-scroll {
+  overflow-x: auto;
+  border: 1px solid #dce2dc;
+}
+.curriculum-workspace .qp-data-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.curriculum-workspace .qp-data-table th,
+.curriculum-workspace .qp-data-table td {
+  padding: 10px;
+  border: 1px solid #dce2dc;
+  text-align: start;
+}
+.curriculum-workspace .qp-data-table caption {
+  font-weight: 700;
+  padding: 10px;
+  text-align: start;
+}
+.curriculum-workspace .qp-case :focus-visible,
+.curriculum-workspace .qp-data-tools :focus-visible,
+.curriculum-workspace .qp-lesson-step :focus-visible,
+.curriculum-workspace .qp-prediction :focus-visible,
+.curriculum-workspace .qp-table-scroll:focus-visible,
+.curriculum-workspace .qp-step-nav a:focus-visible {
+  outline: 3px solid #176842;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .curriculum-workspace .qp-case *,
+  .curriculum-workspace .qp-lesson-step * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+.curriculum-workspace {
   font-family: 'DM Sans', sans-serif;
   color: #263831;
   background: #f7f8f4;
@@ -212,8 +370,15 @@
 }
 .curriculum-workspace .sidebar-progress > div {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   font-size: 11px;
+}
+.curriculum-workspace .sidebar-progress > div > p {
+  flex-basis: 100%;
+  order: 1;
+  margin: 8px 0 0;
+  line-height: 1.5;
 }
 .curriculum-workspace .sidebar-progress strong {
   font-size: 10px;

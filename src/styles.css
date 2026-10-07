@@ -3544,6 +3544,34 @@ input:disabled {
   top: 0;
   z-index: 30;
 }
+@media (max-width: 480px) {
+  .site-header.learning-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-inline: 10px;
+    gap: 8px;
+  }
+  .learning-header .brand {
+    min-width: 0;
+    font-size: 18px;
+    gap: 6px;
+  }
+  .learning-header .brand-icon {
+    width: 26px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+  .site-header.learning-header nav {
+    margin: 0;
+    gap: 6px;
+  }
+  .learning-header .header-right {
+    margin: 0;
+  }
+  .learning-header .practice-pill {
+    display: none;
+  }
+}
 .curriculum-connections {
   margin: 0 0 22px;
   padding: 16px;

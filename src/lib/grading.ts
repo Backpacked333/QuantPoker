@@ -40,6 +40,19 @@ export type ActionOption = {
   to?: number
   ev: number
   foldProbability?: number
+  /**
+   * Whether the option sets the bar for grading. Overbets beyond 1.5× pot are
+   * shown but not graded against: the model prices a call as a check-down
+   * (no implied odds) while a shove has no later betting, which biases the
+   * comparison toward huge bets.
+   */
+  graded: boolean
+}
+
+/** Largest raise target used as a grading benchmark. */
+export const gradingCap = (game: Game) => {
+  const { pot, toCall } = heroContext(game)
+  return Math.max(...game.bets) + 1.5 * (pot + toCall)
 }
 
 export type DecisionGrade = {
@@ -80,12 +93,14 @@ export function decisionOptions(
 ): ActionOption[] {
   const { toCall, pot, heroBet, atlasBet, legal } = heroContext(game)
   const outcome = spotOutcome(spot, model)
+  const cap = gradingCap(game)
   const options: ActionOption[] = [
-    { kind: 'fold', label: 'Fold', ev: 0 },
+    { kind: 'fold', label: 'Fold', ev: 0, graded: true },
     {
       kind: 'continue',
       label: toCall ? `Call ${toCall}` : 'Check',
       ev: outcome.equity * pot - (1 - outcome.equity) * toCall,
+      graded: true,
     },
   ]
   const verb = Math.max(...game.bets) ? 'Raise to' : 'Bet'
@@ -102,6 +117,7 @@ export function decisionOptions(
       to,
       ev: analysis.ev,
       foldProbability: analysis.foldProbability,
+      graded: to <= cap || to === actualTo,
     })
   }
   return options
@@ -128,9 +144,11 @@ export function gradeDecision(
         ? options.find((o) => o.to === action.to)!
         : options[1]
   // Folding is only a real alternative when there is something to call.
-  const pool = heroContext(game).toCall
-    ? options
-    : options.filter((o) => o.kind !== 'fold' || chosen.kind === 'fold')
+  const pool = options.filter(
+    (o) =>
+      (o.graded || o === chosen) &&
+      (heroContext(game).toCall || o.kind !== 'fold' || chosen.kind === 'fold'),
+  )
   const best = pool.reduce((a, b) => (b.ev > a.ev ? b : a))
   const evLost = Math.max(0, best.ev - chosen.ev)
   return {

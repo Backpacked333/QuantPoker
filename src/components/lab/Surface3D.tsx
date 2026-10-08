@@ -3,8 +3,8 @@ import type { PointerEvent } from 'react'
 import { Crosshair, Move, RotateCcw } from 'lucide-react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { liveSurfaceValue, surfaceRiskRange } from '../lib/finance'
-import type { Lens, SurfaceScenario } from '../lib/finance'
+import { liveSurfaceValue, surfaceRiskRange } from '../../lib/finance'
+import type { Lens, SurfaceScenario } from '../../lib/finance'
 
 const labels: Record<Lens, [string, string, string]> = {
   equity: [
@@ -196,6 +196,9 @@ export default function Surface({
       zero.geometry.dispose()
       zeroMaterial.dispose()
       renderer.dispose()
+      // Release the GL context now instead of waiting for garbage collection;
+      // browsers cap live contexts and the lab remounts this view often.
+      renderer.forceContextLoss()
       renderer.domElement.remove()
       world.current = null
     }
@@ -282,10 +285,10 @@ export default function Surface({
       <div className="surface-card">
         <div className="surface-toolbar">
           <span>
-            <i className="tiny-dot" /> LIVE DECISION TERRAIN
+            <i className="tiny-dot" /> 3D decision terrain
           </span>
           <button
-            className="icon-button"
+            className="icon-btn"
             onClick={() => reset.current()}
             aria-label="Reset graph view"
           >

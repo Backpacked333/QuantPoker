@@ -114,6 +114,24 @@ function preflopClassEquity(random: () => number) {
   return (preflopClasses = table)
 }
 
+/**
+ * Atlas's pre-flop range over the 169 starting-hand classes after a single
+ * public action, normalized so the most likely class is 1. Used by lessons.
+ */
+export function preflopRangeAfter(
+  action: 'raise' | 'passive' | 'any',
+  style: AtlasStyle,
+  random: () => number,
+  context = { toCall: 0, pot: 30, canRaise: true },
+) {
+  const classes = preflopClassEquity(random)
+  const weights = Array.from(classes, (equity) =>
+    action === 'any' ? 1 : policy(equity, context, style, POLICY_SIGMA)[action],
+  )
+  const peak = Math.max(...weights) || 1
+  return weights.map((w) => w / peak)
+}
+
 const atlasCache = new Map<string, Float32Array>()
 export function atlasEquityTable(board: number[], random: () => number) {
   const key = board.join(',')

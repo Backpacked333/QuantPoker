@@ -178,6 +178,12 @@ describe('Atlas policy', () => {
         .raise,
     ).toBe(0)
   })
+  it('defends weak hands against small bets but not against huge overbets', () => {
+    const weak = (toCall: number, pot: number) =>
+      policy(0.2, { toCall, pot, canRaise: true }, 'balanced').fold
+    expect(weak(40, 160)).toBeCloseTo(0.85)
+    expect(weak(1900, 2100)).toBe(1)
+  })
   it('makes tight fold more than aggressive at the same price', () => {
     const at = (style: AtlasStyle) =>
       policy(0.3, { toCall: 50, pot: 150, canRaise: true }, style).fold
@@ -337,6 +343,33 @@ describe('decision grading', () => {
     expect(fold.best.kind).toBe('raise')
     const call = gradeDecision(game, { type: 'call' }, spot, 'balanced')
     expect(call.evLost).toBeLessThan(fold.evLost)
+  })
+  it('shows overbet shoves but grades against standard sizes', () => {
+    const game = guidedHand()
+    const spot = analyzeSpot(
+      {
+        key: 's',
+        hole: game.cards[0],
+        board: game.board,
+        history: game.history,
+        style: 'balanced',
+      },
+      lcg(8),
+    )
+    const graded = gradeDecision(game, { type: 'call' }, spot, 'balanced')
+    const shove = graded.options.find((o) => o.to === 1940)!
+    // A 15-out draw really is +EV to shove against Atlas's calling range...
+    expect(shove.graded).toBe(false)
+    // ...but calling is judged against pot-sized alternatives.
+    expect(graded.best.to ?? 0).toBeLessThanOrEqual(400)
+    expect(['Best', 'Good', 'Inaccuracy']).toContain(graded.grade)
+    const shoved = gradeDecision(
+      game,
+      { type: 'raise', to: 1940 },
+      spot,
+      'balanced',
+    )
+    expect(shoved.grade).toBe('Best')
   })
   it('offers legal raise candidates including the actual size', () => {
     const game = guidedHand()

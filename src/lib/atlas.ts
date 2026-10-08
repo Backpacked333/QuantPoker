@@ -55,6 +55,14 @@ export type PolicyMix = { fold: number; passive: number; raise: number }
 const potOdds = ({ toCall, pot }: PolicyContext) =>
   toCall ? toCall / (pot + toCall) : 0
 
+/**
+ * Weak hands are defended less as the price rises: fully against bets up to
+ * about half pot, not at all against large overbets. Without this, huge
+ * shoves would be exploitably profitable against Atlas.
+ */
+export const defendRate = (style: AtlasStyle, odds: number) =>
+  STYLES[style].stickiness * Math.max(0, Math.min(1, (0.45 - odds) / 0.25))
+
 // Standard normal CDF (Abramowitz–Stegun 7.1.26 via erf).
 function normalCdf(x: number) {
   const t = 1 / (1 + 0.3275911 * Math.abs(x / Math.SQRT2))
@@ -90,10 +98,11 @@ export function policy(
     ? p.bluffFrequency +
       strong * (Math.max(p.valueFrequency, p.bluffFrequency) - p.bluffFrequency)
     : 0
+  const defend = defendRate(style, potOdds(context))
   const raiseWhenWeak = context.canRaise
-    ? Math.min(p.bluffFrequency, p.stickiness)
+    ? Math.min(p.bluffFrequency, defend)
     : 0
-  const fold = weak * (1 - p.stickiness)
+  const fold = weak * (1 - defend)
   const raise = weak * raiseWhenWeak + (1 - weak) * raiseRegion
   return { fold, raise, passive: Math.max(0, 1 - fold - raise) }
 }
@@ -125,7 +134,7 @@ export function atlasDecision(
   const odds = potOdds(context)
   const roll = random()
   const weak = legal.toCall > 0 && equity < odds + p.foldMargin
-  if (weak && roll > p.stickiness)
+  if (weak && roll > defendRate(style, odds))
     return {
       action: { type: 'fold' },
       equity,

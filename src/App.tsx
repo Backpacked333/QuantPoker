@@ -560,7 +560,11 @@ export default function App() {
   }
   const showReview = () => {
     if (compact) setSheetOpen(true)
-    else labRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    else
+      labRef.current?.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      })
   }
 
   // ---- Keyboard --------------------------------------------------------------------

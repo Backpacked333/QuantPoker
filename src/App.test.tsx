@@ -1,6 +1,14 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import App from './App'
 import { LEGACY_KEY, STORAGE_KEY as TABLE_KEY } from './lib/storage'
 import { STORAGE_KEY as LEARNING_V1_KEY } from './curriculum/lib/progress'
@@ -39,6 +47,9 @@ class SilentWorker {
 const onboarded = () =>
   localStorage.setItem(TABLE_KEY, JSON.stringify({ onboarded: true }))
 
+// The lab is lazy-loaded; load it once so the first test isn't racing the
+// chunk on a busy machine.
+beforeAll(() => import('./components/lab/Lab'))
 beforeEach(() => {
   vi.stubGlobal('Worker', AnalysisWorker)
   onboarded()

@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, PointerEvent, Ref } from 'react'
 import { ChevronUp } from 'lucide-react'
-import { animate, m, useMotionValue } from 'motion/react'
+import {
+  animate,
+  m,
+  useMotionValue,
+  useReducedMotionConfig,
+} from 'motion/react'
 import type { AnimationPlaybackControlsWithThen } from 'motion/react'
 import { spring } from '../motion'
 
@@ -37,9 +42,14 @@ export function LabSheet({
   const drag = useRef<{ y: number; h: number; moved: boolean } | null>(null)
   const suppressClick = useRef(false)
   const motion = useRef<AnimationPlaybackControlsWithThen | null>(null)
+  const reduced = useReducedMotionConfig()
   const glide = (to: Snap) => {
     motion.current?.stop()
-    motion.current = animate(height, target(to), spring.smooth)
+    motion.current = animate(
+      height,
+      target(to),
+      reduced ? { duration: 0 } : spring.smooth,
+    )
     return motion.current
   }
 

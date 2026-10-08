@@ -19,6 +19,7 @@ import { act, analyzeEquity, deck, guidedHand, newHand, shuffle } from './poker'
 import type { Card, Game, Suit } from './poker'
 import { analyzeSpot, COMBOS, COMBO_A, COMBO_B, comboIndex } from './range'
 import { lcg, score, toId } from './sim'
+import { faceUpEquity } from './showdown'
 
 const cards = (s: string): Card[] =>
   s.split(' ').map((value) => ({
@@ -393,4 +394,21 @@ describe('hand classes', () => {
   ])('%s on %s is %s', (hole, board, label) =>
     expect(handClass(cards(hole), board ? cards(board) : [])).toBe(label),
   )
+})
+
+describe('face-up equity', () => {
+  it('splits a tied board as half the pot each, not zero', () => {
+    const e = faceUpEquity(
+      cards('2h 3h'),
+      cards('4d 5d'),
+      cards('As Ks Qs Js Ts'),
+    )
+    expect(e).toEqual({ hero: 0.5, atlas: 0.5, tie: 1 })
+  })
+  it('keeps shares summing to one with partial ties', () => {
+    const e = faceUpEquity(cards('Ah Kd'), cards('Ac Ks'), cards('Qh Jd 2c'))
+    expect(e.hero + e.atlas).toBeCloseTo(1)
+    expect(e.tie).toBeGreaterThan(0.5)
+    expect(e.hero).toBeGreaterThan(e.tie / 2 - 1e-9)
+  })
 })

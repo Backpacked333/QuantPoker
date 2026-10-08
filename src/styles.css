@@ -178,6 +178,65 @@
   --ring-bad: #6a3d9a;
 }
 
+/* The curriculum ships light-only styles. Pin the light tokens inside it so
+   app-wide dark-theme rules (headings, labels, buttons) stay legible. */
+.curriculum-workspace {
+  color-scheme: light;
+  --bg: #f3f4ef;
+  --surface: #ffffff;
+  --surface-2: #f7f8f4;
+  --surface-3: #eef1e9;
+  --border: #e1e5dc;
+  --border-strong: #c9d1c3;
+  --text: #1b2d26;
+  --text-2: #46564e;
+  --text-3: #5a6860;
+  --brand: #1f5a46;
+  --brand-2: #2c7a5f;
+  --brand-ink: #ffffff;
+  --accent: #c4e6a8;
+  --accent-strong: #a6d983;
+  --accent-ink: #15362a;
+  --positive: #187a55;
+  --negative: #8a4bb0;
+  --positive-soft: #e1f2e8;
+  --negative-soft: #f1e8f7;
+  --warning: #a86b0c;
+  --focus: #2f7dd1;
+  --shadow-sm: 0 1px 2px rgb(20 40 30 / 0.06);
+  --shadow: 0 6px 24px rgb(20 40 30 / 0.08);
+  --shadow-lg: 0 24px 60px rgb(15 35 25 / 0.18);
+  --felt-1: #2a6b54;
+  --felt-2: #1c4e3d;
+  --felt-3: #123629;
+  --felt-rim: #0d2a20;
+  --table-bg: #133a2e;
+  --table-bar: #0f3126;
+  --on-felt: #e9f3ec;
+  --on-felt-2: #a9c6b6;
+  --card-face: #fffefa;
+  --card-ink: #1d2a24;
+  --card-red: #c0392f;
+  --card-back-1: #2b6e57;
+  --card-back-2: #1b4c3c;
+  --heat-low: #9a76c9;
+  --heat-mid: #edf0e8;
+  --heat-high: #2f9670;
+  --heat-line: #1f362d;
+  --grade-best: #13895f;
+  --grade-good: #4f9e74;
+  --grade-inaccuracy: #b78a12;
+  --grade-mistake: #cf6a2b;
+  --grade-blunder: #c23a4a;
+  --grade-ink: #ffffff;
+  --ring-good: #c4e6a8;
+  --ring-bad: #e3c4ff;
+  --radius: 14px;
+  --radius-sm: 9px;
+  --radius-lg: 20px;
+  color: var(--text);
+}
+
 /* ============================================================
    Base
    ============================================================ */
@@ -226,6 +285,17 @@ button:disabled {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: 6px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 .skip-link {
   position: absolute;
@@ -2301,6 +2371,67 @@ input[type='range']:disabled {
   font-size: 12px;
   color: var(--text-3);
 }
+.metric-trio {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.metric-trio > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.metric-trio strong {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.metric-trio small {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.curriculum-connections {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.curriculum-connections > strong {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.curriculum-connections a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--brand-2);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.curriculum-connections a:hover {
+  text-decoration: underline;
+}
+.curriculum-connections small {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.curriculum-loading {
+  max-width: 1120px;
+  min-height: 60vh;
+  margin: 0 auto;
+  padding: 64px 28px;
+  color: var(--text-2);
+}
 .metric-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4016,6 +4147,7 @@ button.range-cell:focus-visible {
   .quant-grid,
   .greeks,
   .metric-pair,
+  .metric-trio,
   .probe {
     grid-template-columns: 1fr;
   }

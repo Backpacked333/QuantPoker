@@ -8,6 +8,7 @@ import {
   readProgress,
   saveProgress,
   STORAGE_KEY,
+  upsertHand,
 } from './storage'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -139,5 +140,20 @@ describe('local progress storage', () => {
     expect(importProgress(exportProgress(progress))).toEqual(progress)
     expect(importProgress('nope')).toBeNull()
     expect(importProgress('{"lessons":[]}')).toBeNull()
+  })
+  it('upserts hands by id, replacing a provisional record in place', () => {
+    const a = { id: 'a', hand: 1, net: 5, result: 'Win', guided: false }
+    const b = {
+      id: 'b',
+      hand: 2,
+      net: -60,
+      result: 'Fold',
+      guided: false,
+      graded: false,
+    }
+    let progress = upsertHand(upsertHand(emptyProgress(), a), b)
+    progress = upsertHand(progress, { ...b, graded: true, expectedNet: -40 })
+    expect(progress.hands.map((h) => h.id)).toEqual(['a', 'b'])
+    expect(progress.hands[1]).toMatchObject({ graded: true, expectedNet: -40 })
   })
 })

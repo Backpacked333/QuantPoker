@@ -1,4 +1,5 @@
 import { ArrowRight, Crosshair, ShieldCheck } from 'lucide-react'
+import { allInCashout, kellyFraction } from '../../lib/finance'
 import type { LabModel } from './labModel'
 import { pct, signed } from '../format'
 
@@ -165,19 +166,54 @@ export function ProtectionView({
           <small>down from {lab.unhedged.toFixed(1)} chips</small>
         </div>
       </div>
+      <AllInPreview lab={lab} />
       <div className="insight">
         <ShieldCheck size={17} />
         <div>
-          <h4>Fair protection changes the shape, not the average.</h4>
+          <h4>Cashout protection resembles insurance—not a CDS price.</h4>
           <p>
             The policy pays {lab.coverage.toFixed(0)} chips only in the losing
             state and charges its expected payout up front. Ties and Atlas folds
-            pay nothing. Expected wealth is unchanged before fees while the
-            spread of outcomes falls. Real insurance adds expenses, exclusions
-            and correlated losses.
+            pay nothing, so expected wealth is unchanged before fees while the
+            spread of outcomes falls. That contingent-payment shape also appears
+            in credit default swaps. Cashing out instead sells the whole pot
+            claim, including its upside. A real CDS adds a reference entity,
+            default timing, recovery, discounting, collateral and counterparty
+            risk; none is modeled here.
           </p>
         </div>
       </div>
     </>
+  )
+}
+
+/** All-in cashout, run-it-twice and Kelly figures for the selected exposure. */
+function AllInPreview({ lab }: { lab: LabModel }) {
+  if (lab.exposure <= 0) return null
+  const equity = Math.max(0, Math.min(1, lab.scenario.equity))
+  const profitOnWin = lab.pot + lab.decision.opponentCall
+  const allIn = allInCashout(equity, lab.exposure, profitOnWin, 0.01)
+  const kelly = kellyFraction(equity, lab.exposure, profitOnWin)
+  return (
+    <div className="metric-trio">
+      <div>
+        <span className="label">Illustrative all-in cashout</span>
+        <strong>{allIn.cashoutPayout.toFixed(1)} chips paid</strong>
+        <small>
+          1% fee · net EV {signed(allIn.cashoutEV)} vs{' '}
+          {signed(allIn.showdownEV)} at showdown
+        </small>
+      </div>
+      <div>
+        <span className="label">Run-twice dispersion</span>
+        <strong>{allIn.runTwiceDeviation.toFixed(1)}</strong>
+        <small>down from {allIn.runOnceDeviation.toFixed(1)} · same EV</small>
+      </div>
+      <div>
+        <span className="label">Full Kelly ceiling</span>
+        <strong>{pct(kelly)}</strong>
+        <small>known, repeatable edge assumption · not a shove target</small>
+      </div>
+    </div>
   )
 }

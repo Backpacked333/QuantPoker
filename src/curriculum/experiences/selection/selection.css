@@ -1,0 +1,66 @@
+.curriculum-workspace .qp-selection-lab {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curriculum-workspace .qp-selection-steps,
+.curriculum-workspace .qp-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 28px;
+  margin-block: 20px;
+}
+.curriculum-workspace .qp-selection-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 16px;
+  min-width: 0;
+  border: 1px solid var(--line, #dce2dc);
+  border-radius: 8px;
+  padding: 16px;
+}
+.curriculum-workspace .qp-selection-controls > .qp-selection-checkbox,
+.curriculum-workspace .qp-selection-controls > p {
+  grid-column: 1 / -1;
+}
+.curriculum-workspace .qp-selection-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.curriculum-workspace .qp-selection-lab dt {
+  margin-block-start: 16px;
+  font-weight: 700;
+}
+.curriculum-workspace .qp-selection-lab dd {
+  margin: 6px 0 14px;
+}
+.curriculum-workspace .qp-selection-bars {
+  margin: 20px 0;
+}
+.curriculum-workspace .qp-selection-bars label {
+  display: block;
+  margin-block: 14px 6px;
+}
+.curriculum-workspace .qp-selection-bars meter {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  height: 24px;
+}
+.curriculum-workspace .qp-selection-lab button {
+  min-height: 44px;
+  margin-block: 6px;
+}
+.curriculum-workspace .qp-selection-lab :focus-visible,
+.curriculum-workspace .qp-selection-transfer :focus-visible {
+  outline: 3px solid var(--green, #176842);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .curriculum-workspace .qp-selection-lab *,
+  .curriculum-workspace .qp-selection-transfer * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

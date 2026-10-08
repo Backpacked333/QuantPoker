@@ -47,6 +47,29 @@ const TITLES: Record<Tab, string> = {
   options: 'The option to walk away has value.',
   insurance: 'Protection reshapes the downside.',
 }
+/** Curriculum modules that extend each view (#learn/module/<id>/learn). */
+const CONNECTIONS: Record<Tab, [string, string][]> = {
+  decision: [
+    ['odds', 'Pot odds → expected payoff'],
+    ['outs', 'Outs → possible future states'],
+    ['equity', 'Equity → probability weights'],
+  ],
+  range: [
+    ['fold', 'Fold equity → response trees'],
+    ['equity', 'Equity → probability weights'],
+    ['outs', 'Outs → possible future states'],
+  ],
+  options: [
+    ['fold', 'Fold equity → response trees'],
+    ['pricing', 'Expected value → risk-neutral pricing'],
+    ['replication', 'Replication → delta & parity'],
+  ],
+  insurance: [
+    ['variance', 'Variance → implied volatility'],
+    ['replication', 'Hedging → payoff replication'],
+    ['risk', 'All-in risk → cashout, Kelly & CDS'],
+  ],
+}
 const LESSON_FOR: Record<Tab, LessonId> = {
   decision: 'equity',
   range: 'ranges',
@@ -348,6 +371,15 @@ export function Lab({
                   more for single next cards. Optionality and protection are
                   structural analogies, not market prices or advice.
                 </p>
+                <p>
+                  The all-in preview treats the selected exposure as terminal,
+                  compresses ties into showdown equity, assumes a 1% cashout
+                  fee, and treats two half-pot runouts as independent. Its Kelly
+                  ceiling assumes the same known edge and payoff repeat
+                  indefinitely. Real poker offers, shared-deck boards,
+                  estimation error and changing opponents violate those
+                  assumptions.
+                </p>
               </div>
             )}
             <button
@@ -359,6 +391,21 @@ export function Lab({
               </span>
               <ArrowUpRight size={15} />
             </button>
+            <nav
+              className="curriculum-connections"
+              aria-label="Related curriculum modules"
+            >
+              <strong>Take this hand further</strong>
+              {CONNECTIONS[activeTab].map(([id, label]) => (
+                <a key={`${id}-${label}`} href={`#learn/module/${id}/learn`}>
+                  {label} <ArrowUpRight size={14} />
+                </a>
+              ))}
+              <small>
+                Your hand pauses while you learn. These are teaching
+                connections, not pricing equivalences.
+              </small>
+            </nav>
           </div>
         </>
       )}

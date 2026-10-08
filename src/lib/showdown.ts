@@ -3,6 +3,7 @@
 import type { Card } from './poker'
 import { drawTail, liveIds, score, toId } from './sim'
 
+/** `hero` and `atlas` are pot shares (ties count half); `tie` is the tie chance. */
 export type FaceUpEquity = { hero: number; atlas: number; tie: number }
 
 export function faceUpEquity(
@@ -38,7 +39,12 @@ export function faceUpEquity(
       const start = drawTail(pool, missing, random)
       tally(pool.slice(start, start + missing))
     }
-  return { hero: win / n, tie: tie / n, atlas: 1 - (win + tie) / n }
+  // Equity shares the pot: a tie is worth half to each player.
+  return {
+    hero: (win + tie / 2) / n,
+    tie: tie / n,
+    atlas: (n - win - tie / 2) / n,
+  }
 }
 
 /** Equity at each street the hand reached, for the broadcast-style graph. */

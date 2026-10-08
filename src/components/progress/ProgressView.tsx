@@ -32,7 +32,6 @@ export function ProgressView({
   onClear: () => void
   onPlay: () => void
 }) {
-  const file = useRef<HTMLInputElement>(null)
   const stats = useMemo(() => {
     const hands = progress.hands
     const decisions = hands.flatMap((h) => h.decisions ?? [])
@@ -100,6 +99,7 @@ export function ProgressView({
             Go to the table
           </button>
         </div>
+        <DataActions progress={progress} onReplace={onReplace} />
       </div>
     )
 
@@ -330,11 +330,33 @@ export function ProgressView({
         </div>
       </section>
 
-      <div className="data-actions">
-        <span>
-          Stored on this device only. Export a backup or move it to another
-          browser.
-        </span>
+      <DataActions
+        progress={progress}
+        onReplace={onReplace}
+        onClear={onClear}
+      />
+    </div>
+  )
+}
+
+/** Export, import and clear; shown even with no hands so a backup can be restored. */
+function DataActions({
+  progress,
+  onReplace,
+  onClear,
+}: {
+  progress: Progress
+  onReplace: (progress: Progress) => void
+  onClear?: () => void
+}) {
+  const file = useRef<HTMLInputElement>(null)
+  return (
+    <div className="data-actions">
+      <span>
+        Stored on this device only. Export a backup or move it to another
+        browser.
+      </span>
+      {progress.hands.length > 0 && (
         <button
           className="btn btn-quiet"
           onClick={() => {
@@ -351,29 +373,32 @@ export function ProgressView({
         >
           <Download size={14} /> Export
         </button>
-        <button className="btn btn-quiet" onClick={() => file.current?.click()}>
-          <Upload size={14} /> Import
-        </button>
-        <input
-          ref={file}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={async (e) => {
-            const chosen = e.target.files?.[0]
-            e.target.value = ''
-            if (!chosen) return
-            const imported = importProgress(await chosen.text())
-            if (!imported)
-              window.alert('That file is not a QuantPoker progress export.')
-            else if (
-              window.confirm(
-                `Replace this device's progress with ${imported.hands.length} imported hands?`,
-              )
+      )}
+      <button className="btn btn-quiet" onClick={() => file.current?.click()}>
+        <Upload size={14} /> Import
+      </button>
+      <input
+        ref={file}
+        type="file"
+        accept="application/json"
+        hidden
+        aria-label="Progress file to import"
+        onChange={async (e) => {
+          const chosen = e.target.files?.[0]
+          e.target.value = ''
+          if (!chosen) return
+          const imported = importProgress(await chosen.text())
+          if (!imported)
+            window.alert('That file is not a QuantPoker progress export.')
+          else if (
+            window.confirm(
+              `Replace this device's progress with ${imported.hands.length} imported hands?`,
             )
-              onReplace(imported)
-          }}
-        />
+          )
+            onReplace(imported)
+        }}
+      />
+      {onClear && (
         <button
           className="btn btn-quiet danger"
           onClick={() => {
@@ -387,7 +412,7 @@ export function ProgressView({
         >
           <RotateCcw size={14} /> Clear
         </button>
-      </div>
+      )}
     </div>
   )
 }

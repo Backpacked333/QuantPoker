@@ -63,14 +63,33 @@ test('analyst views, the 3D terrain and GL context cleanup', async ({
   expect(warnings.filter((w) => /Too many active/i.test(w))).toEqual([])
 })
 
-test('lessons are interactive and completable', async ({ page }) => {
+test('quick lessons are interactive and completable', async ({ page }) => {
   await onboard(page)
   await page.getByRole('button', { name: /Learn/ }).click()
+  await page
+    .getByRole('link', { name: /Quick lessons/ })
+    .first()
+    .click()
   await page.getByRole('button', { name: /Count outs/ }).click()
   await page.getByRole('button', { name: 'About 20%' }).click()
   await expect(page.getByText(/Exactly\./)).toBeVisible()
   await page.getByRole('button', { name: 'All lessons' }).click()
-  await expect(page.getByText('1 of 6 complete')).toBeVisible()
+  await expect(page.getByText(/1 of 6 complete/)).toBeVisible()
+})
+
+test('the curriculum pauses the live hand and returns to it', async ({
+  page,
+}) => {
+  await onboard(page)
+  await page.getByRole('button', { name: 'Reveal without guessing' }).click()
+  await page.getByRole('link', { name: /Pot odds → expected payoff/ }).click()
+  const bridge = page.getByRole('region', { name: 'Your table connection' })
+  await expect(bridge).toContainText('YOUR HAND IS PAUSED')
+  await expect(bridge).toContainText('hand 1')
+  await page.getByRole('link', { name: /Return to this hand/ }).click()
+  await expect(page.getByRole('region', { name: 'Poker table' })).toBeVisible()
+  await expect(page.getByText('Guided hand 1 of 3')).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toBeFocused()
 })
 
 test('dark theme and reduced motion still render the table', async ({
@@ -94,6 +113,23 @@ for (const colorScheme of ['light', 'dark'] as const)
     await page.getByRole('button', { name: 'Reveal without guessing' }).click()
     await expect(page.locator('.meter')).toBeVisible({ timeout: 15_000 })
     const results = await new AxeBuilder({ page }).analyze()
+    await page.getByRole('button', { name: 'Learn', exact: true }).click()
+    await expect(
+      page.getByRole('heading', {
+        name: 'Foundations for defensible decisions',
+      }),
+    ).toBeVisible()
+    // The curriculum's own palette is light-only and its contrast is tracked
+    // separately; here we gate the other rules and dark-mode legibility.
+    const curriculum = await new AxeBuilder({ page })
+      .include('.curriculum-workspace')
+      .disableRules(['color-contrast'])
+      .analyze()
+    const heading = await page
+      .getByRole('heading', { name: 'Foundations for defensible decisions' })
+      .evaluate((el) => getComputedStyle(el).color)
+    expect(heading).not.toMatch(/rgb\((2[0-5]\d), (2[0-5]\d), (2[0-5]\d)\)/)
+    results.violations.push(...curriculum.violations)
     const serious = results.violations.filter((v) =>
       ['serious', 'critical'].includes(v.impact ?? ''),
     )

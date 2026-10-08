@@ -38,9 +38,68 @@ The build is static: host `dist/` anywhere. There are no server routes or client
 4. **Review the hand.** Each decision gets a grade (Best, Good, Inaccuracy, Mistake, Blunder). You can replay any decision with the lab frozen at that moment. The review shows result versus model expectation, a face-up equity-by-street graph after a showdown, and Atlas’s reasoning, revealed only once the hand is over.
 5. **Track improvement.** The progress page charts luck versus skill (cumulative result against cumulative expectation), decision accuracy, grade distribution, read calibration with blind spots by hand type, and recent hands. You can export and import your progress.
 
-New visitors get a welcome screen, a short spotlight tour, three **guided hands** (a big draw, a price-sensitive straight draw, a river bluff-catch) and then shuffled practice. The **Learn** section has six hands-on lessons with interactive widgets and quizzes: expected value, outs and pot odds, variance, ranges, options and insurance.
+New visitors get a welcome screen, a short spotlight tour, three **guided hands** (a big draw, a price-sensitive straight draw, a river bluff-catch) and then shuffled practice. **Learn** opens the full curriculum (below). Six short **quick lessons** with interactive widgets and quizzes (expected value, outs and pot odds, variance, ranges, options and insurance) sit inside it at `#learn/quick`.
 
 The app has light, dark and system themes, and a bottom-sheet lab on phones. It respects reduced-motion preferences and is keyboard-operable, with automated axe checks in both themes.
+
+## Integrated curriculum
+
+The table remains the default experience (`#table`). **Learn** opens Foundations at `#learn/path` (also `#learn` and `#learn/foundations`). Unit URLs use `#learn/unit/f01/brief` and steps `brief`, `predict`, `worked`, `practice`, `experiment`, `transfer`, `review`. The atlas is `#learn/map` (also `#learn/atlas`), the lab catalog is `#learn/lab`, pathways are `#learn/pathways`, delayed review reminders are `#learn/reviews`, and notes/evidence/export are `#learn/notebook`. Hash routes need no hosting rewrites. The **Core library** is `#learn/core`: original URLs such as `#learn/module/odds/learn` retain `learn`, `lab` and `check` tabs. Its legacy connection diagram remains at `#learn/connections`.
+
+Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Lab what-if selections and the 3D camera reset when you return; the game itself does not. The six interactive quick lessons live at `#learn/quick` (linked from the curriculum sidebar and from every lab view), and progress is at `#progress`.
+
+| Stage            | Poker mechanic               | Finance connection                       | Experiment                                                                         |
+| ---------------- | ---------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| Foundations      | Pot odds                     | Expected payoff and entry price          | Change pot, call cost, and equity                                                  |
+| Foundations      | Outs                         | State spaces and probability             | Exact draws without replacement vs. rule of two/four                               |
+| Foundations      | Equity                       | Physical vs. risk-neutral probabilities  | Combine wins and split pots                                                        |
+| Decision science | Expected value               | Risk-neutral pricing                     | Separate physical forecasts from binomial pricing weights                          |
+| Decision science | Fold equity                  | Contingent payoff trees                  | Mix folds with equity conditional on a call                                        |
+| Market mechanics | Variance                     | Implied volatility                       | Compare poker dispersion with a synthetic option premium and IV inversion          |
+| Market mechanics | Payoff accounting            | Delta hedging and put-call parity        | Replicate terminal payoffs and compare parity portfolios                           |
+| Market mechanics | All-in cashouts and bankroll | Insurance premiums and credit protection | Compare cashout/run-twice settlements, Kelly sizing, ruin risk, and variance bands |
+
+Each typed module in `src/curriculum/curriculum.ts` defines three objectives, recommended prerequisites, conceptual explanations, an explicit analogy boundary, a worked numerical example, formula notation, a lab, two mastery questions with feedback, notes, and a further-reading link. Prerequisites guide sequencing but never lock access. Both questions must be correct for local completion; retries are unlimited. The original three lens mini-lessons remain available from the table and retain their existing completion records.
+
+Important distinctions are taught explicitly:
+
+- Poker equity is **not** option delta; physical probabilities are **not** necessarily risk-neutral probabilities.
+- The binomial lab assumes `0 < d < 1+r < u`, a frictionless non-dividend stock, and a simple risk-free rate for the full period. It prices by replication: `q = (1+r-d)/(u-d)` and `V = [qVu + (1-q)Vd]/(1+r)`.
+- Delta is the stock quantity in an exact two-state hedge, not a probability. Put-call parity is `C-P = S-K/(1+r)` for matching European claims. This does not make real-world discrete hedging riskless.
+- The variance experiment assumes independent binary ±100-chip payoffs; total mean scales with the number of hands and standard deviation with its square root.
+- The separate Black–Scholes example assumes spot = strike = 100, one year, a 5% continuously compounded rate, and no dividends. It generates a **synthetic** premium and recovers IV by bisection; it does not fetch market prices or convert chip variance into annualized volatility.
+- The fold-equity lab assumes equal new bets, no subsequent betting, and equity conditional on being called. It is a strategic payoff tree, not an arbitrage-pricing identity.
+- The all-in risk lab uses a binary win/loss payoff with known physical equity. Two equal runouts are treated as independent, so they preserve EV and halve variance; real boards share a depleted deck. A cashout charges a percentage of the fair gross payout. The Kelly model repeats constant, independent odds, resizes after every result, and defines ruin as crossing a selected drawdown floor over a finite horizon—not literal bankruptcy.
+- Cashing out sells the whole pot claim; loss-only insurance pays on a defined losing event while retaining the hand. The latter is the closer credit-default-swap analogy. The lab has no reference entity, default timing, recovery auction, credit-spread curve, discounting, collateral, or counterparty credit risk and does not produce a market CDS price.
+
+Curriculum records now use `quantpoker.learning.v2`; valid learning-v1 notes and core completions migrate without becoming new foundation evidence. Normal migration leaves `quantpoker.learning.v1` untouched as a fallback. Table history and lens mini-lessons retain the separate `quantpoker.progress.v1` key, which curriculum reset never removes. Malformed records are preserved with recovery/export choices; storage failures retain work in the root session until the tab closes. JSON and Markdown exports, bounded retention, and multi-tab conflict warnings are included. There is no JSON importer, account, or cloud sync.
+
+### R1 foundations and specialist laboratories
+
+All ten introductory units have retrieval (including an explicitly recorded skip), persisted unaided predictions, a parallel worked example, a partial scaffold, changed practice, an experiment, at least three finance transfers and at least three changed reviews. They cover information/cash flows; conditional probability; price/EV; repetition and uncertainty; updating and forecasts; capital/compounding/preferences; dependence and pooling; contingent payments; protection/pricing/obligations; and independent finance transfer. Hints move through information, principle, computation and interpretation.
+
+| Specialist lab | What it isolates                                                                    | Main boundary                                                                           |
+| -------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Calibration    | Forecast groups, Brier/log scores, decisions, Bayes and Beta–Binomial updating      | Forecast quality is not decision value; finite samples do not certify calibration       |
+| Selection      | Observed versus target populations, unequal recording and inverse weighting         | Unknown or zero recording rates make correction unavailable; no causal imputation       |
+| Information    | Joint signal states, optional actions, EVSI/EVPI and research fees                  | Physical probabilities and specified terms; no endogenous price discovery               |
+| Contracts      | Deductible/limited layers, stock-plus-put, call spread, occurrence versus aggregate | State payoff/profit identities are not market pricing identities or legal advice        |
+| Solvency       | Exact independent/common-event mixture, claim funding, default and unpaid claims    | Fixed-loss homogeneous pool and stipulated pro-rata settlement, not regulatory capital  |
+| Backtest       | Candidate search, frozen protocol, unrevealed holdout, costs and repeated testing   | Synthetic independent null data, not empirical returns or an implementation of PBO/CSCV |
+
+The first F10 transfer/review bank contains three finance-only final cases: equipment service, seasonal inventory and a warranty book. Each has at least six scored items across setup, calculation, interpretation and limitation, plus critical ledger/probability checks, distinct hints and an ungraded written defense. Changed review regimes reverse research choice, floor feasibility or default. Original hypothetical contract terms are explicit; no external source is claimed to validate these businesses.
+
+The four pathways link real introductory resources and prerequisite bridges. Atlas filters cover domain, pathway, mathematical level, availability and text; the lab catalog searches question, role and concepts. **Available** means selected introductory assessed mechanisms—not the entire research family. Broader/research mechanisms remain **partial/planned**, and future capstones are not playable links or included in progress denominators. Sources show claim-specific locators and verification status; citations do not prove QuantPoker improves learning.
+
+Predictions are committed before structured answers/reveals. Hints and repeated exposed cases remain practice, not unaided demonstration. A fresh transfer needs at least 80% and all critical items correct; prose and simulated profits are never graded. Delayed review uses device-clock reminders at 3, then 10, then 30 days; failed/assisted reviews retry at 1 day. This editable local evidence is not secure certification.
+
+Learning persistence is local and best-effort: the bounded 1 MiB envelope retains active drafts, first/recent evidence receipts and exposure/search summaries while older detailed attempts may be compacted. Quota or blocked-storage failures keep this tab's work, but refresh durability is not promised. If another tab changes the saved revision, export the unsaved work or explicitly reload saved progress; there is no silent last-write-wins merge. Recovery/export does not advertise a JSON import. Learning reset never resets the current table or its separate storage.
+
+Specialist randomness uses versioned role-separated seeded streams, never the poker game's RNG. Backtest generates its holdout only after explicit protocol freeze/reveal, and worker messages carry run ID, parameter hash and generator version. Cancellation/parameter changes prevent stale results from publishing; a failed run retains committed inputs. Ordinary analytic recomputation is separate from mastery assessment.
+
+See the [frozen developer contract and runnable test fixture](src/curriculum/core/README.md) for manifest, controller, case-fragment, persistence, route, deterministic-stream, worker, source and accessibility APIs. Automated component tests are not browser proof. **Browser acceptance has not been run for this integration and awaits parent approval**, including mobile/zoom, keyboard/screen-reader behavior, actual browser workers and WebGL/fallback performance.
+
+The curriculum is lazy-loaded and its CSS is scoped to `.curriculum-workspace`, so it does not restyle the table or 3D panel. Specialist Entries/Views and workers are lazy chunks; case/source metadata is registered together. Core models live in `src/curriculum/lib/math.ts`, shared adapters in `src/curriculum/core/foundationMath.ts`, and specialist models under `src/curriculum/experiences/`. None receives the root game, opponent private cards or future deck. Add new resources through the typed registry and acceptance tests rather than marking static placeholders available.
 
 ## Atlas, a published strategy
 
@@ -127,6 +186,8 @@ Fair premium = loss probability × coverage
 
 The loss probability comes from simulated losses (not `1 − equity`, which would misprice ties), times `1 − f` for raises. Coverage pays only in the losing state. Fair cover leaves the mean unchanged and lowers the spread. Real policies add expenses, exclusions and deductibles.
 
+The Protection lens also previews an all-in cashout (1% fee), run-it-twice dispersion and a full-Kelly ceiling for the selected exposure, using `allInCashout` and `kellyFraction`. These treat the exposure as terminal, compress ties into equity, treat two runouts as independent and assume a known, repeatable edge.
+
 These are **conceptual connections**, not measured correlations with financial assets.
 
 ## Architecture
@@ -153,6 +214,7 @@ All play is client-side. The app makes no analytics, AI or network requests beyo
 - **Grading:** grades are monotone; folding the nuts is a blunder; overbets are excluded from the grading bar.
 - **Trainer:** the guided path has unique hand ids, decision snapshots are frozen, guesses attach once per street, and finished hands queue for recording.
 - **Components:** the guess gate hides the math until a read is locked; the action bar and hand review are covered.
+- **Table and curriculum integration (Vitest + Testing Library):** lens links to curriculum modules; the paused live-hand bridge shows only visible cards; Atlas waits while you study; pause state and notebook survive round trips; deep links; returning focuses the table; hands are saved before grading finishes.
 - **End to end (Playwright):** the full guess, act and review loop by keyboard; persistence across reload; every analyst view and the 3D view opened repeatedly without GL context warnings; lessons; dark mode with reduced motion; axe accessibility in light and dark; and a phone layout with no horizontal scroll and a working lab sheet.
 
 These do not replace testing with real learners, screen-reader users and a range of devices.

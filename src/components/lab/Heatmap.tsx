@@ -74,6 +74,12 @@ export function Heatmap({
   useEffect(() => {
     const element = host.current
     if (!element) return
+    if (typeof ResizeObserver === 'undefined') {
+      // No observer support: size once from layout.
+      const rect = element.getBoundingClientRect()
+      setSize({ w: Math.round(rect.width), h: Math.round(rect.height) })
+      return
+    }
     const observer = new ResizeObserver(([entry]) =>
       setSize({
         w: Math.round(entry.contentRect.width),

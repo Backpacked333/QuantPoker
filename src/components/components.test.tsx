@@ -8,6 +8,8 @@ import { lcg } from '../lib/sim'
 import { ActionBar } from './table/ActionBar'
 import type { ActionMath, GuessProps } from './table/ActionBar'
 import { HandReview } from './review/HandReview'
+import { ProgressView } from './progress/ProgressView'
+import { emptyProgress } from '../lib/storage'
 import type { HeroDecision } from '../state/trainer'
 import { act } from '../lib/poker'
 
@@ -125,5 +127,24 @@ describe('hand review', () => {
     expect(screen.getByText(/gave up/)).toBeTruthy()
     expect(screen.getByText(/Your read was 40%/)).toBeTruthy()
     expect(screen.getByText(/one-third-pot bet/)).toBeTruthy()
+  })
+})
+
+describe('progress page', () => {
+  it('offers import on an empty profile so a backup can be restored', () => {
+    render(
+      <ProgressView
+        progress={emptyProgress()}
+        sessionId="s"
+        onReplace={vi.fn()}
+        onClear={vi.fn()}
+        onPlay={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByText('Your first insight is one hand away.'),
+    ).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Import/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Export/ })).toBeNull()
   })
 })

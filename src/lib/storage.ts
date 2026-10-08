@@ -50,6 +50,11 @@ export type HandRecord = {
   villain?: string[]
   style?: AtlasStyle
   showdown?: boolean
+  /**
+   * False while the hand is saved but its decisions are still being graded.
+   * A reload in that window keeps the result; the grades are simply absent.
+   */
+  graded?: boolean
 }
 export type Settings = {
   mode: 'beginner' | 'analyst'
@@ -174,6 +179,7 @@ function cleanHand(value: unknown): HandRecord | null {
   const style = oneOf(value.style, ['tight', 'balanced', 'aggressive'] as const)
   if (style) hand.style = style
   if (typeof value.showdown === 'boolean') hand.showdown = value.showdown
+  if (typeof value.graded === 'boolean') hand.graded = value.graded
   return hand
 }
 
@@ -271,6 +277,16 @@ export const localAdapter: SyncAdapter = {
       return false
     }
   },
+}
+
+/** Insert a hand, or replace the record with the same id in place. */
+export function upsertHand(progress: Progress, record: HandRecord): Progress {
+  const index = progress.hands.findIndex((h) => h.id === record.id)
+  const hands =
+    index === -1
+      ? [...progress.hands, record].slice(-HAND_LIMIT)
+      : progress.hands.map((h, i) => (i === index ? record : h))
+  return { ...progress, hands }
 }
 
 export const readProgress = () => localAdapter.load()

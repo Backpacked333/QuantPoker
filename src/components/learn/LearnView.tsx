@@ -195,7 +195,10 @@ export function LearnView({
           <h1>A little knowledge. A better decision.</h1>
           <p>
             Six short, hands-on lessons. {completed.length} of{' '}
-            {LESSON_IDS.length} complete.
+            {LESSON_IDS.length} complete.{' '}
+            <a className="link-btn" href="#learn/path">
+              Full curriculum <ArrowRight size={13} />
+            </a>
           </p>
         </header>
         <div className="lesson-grid">

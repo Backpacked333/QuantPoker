@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -35,7 +37,13 @@ import type { Action, Game } from './lib/poker'
 import type { FullSpot } from './lib/range'
 import { playSound } from './lib/sound'
 import type { SoundKind } from './lib/sound'
-import { emptyProgress, readProgress, saveProgress } from './lib/storage'
+import {
+  emptyProgress,
+  LESSON_IDS,
+  readProgress,
+  saveProgress,
+  upsertHand,
+} from './lib/storage'
 import type {
   DecisionRecord,
   HandRecord,
@@ -44,6 +52,8 @@ import type {
   Settings,
 } from './lib/storage'
 import { useMediaQuery } from './hooks'
+import { isLearningRoute, useHash } from './lib/navigation'
+import type { LearningSession } from './curriculum/core/session'
 import { spotKey, useSpots } from './state/spots'
 import { guessKey, initialTrainer, trainerReducer } from './state/trainer'
 import type { FinishedHand } from './state/trainer'
@@ -63,7 +73,24 @@ import {
 import { Tour } from './components/Tour'
 import type { TourStep } from './components/Tour'
 
-type View = 'play' | 'learn' | 'progress'
+type View = 'play' | 'curriculum' | 'quick' | 'progress'
+type Route = { view: View; lesson: LessonId | null }
+const Curriculum = lazy(() => import('./curriculum/Curriculum'))
+
+/** Hash routes: #table (default), #progress, #learn/... and #learn/quick[/id]. */
+function parseRoute(hash: string): Route {
+  const quick = hash.match(/^#learn\/quick(?:\/([\w-]+))?$/)
+  if (quick) {
+    const id = quick[1] as LessonId | undefined
+    return { view: 'quick', lesson: id && LESSON_IDS.includes(id) ? id : null }
+  }
+  if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
+  if (hash === '#progress') return { view: 'progress', lesson: null }
+  return { view: 'play', lesson: null }
+}
+const go = (hash: string) => {
+  window.location.hash = hash
+}
 type Dialog = 'settings' | 'help' | 'history' | null
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 const toDecisionAction = (action: Action): DecisionAction =>
@@ -73,13 +100,32 @@ const toDecisionAction = (action: Action): DecisionAction =>
       ? 'raise'
       : 'continue'
 
+/**
+ * The stored record for a finished hand. Without grades it is provisional:
+ * saved the moment the hand ends so a reload cannot lose it, then replaced
+ * in place once every decision has been analyzed.
+ */
 function buildRecord(
   hand: FinishedHand,
-  grades: DecisionGrade[],
+  grades: DecisionGrade[] | null,
   sessionId: string,
 ): HandRecord {
   const { game } = hand
   const result = game.result!
+  const base: HandRecord = {
+    id: `${sessionId}:${game.id}`,
+    hand: game.id,
+    net: result.net,
+    result: result.text,
+    guided: game.guided,
+    at: Date.now(),
+    hero: game.cards[0].map(cardLabel),
+    board: game.board.map(cardLabel),
+    ...(result.showdown ? { villain: game.cards[1].map(cardLabel) } : {}),
+    style: hand.style,
+    showdown: result.showdown,
+  }
+  if (!grades) return { ...base, graded: false }
   const decisions: DecisionRecord[] = hand.decisions.map((d, i) => {
     const g = grades[i]
     const legal = legalActions(d.snapshot)
@@ -107,22 +153,13 @@ function buildRecord(
   })
   const last = hand.decisions.length - 1
   return {
-    id: `${sessionId}:${game.id}`,
-    hand: game.id,
-    net: result.net,
-    result: result.text,
-    guided: game.guided,
-    at: Date.now(),
+    ...base,
+    graded: true,
     expectedNet:
       last >= 0
         ? grades[last].chosen.ev - hand.decisions[last].snapshot.invested[0]
         : result.net,
     decisions,
-    hero: game.cards[0].map(cardLabel),
-    board: game.board.map(cardLabel),
-    ...(result.showdown ? { villain: game.cards[1].map(cardLabel) } : {}),
-    style: hand.style,
-    showdown: result.showdown,
   }
 }
 
@@ -141,9 +178,9 @@ export default function App() {
     initialTrainer(!progress.guidedComplete, progress.settings.atlasStyle),
   )
   const { spots, request } = useSpots()
-  const [view, setView] = useState<View>('play')
+  const { view, lesson } = parseRoute(useHash())
+  const learningSession = useRef<LearningSession | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
-  const [lesson, setLesson] = useState<LessonId | null>(null)
   const [paused, setPaused] = useState(false)
   const [tour, setTour] = useState(false)
   const [storageOk, setStorageOk] = useState(true)
@@ -160,6 +197,7 @@ export default function App() {
   } | null>(null)
   const sessionId = useRef(crypto.randomUUID())
   const labRef = useRef<HTMLDivElement>(null)
+  const playHeading = useRef<HTMLHeadingElement>(null)
   const compact = useMediaQuery('(max-width: 940px)')
   const finePointer = useMediaQuery('(pointer: fine)')
   const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
@@ -168,7 +206,8 @@ export default function App() {
   const style = trainer.style
   const model = settings.opponentModel
   const welcome = !progress.onboarded
-  const blocked = welcome || tour
+  // Atlas waits while you are away from the table.
+  const blocked = welcome || tour || view !== 'play'
   const legal = legalActions(game.turn === 0 ? game : { ...game, turn: 0 })
   const heroTurn = game.turn === 0 && !game.result && !paused
   const yourTurn = heroTurn && !blocked
@@ -183,6 +222,15 @@ export default function App() {
     },
     [settings.sound, updateSettings],
   )
+
+  // Returning to the table from a lesson lands keyboard and screen-reader
+  // focus on the table's heading, like any page change.
+  const lastView = useRef(view)
+  useEffect(() => {
+    if (view === 'play' && lastView.current !== 'play')
+      playHeading.current?.focus()
+    lastView.current = view
+  }, [view])
 
   // ---- Theme and persistence ---------------------------------------------
   useEffect(() => {
@@ -417,6 +465,12 @@ export default function App() {
       : decisions.length - 1
   useEffect(() => {
     for (const hand of trainer.finished) {
+      const provisional = buildRecord(hand, null, sessionId.current)
+      setProgress((p) =>
+        p.hands.some((h) => h.id === provisional.id)
+          ? p
+          : upsertHand(p, provisional),
+      )
       const found = hand.decisions.map((d) => {
         const spot = spots.get(d.key)
         if (!spot) request(d.snapshot, hand.style)
@@ -427,11 +481,7 @@ export default function App() {
         gradeDecision(d.snapshot, d.action, found[i]!, hand.style),
       )
       const record = buildRecord(hand, handGrades, sessionId.current)
-      setProgress((p) =>
-        p.hands.some((h) => h.id === record.id)
-          ? p
-          : { ...p, hands: [...p.hands, record].slice(-100) },
-      )
+      setProgress((p) => upsertHand(p, record))
       dispatch({ type: 'recorded', id: hand.game.id })
     }
   }, [trainer.finished, spots, request])
@@ -629,9 +679,8 @@ export default function App() {
       onSettings={updateSettings}
       onReveal={() => dispatch({ type: 'guess', value: null })}
       onLesson={(id) => {
-        setLesson(id)
-        setView('learn')
         setSheetOpen(false)
+        go(`learn/quick/${id}`)
       }}
     />
   )
@@ -657,7 +706,7 @@ export default function App() {
       <header className="header">
         <button
           className="brand"
-          onClick={() => setView('play')}
+          onClick={() => go('table')}
           aria-label="QuantPoker, back to the table"
         >
           <span className="brand-mark">
@@ -670,24 +719,27 @@ export default function App() {
         <nav className="nav" aria-label="Main">
           {(
             [
-              ['play', 'Play', Diamond],
-              ['learn', 'Learn', BookOpen],
-              ['progress', 'Progress', ChartNoAxesCombined],
+              ['play', 'Play', Diamond, 'table'],
+              ['learn', 'Learn', BookOpen, 'learn/path'],
+              ['progress', 'Progress', ChartNoAxesCombined, 'progress'],
             ] as const
-          ).map(([key, label, Icon]) => (
-            <button
-              key={key}
-              className={view === key ? 'on' : ''}
-              aria-current={view === key ? 'page' : undefined}
-              data-tour={key === 'progress' ? 'progress' : undefined}
-              onClick={() => {
-                setView(key)
-                if (key === 'learn') setLesson(null)
-              }}
-            >
-              <Icon size={15} /> <span>{label}</span>
-            </button>
-          ))}
+          ).map(([key, label, Icon, hash]) => {
+            const on =
+              key === 'learn'
+                ? view === 'curriculum' || view === 'quick'
+                : view === key
+            return (
+              <button
+                key={key}
+                className={on ? 'on' : ''}
+                aria-current={on ? 'page' : undefined}
+                data-tour={key === 'progress' ? 'progress' : undefined}
+                onClick={() => go(hash)}
+              >
+                <Icon size={15} /> <span>{label}</span>
+              </button>
+            )
+          })}
         </nav>
         <div className="header-tools">
           <span className="pill">
@@ -724,6 +776,9 @@ export default function App() {
         {view === 'play' && (
           <div className="workspace">
             <section className="play-column" aria-label="Play">
+              <h1 className="sr-only" tabIndex={-1} ref={playHeading}>
+                Play the hand. Understand the odds.
+              </h1>
               <Table
                 game={game}
                 style={style}
@@ -818,12 +873,7 @@ export default function App() {
                     </strong>
                   </span>
                 </div>
-                <button
-                  onClick={() => {
-                    setLesson(null)
-                    setView('learn')
-                  }}
-                >
+                <button onClick={() => go('learn/quick')}>
                   <GraduationCap size={17} />
                   <span>
                     Lessons
@@ -872,12 +922,41 @@ export default function App() {
             )}
           </div>
         )}
-        {view === 'learn' && (
+        {view === 'curriculum' && (
+          <Suspense
+            fallback={
+              <div className="curriculum-loading" role="status">
+                Opening the curriculum… Your hand is paused.
+              </div>
+            }
+          >
+            <Curriculum
+              session={learningSession}
+              liveHand={{
+                number: game.id,
+                cards: game.cards[0].map(cardLabel).join(' '),
+                board: game.board.map(cardLabel).join(' ') || 'Preflop',
+                pot: game.result
+                  ? game.invested[0] + game.invested[1]
+                  : game.pot,
+                call: game.result ? 0 : legal.toCall,
+                equity:
+                  liveOutcome?.equity ??
+                  (liveSpot
+                    ? liveSpot.quick.win + liveSpot.quick.tie / 2
+                    : null),
+                finished: Boolean(game.result),
+                heroTurn: game.turn === 0,
+              }}
+            />
+          </Suspense>
+        )}
+        {view === 'quick' && (
           <LearnView
             selected={lesson}
             completed={progress.lessons}
             onSelect={(id) => {
-              setLesson(id)
+              go(id ? `learn/quick/${id}` : 'learn/quick')
               window.scrollTo({ top: 0 })
             }}
             onComplete={(id) =>
@@ -887,7 +966,7 @@ export default function App() {
                   : { ...p, lessons: [...p.lessons, id] },
               )
             }
-            onPlay={() => setView('play')}
+            onPlay={() => go('table')}
           />
         )}
         {view === 'progress' && (
@@ -903,7 +982,7 @@ export default function App() {
                 guidedComplete: p.guidedComplete,
               }))
             }
-            onPlay={() => setView('play')}
+            onPlay={() => go('table')}
           />
         )}
       </main>
@@ -926,7 +1005,7 @@ export default function App() {
           onReplayGuided={() => {
             dispatch({ type: 'startGuided' })
             setDialog(null)
-            setView('play')
+            go('table')
           }}
         />
       )}
@@ -942,7 +1021,7 @@ export default function App() {
               onboarded: true,
               settings: { ...p.settings, mode },
             }))
-            setView('play')
+            go('table')
             setTour(true)
           }}
         />

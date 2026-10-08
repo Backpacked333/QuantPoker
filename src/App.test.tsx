@@ -1,0 +1,291 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import App from './App'
+import { LEGACY_KEY, STORAGE_KEY as TABLE_KEY } from './lib/storage'
+import { STORAGE_KEY as LEARNING_V1_KEY } from './curriculum/lib/progress'
+import { LEARNING_KEY } from './curriculum/core/persistence'
+import * as atlas from './lib/atlas'
+import { analyzeSpot, quickOutcome } from './lib/range'
+import type { SpotRequest } from './lib/range'
+import { lcg } from './lib/sim'
+
+vi.mock('./components/lab/Surface3D', () => ({
+  default: () => <div data-testid="surface">Interactive terrain</div>,
+}))
+
+/** A synchronous stand-in for the analysis worker that runs the real model. */
+class AnalysisWorker {
+  onmessage?: (event: unknown) => void
+  postMessage(request: SpotRequest) {
+    this.onmessage?.({
+      data: {
+        key: request.key,
+        stage: 'quick',
+        quick: quickOutcome(request.hole, request.board, lcg(1), 200),
+      },
+    })
+    this.onmessage?.({ data: analyzeSpot(request, lcg(2)) })
+  }
+  terminate() {}
+}
+/** A worker that never answers, to model a reload before grading finishes. */
+class SilentWorker {
+  onmessage?: (event: unknown) => void
+  postMessage() {}
+  terminate() {}
+}
+
+const onboarded = () =>
+  localStorage.setItem(TABLE_KEY, JSON.stringify({ onboarded: true }))
+
+beforeEach(() => {
+  vi.stubGlobal('Worker', AnalysisWorker)
+  onboarded()
+})
+afterEach(() => vi.useRealTimers())
+
+function navigate(hash: string) {
+  act(() => {
+    window.history.pushState(null, '', hash)
+    window.dispatchEvent(new HashChangeEvent('hashchange'))
+  })
+}
+
+describe('table and curriculum integration', () => {
+  it('opens a related lesson with only visible cards and returns to the same hand', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(
+      screen.getByRole('button', { name: 'Reveal without guessing' }),
+    )
+    const table = screen.getByRole('region', { name: 'Poker table' })
+    const hand = table.textContent
+    await user.click(
+      screen.getByRole('link', { name: /Pot odds → expected payoff/ }),
+    )
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
+      'The price of a decision',
+    )
+    expect(
+      screen.queryByRole('region', { name: 'Poker table' }),
+    ).not.toBeInTheDocument()
+    const bridge = screen.getByRole('region', { name: 'Your table connection' })
+    expect(bridge).toHaveTextContent('YOUR HAND IS PAUSED')
+    expect(bridge).toHaveTextContent(/Estimated equity\s*\d+\.\d%/)
+    expect(bridge).toHaveTextContent('Break-even equity')
+    expect(bridge).not.toHaveTextContent('9♥')
+    await user.click(screen.getByRole('link', { name: /Return to this hand/ }))
+    expect(
+      (await screen.findByRole('region', { name: 'Poker table' })).textContent,
+    ).toBe(hand)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
+  })
+
+  it('suspends the pending bot turn during study and resumes it on return', async () => {
+    const bot = vi.spyOn(atlas, 'atlasDecision').mockReturnValue({
+      action: { type: 'fold' },
+      equity: 0.2,
+      odds: 0.3,
+      kind: 'fold',
+      explanation: 'Folded.',
+    })
+    render(<App />)
+    navigate('#learn/path')
+    await screen.findByRole('heading', {
+      name: 'Foundations for defensible decisions',
+    })
+    navigate('#table')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: /Raise to/ }))
+    expect(screen.getByLabelText('Atlas is thinking')).toBeInTheDocument()
+    navigate('#learn/module/fold/learn')
+    await act(async () => {})
+    expect(
+      screen.getByRole('region', { name: 'Your table connection' }),
+    ).toHaveTextContent('Atlas is paused too')
+    act(() => vi.advanceTimersByTime(5000))
+    expect(bot).not.toHaveBeenCalled()
+    navigate('#table')
+    expect(screen.getByLabelText('Atlas is thinking')).toBeInTheDocument()
+    act(() => vi.advanceTimersByTime(2500))
+    expect(bot).toHaveBeenCalledTimes(1)
+    expect(screen.queryByLabelText('Atlas is thinking')).not.toBeInTheDocument()
+  })
+
+  it('preserves manually paused state and notebook contents across round trips', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Pause table/ }))
+    navigate('#learn/notebook')
+    const notes = await screen.findByRole('textbox', {
+      name: 'Notes for The price of a decision',
+    })
+    await user.type(notes, 'Price the decision, not the outcome.')
+    navigate('#table')
+    expect(screen.getAllByText('Table paused').length).toBeGreaterThan(0)
+    navigate('#learn/notebook')
+    expect(
+      await screen.findByRole('textbox', {
+        name: 'Notes for The price of a decision',
+      }),
+    ).toHaveValue('Price the decision, not the outcome.')
+  })
+
+  it('keeps table lessons and history separate when curriculum data is reset', async () => {
+    const user = userEvent.setup()
+    const legacy = {
+      hands: [{ id: 'prior:1', hand: 1, net: 25, result: 'Won', guided: true }],
+      lessons: ['equity'],
+    }
+    localStorage.removeItem(TABLE_KEY)
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(legacy))
+    localStorage.setItem(
+      LEARNING_V1_KEY,
+      JSON.stringify({
+        version: 1,
+        completed: ['odds'],
+        notes: { odds: 'Original' },
+      }),
+    )
+    navigate('#learn/notebook')
+    render(<App />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset local learning data' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Delete my local learning data' }),
+    )
+    const table = JSON.parse(localStorage.getItem(TABLE_KEY)!)
+    expect(table.hands).toEqual(legacy.hands)
+    expect(table.lessons).toEqual(legacy.lessons)
+    expect(
+      JSON.parse(localStorage.getItem(LEARNING_KEY)!).legacy.completed,
+    ).toEqual([])
+    navigate('#table')
+    await user.click(
+      screen.getByRole('button', { name: 'Reveal without guessing' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: /Learn the idea behind this view/ }),
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'Think in expected value' }),
+    ).toBeInTheDocument()
+  })
+
+  it('retains in-memory learning notes across table navigation when storage is blocked', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Blocked')
+    })
+    navigate('#learn/notebook')
+    render(<App />)
+    const notes = await screen.findByRole('textbox', {
+      name: 'Notes for The price of a decision',
+    })
+    await user.type(notes, 'Keep this in memory')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Browser storage is unavailable',
+    )
+    navigate('#table')
+    navigate('#learn/notebook')
+    expect(
+      await screen.findByRole('textbox', {
+        name: 'Notes for The price of a decision',
+      }),
+    ).toHaveValue('Keep this in memory')
+  })
+
+  it('provides working module links from every lab view', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(
+      screen.getByRole('button', { name: 'Reveal without guessing' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Analyst' }))
+    const expected = [
+      ['Decision', ['odds', 'outs', 'equity']],
+      ['Atlas range', ['fold', 'equity', 'outs']],
+      ['Optionality', ['fold', 'pricing', 'replication']],
+      ['Protection', ['variance', 'replication', 'risk']],
+    ] as const
+    for (const [lens, ids] of expected) {
+      await user.click(screen.getByRole('tab', { name: lens }))
+      const links = within(
+        screen.getByLabelText('Related curriculum modules'),
+      ).getAllByRole('link')
+      expect(links.map((link) => link.getAttribute('href'))).toEqual(
+        ids.map((id) => `#learn/module/${id}/learn`),
+      )
+      if (lens === 'Protection') {
+        expect(
+          screen.getByText('Illustrative all-in cashout'),
+        ).toBeInTheDocument()
+        expect(screen.getByText('Run-twice dispersion')).toBeInTheDocument()
+        expect(screen.getByText('Full Kelly ceiling')).toBeInTheDocument()
+        expect(
+          screen.getByText(/resembles insurance—not a CDS price/),
+        ).toBeInTheDocument()
+      }
+    }
+  })
+
+  it('handles a curriculum deep link, hash navigation, and completed-hand return without resetting the game', async () => {
+    const user = userEvent.setup()
+    navigate('#learn/module/replication/lab')
+    render(<App />)
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
+      'Build the same payoff twice',
+    )
+    await user.click(screen.getByRole('button', { name: 'Play' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Fold.*Step away/ }),
+    )
+    expect(
+      screen.getByRole('button', { name: /Deal next hand/ }),
+    ).toBeInTheDocument()
+    navigate('#learn/map')
+    expect(
+      await screen.findByRole('region', { name: 'Your table connection' }),
+    ).toHaveTextContent('YOUR COMPLETED HAND')
+    navigate('#table')
+    expect(
+      screen.getByRole('button', { name: /Deal next hand/ }),
+    ).toBeInTheDocument()
+    const hands = JSON.parse(localStorage.getItem(TABLE_KEY)!).hands
+    expect(hands).toHaveLength(1)
+    expect(hands[0].graded).toBe(true)
+    expect(hands[0].decisions).toHaveLength(1)
+  })
+
+  it('opens the six quick lessons from the curriculum sidebar', async () => {
+    const user = userEvent.setup()
+    navigate('#learn/path')
+    render(<App />)
+    await user.click(
+      (await screen.findAllByRole('link', { name: /Quick lessons/ }))[0],
+    )
+    expect(
+      await screen.findByRole('heading', {
+        name: 'A little knowledge. A better decision.',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /Full curriculum/ }),
+    ).toHaveAttribute('href', '#learn/path')
+  })
+})
+
+describe('recording finished hands', () => {
+  it('saves the hand as soon as it ends, before any analysis returns', async () => {
+    vi.stubGlobal('Worker', SilentWorker)
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: /Fold.*Step away/ }))
+    const hands = JSON.parse(localStorage.getItem(TABLE_KEY)!).hands
+    expect(hands).toHaveLength(1)
+    expect(hands[0]).toMatchObject({ net: -60, graded: false })
+    expect(hands[0].decisions).toBeUndefined()
+  })
+})

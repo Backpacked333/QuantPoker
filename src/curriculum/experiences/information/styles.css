@@ -1,0 +1,25 @@
+.curriculum-workspace .qp-information-lab {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.curriculum-workspace .qp-information-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+}
+.curriculum-workspace .qp-information-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-block: 12px;
+}
+.curriculum-workspace .qp-information-tree {
+  padding-inline-start: 24px;
+}
+.curriculum-workspace .qp-information-tree li {
+  padding-block: 8px;
+}
+.curriculum-workspace .qp-information-commitment {
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 14px;
+}

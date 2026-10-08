@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 
+const matches = (query: string) =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia(query).matches
+
 export function useMediaQuery(query: string) {
-  const [matches, setMatches] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
-  )
+  const [value, setValue] = useState(() => matches(query))
   useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
     const list = window.matchMedia(query)
-    const update = () => setMatches(list.matches)
+    const update = () => setValue(list.matches)
     update()
     list.addEventListener('change', update)
     return () => list.removeEventListener('change', update)
   }, [query])
-  return matches
+  return value
 }
 
 export const useReducedMotion = () =>

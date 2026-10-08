@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { Mail, UserRound } from 'lucide-react'
@@ -16,12 +16,13 @@ import {
   usernameProblem,
 } from './players'
 import type { Player } from './players'
+import type { Identity } from './api'
 
 type Props = {
   client: SupabaseClient | null
   url: string
   apiKey: string
-  children: (player: Player, signOut: () => void) => ReactNode
+  children: (identity: Identity) => ReactNode
 }
 
 export function AuthGate({ client, url, apiKey, children }: Props) {
@@ -70,6 +71,12 @@ function SignedIn({
     }
   }, [client, userId])
 
+  // Stable, so a live table does not reconnect on every render.
+  const getToken = useCallback(
+    async () =>
+      (await client.auth.getSession()).data.session?.access_token ?? null,
+    [client],
+  )
   const signOut = () => {
     setPlayer(null)
     void client.auth.signOut()
@@ -102,7 +109,7 @@ function SignedIn({
         onSignOut={signOut}
       />
     )
-  return <>{children(player, signOut)}</>
+  return <>{children({ player, getToken, signOut })}</>
 }
 
 const PROVIDER_LABELS: Record<OAuthProvider, string> = {

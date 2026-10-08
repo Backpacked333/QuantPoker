@@ -92,7 +92,8 @@ const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
- * Hash routes: #table (default), #progress, #lobby (online play), #learn/...
+ * Hash routes: #table (default), #progress, #lobby and #play/<id> (online
+ * play), #learn/...
  * and #learn/quick[/id].
  */
 function parseRoute(hash: string): Route {
@@ -103,7 +104,8 @@ function parseRoute(hash: string): Route {
   }
   if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
   if (hash === '#progress') return { view: 'progress', lesson: null }
-  if (hash === '#lobby') return { view: 'live', lesson: null }
+  if (hash === '#lobby' || /^#play\/[0-9a-f-]{36}$/.test(hash))
+    return { view: 'live', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }
   return { view: 'play', lesson: null }
@@ -258,7 +260,8 @@ export default function App() {
   const reducedMotion = useReducedMotionConfig()
   const style = trainer.style
   const model = settings.opponentModel
-  const welcome = !progress.onboarded
+  // Not over an invite link: a friend opening #play/<id> goes straight in.
+  const welcome = !progress.onboarded && view !== 'live'
   // Atlas waits while you are away from the table.
   const blocked = welcome || tour || view !== 'play'
   const legal = legalActions(game.turn === 0 ? game : { ...game, turn: 0 })

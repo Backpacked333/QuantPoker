@@ -19,11 +19,11 @@ No API keys, database, account or environment variables are needed for the train
 
 ### Online play (in progress)
 
-`#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. Matches are not playable in the browser yet: the table server exists (`worker/`, a Cloudflare Durable Object per match) and the live table UI is the next build step. The plan and its decisions live in `.10x/decisions/architect/multiplayer-platform.md`.
+`#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. You can open a heads-up table and send a friend the link (**Play a friend by link**); both of you play on the same table UI as the trainer, with the quant lab switched off during play. The server deals, checks every move and shows each player only their own cards. Matchmaking, the shot clock and hand reviews are the next build steps. The plan and its decisions live in `.10x/decisions/architect/multiplayer-platform.md`.
 
 - `src/engine/`: the server-authoritative N-player engine (2–6 seats, side pots, deck commitment, per-seat redaction). It is not used by the trainer, which keeps `src/lib/poker.ts`.
 - `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules.
-- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`). `npm run worker:dev` runs both locally on :8787; `npm run worker:test` runs its tests inside Cloudflare's runtime. Deploys come from Cloudflare's Git integration.
+- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`). `npm run worker:dev` runs both locally on :8787 (add `-- --var DEV_AUTH_SECRET:<s>` and set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` to play without an account); `npm run worker:test` runs its tests inside Cloudflare's runtime. Deploys come from Cloudflare's Git integration.
 - `supabase/migrations/`: players, matches and the hand archive with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project manually; CI never touches the database.
 
 ```sh

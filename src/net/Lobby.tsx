@@ -1,41 +1,72 @@
-import { BookOpen, Swords, Users } from 'lucide-react'
-import type { Player } from './players'
+import { useState } from 'react'
+import { BookOpen, Link2, Swords, Users } from 'lucide-react'
+import { createMatch } from './api'
+import type { Identity } from './api'
 
 /**
- * The online home. Quick-match arrives with the table server (Phase 0 steps
- * 3–6); until then the cards say so plainly rather than pretending.
+ * The online home. A table by link works now; quick-match arrives with the
+ * matchmaking queue (Phase 0 step 6), so its card says so plainly.
  */
 export function Lobby({
-  player,
-  onSignOut,
+  identity,
+  fetcher,
 }: {
-  player: Player
-  onSignOut: () => void
+  identity: Identity
+  fetcher?: typeof fetch
 }) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const playFriend = async () => {
+    setBusy(true)
+    setError(null)
+    const result = await createMatch(identity.getToken, fetcher)
+    setBusy(false)
+    if (result.ok) window.location.hash = `#play/${result.matchId}`
+    else setError(result.reason)
+  }
+
   return (
     <>
       <div className="live-account">
         <span>
-          Signed in as <b>{player.username}</b>
+          Signed in as <b>{identity.player.username}</b>
         </span>
-        <button className="btn btn-quiet" onClick={onSignOut}>
+        <button className="btn btn-quiet" onClick={identity.signOut}>
           Sign out
         </button>
       </div>
       <div className="live-cards">
         <article className="panel live-card">
+          <Link2 size={22} />
+          <h2>Play a friend</h2>
+          <p>Open a heads-up table and send the link. 20 hands, play money.</p>
+          <button
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void playFriend()}
+          >
+            {busy ? 'Opening a table…' : 'Play a friend by link'}
+          </button>
+          {error && (
+            <p className="live-error" role="alert">
+              {error}
+            </p>
+          )}
+        </article>
+        <article className="panel live-card">
           <Swords size={22} />
           <h2>Play 1v1</h2>
           <p>Heads-up against a real opponent near your level.</p>
           <button
-            className="btn btn-primary"
+            className="btn btn-outline"
             disabled
             aria-describedby="hu-soon"
           >
             Find a match
           </button>
           <p id="hu-soon" className="live-muted">
-            Opening soon: the table server is being built.
+            Opening soon: matchmaking is being built.
           </p>
         </article>
         <article className="panel live-card">

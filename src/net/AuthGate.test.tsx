@@ -14,7 +14,7 @@ function fakeClient({
   updateError = null as { code: string } | null,
 } = {}) {
   let listener: ((event: string, session: unknown) => void) | null = null
-  const session = { user: { id: 'u1' } }
+  const session = { user: { id: 'u1' }, access_token: 'jwt-for-u1' }
   const client = {
     auth: {
       getSession: vi.fn(async () => ({
@@ -48,9 +48,16 @@ function settings(external: Record<string, boolean>) {
 const renderGate = (client: SupabaseClient | null) =>
   render(
     <AuthGate client={client} url="https://x.supabase.co" apiKey="k">
-      {(player, signOut) => (
+      {({ player, getToken, signOut }) => (
         <div>
           <p>Lobby for {player.username}</p>
+          <button
+            onClick={() =>
+              void getToken().then((t) => (document.title = t ?? 'none'))
+            }
+          >
+            Token
+          </button>
           <button onClick={signOut}>Leave</button>
         </div>
       )}
@@ -157,6 +164,8 @@ describe('AuthGate', () => {
     })
     renderGate(client)
     expect(await screen.findByText('Lobby for alice')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Token' }))
+    await waitFor(() => expect(document.title).toBe('jwt-for-u1'))
     await userEvent.click(screen.getByRole('button', { name: 'Leave' }))
     await waitFor(() =>
       expect(screen.getByLabelText('Email')).toBeInTheDocument(),

@@ -70,7 +70,7 @@ export async function signInWithProvider(
   client: SupabaseClient,
   provider: OAuthProvider,
 ) {
-  rememberAuthReturn('#lobby')
+  rememberAuthReturn(window.location.hash || '#lobby')
   const { error } = await client.auth.signInWithOAuth({
     provider,
     options: { redirectTo: returnUrl() },
@@ -79,7 +79,7 @@ export async function signInWithProvider(
 }
 
 export async function sendMagicLink(client: SupabaseClient, email: string) {
-  rememberAuthReturn('#lobby')
+  rememberAuthReturn(window.location.hash || '#lobby')
   const { error } = await client.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: returnUrl() },

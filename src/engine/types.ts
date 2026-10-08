@@ -32,6 +32,11 @@ export type SeatState = {
   allIn: boolean
   /** raiseSeq when this seat last acted on the street; -1 = not yet. */
   actedSeq: number
+  /**
+   * The bet to match when this seat last acted on the street. Short all-ins
+   * that together add up to a full raise above it reopen its betting.
+   */
+  actedBet: number
   /** null only in a redacted view. */
   cards: [number, number] | null
   shown: boolean

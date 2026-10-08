@@ -100,6 +100,7 @@ export function startHand(config: HandConfig, deck: number[]): HandState {
       folded: false,
       allIn: false,
       actedSeq: -1,
+      actedBet: 0,
       cards: [deck[slots.holes[seat][0]], deck[slots.holes[seat][1]]],
       shown: false,
     })),
@@ -170,6 +171,7 @@ function closeRound(state: HandState): HandState {
   for (const p of state.players) {
     p.bet = 0
     p.actedSeq = -1
+    p.actedBet = 0
   }
   state.toAct = null
   const live = state.players.filter((p) => !p.folded)
@@ -257,7 +259,11 @@ export function legalActions(state: HandState): LegalActions {
     seat: me.seat,
     toCall,
     canCheck: toCall === 0,
-    canRaise: maxRaiseTo > bet && me.actedSeq < state.raiseSeq,
+    // A seat that has acted may raise again only after a full raise, or
+    // after short all-ins that together come to one (bet - actedBet).
+    canRaise:
+      maxRaiseTo > bet &&
+      (me.actedSeq < state.raiseSeq || bet - me.actedBet >= state.lastRaise),
     minRaiseTo: Math.min(maxRaiseTo, bet + state.lastRaise),
     maxRaiseTo,
   }
@@ -328,6 +334,7 @@ export function act(
     }
   }
   me.actedSeq = state.raiseSeq
+  me.actedBet = currentBet(state)
   return advance(state, seat)
 }
 

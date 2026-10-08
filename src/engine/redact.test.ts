@@ -79,7 +79,14 @@ describe('seatView redaction', () => {
       for (const p of view.players)
         expect(Object.keys(p).sort()).toEqual(PLAYER_KEYS)
       const json = JSON.stringify(view)
-      for (const secret of ['deck', 'raiseSeq', 'actedSeq', 'secret', 'config'])
+      for (const secret of [
+        'deck',
+        'raiseSeq',
+        'actedSeq',
+        'actedBet',
+        'secret',
+        'config',
+      ])
         expect(json).not.toContain(`"${secret}"`)
     }
   })

@@ -29,8 +29,11 @@ export default function LiveApp() {
   }, [dev])
 
   // #lobby/find starts looking straight away ("Find another match"); the
-  // hash goes back to #lobby so a reload does not queue again.
-  const [autoFind] = useState(() => hash === '#lobby/find')
+  // hash goes back to #lobby so a reload does not queue again. Derived from
+  // the live hash: this component stays mounted from #play/<id> to here.
+  // (replaceState fires no hashchange, so `hash` keeps the value until the
+  // next navigation, and the Lobby queues once on mount.)
+  const autoFind = hash === '#lobby/find'
   useEffect(() => {
     if (hash === '#lobby/find') window.history.replaceState(null, '', '#lobby')
   }, [hash])

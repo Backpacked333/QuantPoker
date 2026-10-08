@@ -227,3 +227,26 @@ describe('LiveTable and the lobby', () => {
     ).toHaveAttribute('href', `#play/${other}`)
   })
 })
+
+describe('LiveApp routes', () => {
+  it('starts looking when a table sends you to find another match', async () => {
+    const { default: LiveApp } = await import('./LiveApp')
+    sessionStorage.setItem('qp.devToken', 'dev.alice.t')
+    window.location.hash = `#play/${MATCH}`
+    render(<LiveApp />)
+    await act(async () => {})
+    expect(FakeSocket.last().url).toContain('/ws/table/')
+    // "Find another match" after a no-show: the same app, a new route.
+    act(() => {
+      window.location.hash = '#lobby/find'
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+    })
+    await act(async () => {})
+    const lobbySocket = FakeSocket.last()
+    expect(lobbySocket.url).toContain('/ws/lobby')
+    act(() => lobbySocket.open())
+    expect(sent(lobbySocket)).toEqual([{ t: 'queue', kind: 'hu-casual' }])
+    expect(window.location.hash).toBe('#lobby')
+    sessionStorage.removeItem('qp.devToken')
+  })
+})

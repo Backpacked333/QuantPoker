@@ -299,6 +299,39 @@ describe('crafted cases', () => {
     expect(state.result!.showdown).toBe(true)
     expect(Object.values(state.result!.netBySeat)).toEqual([0, 0, 0, 0, 0, 0])
   })
+  it('short all-ins that add up to a full raise reopen the betting', () => {
+    // Button 0, blinds 1 and 2, UTG 3. Seat 3 raises to 100 (a raise of
+    // 80), seat 0 calls, then both blinds go all in short: 140, then 180.
+    const reopen = (bbStack: number) => {
+      const cfg = config([2000, 140, bbStack, 2000], 0)
+      let state = startHand(cfg, deckWith(cfg, {}, ''))
+      state = act(state, 3, { type: 'raise', to: 100 })
+      state = act(state, 0, { type: 'call' })
+      state = act(state, 1, { type: 'raise', to: 140 })
+      state = act(state, 2, { type: 'raise', to: bbStack })
+      expect(state.toAct).toBe(3)
+      return legalActions(state)
+    }
+    // 180 - 100 = 80: together a full raise, so seat 3 may raise again.
+    expect(reopen(180)).toMatchObject({ canRaise: true, minRaiseTo: 260 })
+    // 170 - 100 = 70: short of one, so only call or fold.
+    expect(reopen(170)).toMatchObject({ canRaise: false, toCall: 70 })
+  })
+  it('a seat that called the short all-ins is reopened the same way', () => {
+    const cfg = config([2000, 140, 180, 2000], 0)
+    let state = startHand(cfg, deckWith(cfg, {}, ''))
+    state = act(state, 3, { type: 'raise', to: 100 })
+    state = act(state, 0, { type: 'call' })
+    state = act(state, 1, { type: 'raise', to: 140 })
+    state = act(state, 2, { type: 'raise', to: 180 })
+    state = act(state, 3, { type: 'call' })
+    expect(state.toAct).toBe(0)
+    expect(legalActions(state).canRaise).toBe(true)
+    // A full raise by seat 0 then reopens seat 3 as usual.
+    state = act(state, 0, { type: 'raise', to: 260 })
+    expect(state.toAct).toBe(3)
+    expect(legalActions(state).canRaise).toBe(true)
+  })
   it('builds three pots from all-ins on a later street', () => {
     // Button 0, blinds 1 and 2, UTG 3. Everyone limps, then the flop gets
     // two all-ins of different sizes, a call, and a fold.
@@ -430,6 +463,7 @@ describe('crafted cases', () => {
       bet: 0,
       allIn: false,
       actedSeq: -1,
+      actedBet: 0,
       cards: null,
       shown: false,
     }))

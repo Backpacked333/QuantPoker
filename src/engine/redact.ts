@@ -12,7 +12,7 @@ export type ViewExtras = Pick<
 /**
  * What `viewer` may see: their own cards, cards shown at showdown, and public
  * betting. Other hole cards, the deck and the engine's bookkeeping
- * (raiseSeq, actedSeq) never appear.
+ * (raiseSeq, actedSeq, actedBet) never appear.
  */
 export function seatView(
   state: HandState,

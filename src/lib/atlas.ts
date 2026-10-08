@@ -1,4 +1,5 @@
 import { estimateEquity, legalActions } from './poker'
+import { random as defaultRandom } from './random'
 import type { Action, Game } from './poker'
 
 export type AtlasStyle = 'tight' | 'balanced' | 'aggressive'
@@ -120,7 +121,7 @@ const pct = (value: number) => `${Math.round(value * 100)}%`
 export function atlasDecision(
   game: Game,
   style: AtlasStyle = 'balanced',
-  random = Math.random,
+  random = defaultRandom,
 ): AtlasDecision {
   const p = STYLES[style]
   const legal = legalActions(game)
@@ -190,6 +191,6 @@ export function atlasDecision(
 
 export const botAction = (
   game: Game,
-  random = Math.random,
+  random = defaultRandom,
   style: AtlasStyle = 'balanced',
 ): Action => atlasDecision(game, style, random).action

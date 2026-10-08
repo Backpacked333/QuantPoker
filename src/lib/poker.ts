@@ -1,4 +1,5 @@
 import { categoryOf, drawTail, liveIds, score, toId, fromId } from './sim'
+import { random as defaultRandom } from './random'
 export type Suit = 's' | 'h' | 'd' | 'c'
 export type Card = { rank: number; suit: Suit }
 export type Player = 0 | 1
@@ -77,7 +78,7 @@ export function deck(): Card[] {
   )
 }
 
-export function shuffle(cards: Card[], random = Math.random): Card[] {
+export function shuffle(cards: Card[], random = defaultRandom): Card[] {
   const copy = [...cards]
   for (let i = copy.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1))
@@ -116,7 +117,7 @@ export function newHand(
   id = 1,
   stacks: [number, number] = [2000, 2000],
   dealer: Player = 0,
-  random = Math.random,
+  random = defaultRandom,
 ): Game {
   if (stacks.some((s) => !Number.isInteger(s) || s <= 0))
     throw new Error('Both players need chips to start')

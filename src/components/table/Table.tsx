@@ -7,14 +7,21 @@ import type { Card, Game } from '../../lib/poker'
 import { guidedIntro } from '../../lib/scripted'
 import type { GuidedStep } from '../../lib/scripted'
 import { score, toId } from '../../lib/sim'
-import { useCountUp } from '../../hooks'
+import { AnimatedNumber } from '../AnimatedNumber'
+import { ChipPile } from './ChipPile'
 import { PlayingCard } from '../PlayingCard'
 import type { Bubble } from '../../state/trainer'
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 
 type Spot = 'hero-bet' | 'atlas-bet' | 'pot' | 'hero' | 'atlas'
-type Flight = { id: number; from: Spot; to: Spot; delay: number }
+type Flight = {
+  id: number
+  from: Spot
+  to: Spot
+  delay: number
+  amount: number
+}
 
 /** The five cards that make the best hand, for showdown highlighting. */
 function bestFive(cards: Card[]) {
@@ -32,11 +39,7 @@ function BetChips({ who, amount }: { who: 'hero' | 'atlas'; amount: number }) {
   if (!amount) return null
   return (
     <div className={`bet-chips bet-${who}`} key={amount}>
-      <span className="chip-pile" aria-hidden>
-        <i />
-        <i />
-        <i />
-      </span>
+      <ChipPile amount={amount} maxStacks={3} />
       <span>{chips(amount)}</span>
     </div>
   )
@@ -78,22 +81,24 @@ export function Table({
     previous.current = game
     if (before === game || before.id !== game.id) return
     const next: Flight[] = []
-    const add = (from: Spot, to: Spot, delay = 0) =>
-      next.push({ id: ++flightId.current, from, to, delay })
+    const add = (from: Spot, to: Spot, amount: number, delay = 0) =>
+      next.push({ id: ++flightId.current, from, to, delay, amount })
     const closed =
       game.board.length > before.board.length ||
       (!!game.result && !before.result)
     if (closed)
       ([0, 1] as const).forEach((p) => {
         const collected = before.bets[p] + game.invested[p] - before.invested[p]
-        if (collected > 0) add(p === 0 ? 'hero-bet' : 'atlas-bet', 'pot')
+        if (collected > 0)
+          add(p === 0 ? 'hero-bet' : 'atlas-bet', 'pot', collected)
       })
     if (game.result && !before.result) {
       const { winner } = game.result
+      const total = game.invested[0] + game.invested[1]
       if (winner === 'tie') {
-        add('pot', 'hero', 420)
-        add('pot', 'atlas', 420)
-      } else add('pot', winner === 0 ? 'hero' : 'atlas', 420)
+        add('pot', 'hero', total / 2, 420)
+        add('pot', 'atlas', total / 2, 420)
+      } else add('pot', winner === 0 ? 'hero' : 'atlas', total, 420)
     }
     if (!next.length) return
     setFlights((list) => [...list, ...next])
@@ -108,9 +113,6 @@ export function Table({
 
   const result = game.result
   const showdown = !!result?.showdown
-  const pot = useCountUp(result ? 0 : game.pot)
-  const heroStack = useCountUp(game.stacks[0])
-  const atlasStack = useCountUp(game.stacks[1])
   const winning = useMemo(() => {
     if (!showdown || !result || result.winner === 'tie') return null
     return bestFive([...game.cards[result.winner], ...game.board])
@@ -209,7 +211,9 @@ export function Table({
               <strong>
                 Atlas <em className="seat-badge">{STYLES[style].label}</em>
               </strong>
-              <span>{chips(atlasStack)} chips</span>
+              <span>
+                <AnimatedNumber value={game.stacks[1]} /> chips
+              </span>
             </span>
             {game.dealer === 1 && <span className="dealer-btn">D</span>}
           </div>
@@ -240,14 +244,16 @@ export function Table({
         <BetChips who="atlas" amount={result ? 0 : game.bets[1]} />
 
         <div className="pot">
-          <span className="chip-pile" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
+          <ChipPile
+            amount={result ? 0 : game.pot - game.bets[0] - game.bets[1]}
+          />
           <span className="pot-label">{result ? 'Hand complete' : 'Pot'}</span>
           <strong>
-            {result ? chips(game.invested[0] + game.invested[1]) : chips(pot)}
+            {result ? (
+              chips(game.invested[0] + game.invested[1])
+            ) : (
+              <AnimatedNumber value={game.pot} />
+            )}
           </strong>
         </div>
 
@@ -301,7 +307,9 @@ export function Table({
               <strong>
                 You {yourTurn && <em className="seat-badge turn">Your turn</em>}
               </strong>
-              <span>{chips(heroStack)} chips</span>
+              <span>
+                <AnimatedNumber value={game.stacks[0]} /> chips
+              </span>
             </span>
             {game.dealer === 0 && <span className="dealer-btn">D</span>}
           </div>
@@ -324,8 +332,7 @@ export function Table({
             style={{ animationDelay: `${flight.delay}ms` }}
             aria-hidden
           >
-            <i />
-            <i />
+            <ChipPile amount={flight.amount} maxStacks={2} />
           </span>
         ))}
 

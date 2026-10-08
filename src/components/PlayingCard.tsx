@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { rankName, SUITS } from '../lib/poker'
+import { CardBack, CardFace } from './cards/CardArt'
 import type { Card } from '../lib/poker'
 
 const SUIT_NAMES = { s: 'spades', h: 'hearts', d: 'diamonds', c: 'clubs' }
@@ -45,18 +46,10 @@ export function PlayingCard({
     >
       <div className={`pcard-inner ${faceDown ? 'face-down' : ''}`}>
         <div className={`pcard-face pcard-front ${red ? 'red' : ''}`}>
-          <span className="pcard-corner">
-            <b>{rankName(card.rank)}</b>
-            <i>{SUITS[card.suit]}</i>
-          </span>
-          <span className="pcard-pip">{SUITS[card.suit]}</span>
-          <span className="pcard-corner pcard-corner-end">
-            <b>{rankName(card.rank)}</b>
-            <i>{SUITS[card.suit]}</i>
-          </span>
+          <CardFace card={card} simple={size === 'xs'} />
         </div>
         <div className="pcard-face pcard-back">
-          <span>♠</span>
+          <CardBack />
         </div>
       </div>
     </div>

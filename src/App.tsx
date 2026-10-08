@@ -35,6 +35,8 @@ import { heroContext, raiseAnalysis, spotOutcome } from './lib/model'
 import { cardLabel, legalActions } from './lib/poker'
 import type { Action, Game } from './lib/poker'
 import type { FullSpot } from './lib/range'
+import { motionOff } from './env'
+import { random } from './lib/random'
 import { playSound } from './lib/sound'
 import type { SoundKind } from './lib/sound'
 import {
@@ -71,11 +73,13 @@ import {
   WelcomeDialog,
 } from './components/Dialogs'
 import { Tour } from './components/Tour'
+import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
 
-type View = 'play' | 'curriculum' | 'quick' | 'progress'
+type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
+const Gallery = lazy(() => import('./dev/Gallery'))
 
 /** Hash routes: #table (default), #progress, #learn/... and #learn/quick[/id]. */
 function parseRoute(hash: string): Route {
@@ -86,10 +90,39 @@ function parseRoute(hash: string): Route {
   }
   if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
   if (hash === '#progress') return { view: 'progress', lesson: null }
+  if (import.meta.env.DEV && hash === '#dev/gallery')
+    return { view: 'gallery', lesson: null }
   return { view: 'play', lesson: null }
 }
-const go = (hash: string) => {
-  window.location.hash = hash
+/**
+ * Navigate between views. Where supported, the browser cross-fades the old
+ * and new page (View Transitions API); the hashchange that re-renders the
+ * app resolves the transition.
+ */
+function go(hash: string) {
+  const target = `#${hash}`
+  if (window.location.hash === target) return
+  const doc = document as Document & {
+    startViewTransition?: (update: () => Promise<void>) => unknown
+  }
+  const reduced =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (!doc.startViewTransition || reduced || motionOff) {
+    window.location.hash = hash
+    return
+  }
+  doc.startViewTransition(
+    () =>
+      new Promise<void>((resolve) => {
+        window.addEventListener(
+          'hashchange',
+          () => requestAnimationFrame(() => resolve()),
+          { once: true },
+        )
+        window.location.hash = hash
+      }),
+  )
 }
 type Dialog = 'settings' | 'help' | 'history' | null
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
@@ -269,7 +302,7 @@ export default function App() {
       settings.speed === 'fast' ? 80 : settings.speed === 'relaxed' ? 900 : 650
     const timer = window.setTimeout(
       () => dispatch({ type: 'atlas', decision: atlasDecision(game, style) }),
-      base + Math.random() * spread,
+      base + random() * spread,
     )
     return () => window.clearTimeout(timer)
   }, [game, style, paused, blocked, settings.speed])
@@ -700,6 +733,7 @@ export default function App() {
 
   return (
     <>
+      <CardDefs />
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -968,6 +1002,11 @@ export default function App() {
             }
             onPlay={() => go('table')}
           />
+        )}
+        {view === 'gallery' && (
+          <Suspense fallback={null}>
+            <Gallery />
+          </Suspense>
         )}
         {view === 'progress' && (
           <ProgressView

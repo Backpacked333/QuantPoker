@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   act,
-  botAction,
   cardKey,
   deck,
   estimateEquity,
@@ -14,6 +13,7 @@ import {
   shuffle,
 } from './poker'
 import type { Card, Game, Suit } from './poker'
+import { botAction } from './atlas'
 
 const cards = (s: string): Card[] =>
   s.split(' ').map((value) => ({

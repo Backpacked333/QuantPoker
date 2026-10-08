@@ -1,3 +1,4 @@
+import { categoryOf, drawTail, liveIds, score, toId, fromId } from './sim'
 export type Suit = 's' | 'h' | 'd' | 'c'
 export type Card = { rank: number; suit: Suit }
 export type Player = 0 | 1
@@ -7,6 +8,18 @@ export type Action =
   | { type: 'check' }
   | { type: 'call' }
   | { type: 'raise'; to: number }
+export type HistoryEntry = {
+  player: Player
+  street: Exclude<Street, 'showdown'>
+  boardCount: number
+  action: Action['type']
+  /** Raise target for raises, chips added for calls. */
+  amount: number
+  toCall: number
+  pot: number
+  canRaise: boolean
+  note?: string
+}
 export type Game = {
   id: number
   guided: boolean
@@ -23,6 +36,7 @@ export type Game = {
   pot: number
   lastRaise: number
   log: string[]
+  history: HistoryEntry[]
   result?: {
     winner: Player | 'tie'
     text: string
@@ -72,7 +86,7 @@ export function shuffle(cards: Card[], random = Math.random): Card[] {
   return copy
 }
 
-const categories = [
+export const categories = [
   'High card',
   'One pair',
   'Two pair',
@@ -83,87 +97,12 @@ const categories = [
   'Four of a kind',
   'Straight flush',
 ]
-const encode = (category: number, kickers: number[]) =>
-  [category, ...kickers, ...Array(5 - kickers.length).fill(0)].reduce(
-    (score, n) => score * 15 + n,
-    0,
-  )
-
-function straight(ranks: number[]): number {
-  const unique = [...new Set(ranks)].sort((a, b) => b - a)
-  if (unique[0] === 14) unique.push(1)
-  for (let i = 0; i <= unique.length - 5; i++)
-    if (unique[i] - unique[i + 4] === 4) return unique[i]
-  return 0
-}
 
 export function evaluate(cards: Card[]): { score: number; name: string } {
   if (cards.length < 5 || cards.length > 7)
     throw new Error('Evaluate requires 5–7 cards')
-  const ranks = cards.map((c) => c.rank).sort((a, b) => b - a)
-  const counts = new Map<number, number>()
-  ranks.forEach((r) => counts.set(r, (counts.get(r) ?? 0) + 1))
-  const groups = [...counts.entries()].sort(
-    (a, b) => b[1] - a[1] || b[0] - a[0],
-  )
-  const flush = (['s', 'h', 'd', 'c'] as Suit[])
-    .map((s) =>
-      cards
-        .filter((c) => c.suit === s)
-        .map((c) => c.rank)
-        .sort((a, b) => b - a),
-    )
-    .find((c) => c.length >= 5)
-  const straightFlush = flush ? straight(flush) : 0
-  const straightHigh = straight(ranks)
-  let category: number
-  let kickers: number[]
-  if (straightFlush) {
-    category = 8
-    kickers = [straightFlush]
-  } else if (groups[0][1] === 4) {
-    category = 7
-    kickers = [groups[0][0], ranks.find((r) => r !== groups[0][0])!]
-  } else if (groups[0][1] === 3 && groups[1][1] >= 2) {
-    category = 6
-    kickers = [groups[0][0], groups[1][0]]
-  } else if (flush) {
-    category = 5
-    kickers = flush.slice(0, 5)
-  } else if (straightHigh) {
-    category = 4
-    kickers = [straightHigh]
-  } else if (groups[0][1] === 3) {
-    category = 3
-    kickers = [
-      groups[0][0],
-      ...groups
-        .slice(1)
-        .map((g) => g[0])
-        .sort((a, b) => b - a)
-        .slice(0, 2),
-    ]
-  } else if (groups[0][1] === 2 && groups[1][1] === 2) {
-    category = 2
-    const pairs = groups
-      .filter((g) => g[1] === 2)
-      .map((g) => g[0])
-      .slice(0, 2)
-    kickers = [...pairs, ...ranks.filter((r) => !pairs.includes(r)).slice(0, 1)]
-  } else if (groups[0][1] === 2) {
-    category = 1
-    kickers = [
-      groups[0][0],
-      ...groups
-        .slice(1)
-        .map((g) => g[0])
-        .slice(0, 3),
-    ]
-  } else {
-    category = 0
-    kickers = ranks.slice(0, 5)
-  }
-  return { score: encode(category, kickers), name: categories[category] }
+  const value = score(cards.map(toId))
+  return { score: value, name: categories[categoryOf(value)] }
 }
 
 function contribute(game: Game, player: Player, amount: number) {
@@ -198,6 +137,7 @@ export function newHand(
     pot: 0,
     lastRaise: 20,
     log: ['A new hand. Blinds are 10 / 20.'],
+    history: [],
   }
   const effective = Math.min(...stacks)
   contribute(game, dealer, Math.min(10, effective))
@@ -242,6 +182,19 @@ export function guidedHand(): Game {
     log: [
       'Guided hand: both players invested 60 before the flop.',
       'Atlas bets 40. Your decision.',
+    ],
+    history: [
+      {
+        player: 1,
+        street: 'flop',
+        boardCount: 3,
+        action: 'raise',
+        amount: 40,
+        toCall: 0,
+        pot: 120,
+        canRaise: true,
+        note: 'Bet 40 into 120. A one-third-pot bet that protects a medium-strength hand.',
+      },
     ],
   }
 }
@@ -337,13 +290,30 @@ function nextStreet(game: Game) {
   )
 }
 
-export function act(previous: Game, action: Action): Game {
+export function act(previous: Game, action: Action, note?: string): Game {
   if (previous.street === 'showdown') throw new Error('This hand has ended')
   const game = structuredClone(previous)
   const player = game.turn
   const opponent = other(player)
   const name = player === 0 ? 'You' : 'Atlas'
   const legal = legalActions(game)
+  if (game.street !== 'showdown')
+    game.history.push({
+      player,
+      street: game.street,
+      boardCount: game.board.length,
+      action: action.type,
+      amount:
+        action.type === 'raise'
+          ? action.to
+          : action.type === 'call'
+            ? legal.toCall
+            : 0,
+      toCall: legal.toCall,
+      pot: game.pot,
+      canRaise: legal.canRaise,
+      ...(note ? { note } : {}),
+    })
   if (action.type === 'fold') {
     settle(
       game,
@@ -377,7 +347,12 @@ export function act(previous: Game, action: Action): Game {
     )
   }
   game.acted[player] = true
-  if (game.acted.every(Boolean) && game.bets[0] === game.bets[1])
+  // Matched bets close the round once both have acted, or immediately when a
+  // covered all-in leaves nobody with a meaningful decision.
+  if (
+    game.bets[0] === game.bets[1] &&
+    (game.acted.every(Boolean) || game.stacks.some((s) => s === 0))
+  )
     nextStreet(game)
   else game.turn = opponent
   return game
@@ -389,21 +364,7 @@ export function estimateEquity(
   trials = 2000,
   random = Math.random,
 ): number {
-  const visible = new Set([...hole, ...board].map(cardKey))
-  const available = deck().filter((c) => !visible.has(cardKey(c)))
-  let wins = 0
-  for (let i = 0; i < trials; i++) {
-    const pool = [...available]
-    const draw = () => pool.splice(Math.floor(random() * pool.length), 1)[0]
-    const opponent = [draw(), draw()]
-    const future = [...board]
-    while (future.length < 5) future.push(draw())
-    const heroScore = evaluate([...hole, ...future]).score
-    const opponentScore = evaluate([...opponent, ...future]).score
-    wins +=
-      heroScore > opponentScore ? 1 : heroScore === opponentScore ? 0.5 : 0
-  }
-  return wins / trials
+  return sampleOutcomes(hole, board, trials, random).equity
 }
 
 export function analyzeEquity(
@@ -412,37 +373,17 @@ export function analyzeEquity(
   trials = 2000,
   random = Math.random,
 ): EquityAnalysis {
-  const visible = new Set([...hole, ...board].map(cardKey))
-  const available = deck().filter((card) => !visible.has(cardKey(card)))
   const currentCategory =
     hole.length + board.length >= 5
-      ? categories.indexOf(evaluate([...hole, ...board]).name)
+      ? categoryOf(score([...hole, ...board].map(toId)))
       : null
-  let win = 0,
-    tie = 0,
-    improved = 0
-  for (let i = 0; i < trials; i++) {
-    const pool = [...available]
-    const draw = () => pool.splice(Math.floor(random() * pool.length), 1)[0]
-    const opponent = [draw(), draw()]
-    const future = [...board]
-    while (future.length < 5) future.push(draw())
-    const hero = evaluate([...hole, ...future])
-    const villain = evaluate([...opponent, ...future])
-    if (hero.score > villain.score) win++
-    else if (hero.score === villain.score) tie++
-    if (
-      currentCategory !== null &&
-      categories.indexOf(hero.name) > currentCategory
-    )
-      improved++
-  }
-  const equity = (win + tie / 2) / trials
+  const base = sampleOutcomes(hole, board, trials, random, currentCategory)
+  const visible = new Set([...hole, ...board].map(toId))
   const nextCards =
     board.length >= 3 && board.length < 5
-      ? available.map((card) => ({
-          card,
-          ...sampleOutcomes(hole, [...board, card], 180, random),
+      ? liveIds(visible).map((id) => ({
+          card: fromId(id),
+          ...sampleOutcomes(hole, [...board, fromId(id)], 180, random),
         }))
       : []
   const nextMean = nextCards.length
@@ -456,13 +397,21 @@ export function analyzeEquity(
         ) / nextCards.length,
       )
     : null
-  const sorted = [...nextCards].sort((a, b) => b.equity - a.equity)
+  const sorted = [...nextCards]
+    .map(({ card, equity, win, tie, loss }) => ({
+      card,
+      equity,
+      win,
+      tie,
+      loss,
+    }))
+    .sort((a, b) => b.equity - a.equity)
   return {
-    equity,
-    win: win / trials,
-    tie: tie / trials,
-    loss: 1 - (win + tie) / trials,
-    improve: currentCategory === null ? null : improved / trials,
+    equity: base.equity,
+    win: base.win,
+    tie: base.tie,
+    loss: base.loss,
+    improve: currentCategory === null ? null : base.improved,
     nextCardVolatility,
     bestNextCards: sorted.slice(0, 4),
     worstNextCards: sorted.slice(-4).reverse(),
@@ -474,48 +423,39 @@ function sampleOutcomes(
   board: Card[],
   trials: number,
   random: () => number,
-): OutcomeProbabilities {
-  const visible = new Set([...hole, ...board].map(cardKey))
-  const available = deck().filter((card) => !visible.has(cardKey(card)))
+  currentCategory: number | null = null,
+): OutcomeProbabilities & { improved: number } {
+  const holeIds = hole.map(toId)
+  const boardIds = board.map(toId)
+  const pool = liveIds([...holeIds, ...boardIds])
+  const missing = 5 - boardIds.length
+  const hero = new Array<number>(7)
+  const villain = new Array<number>(7)
+  hero[0] = holeIds[0]
+  hero[1] = holeIds[1]
+  for (let i = 0; i < boardIds.length; i++)
+    hero[2 + i] = villain[2 + i] = boardIds[i]
   let win = 0,
-    tie = 0
-  for (let i = 0; i < trials; i++) {
-    const pool = [...available]
-    const draw = () => pool.splice(Math.floor(random() * pool.length), 1)[0]
-    const opponent = [draw(), draw()]
-    const future = [...board]
-    while (future.length < 5) future.push(draw())
-    const heroScore = evaluate([...hole, ...future]).score
-    const villainScore = evaluate([...opponent, ...future]).score
-    if (heroScore > villainScore) win++
-    else if (heroScore === villainScore) tie++
+    tie = 0,
+    improved = 0
+  for (let t = 0; t < trials; t++) {
+    const start = drawTail(pool, 2 + missing, random)
+    villain[0] = pool[start]
+    villain[1] = pool[start + 1]
+    for (let i = 0; i < missing; i++)
+      hero[2 + boardIds.length + i] = villain[2 + boardIds.length + i] =
+        pool[start + 2 + i]
+    const h = score(hero, 7)
+    const v = score(villain, 7)
+    if (h > v) win++
+    else if (h === v) tie++
+    if (currentCategory !== null && categoryOf(h) > currentCategory) improved++
   }
   return {
     equity: (win + tie / 2) / trials,
     win: win / trials,
     tie: tie / trials,
     loss: 1 - (win + tie) / trials,
+    improved: improved / trials,
   }
-}
-
-export function botAction(game: Game, random = Math.random): Action {
-  const legal = legalActions(game)
-  const equity = estimateEquity(game.cards[1], game.board, 250, random)
-  const odds = legal.toCall / (game.pot + legal.toCall)
-  const roll = random()
-  if (legal.toCall && equity < odds + 0.04 && roll > 0.15)
-    return { type: 'fold' }
-  if (legal.canRaise && ((equity > 0.65 && roll < 0.65) || roll < 0.07)) {
-    return {
-      type: 'raise',
-      to: Math.min(
-        legal.maxRaiseTo,
-        Math.max(
-          legal.minRaiseTo,
-          Math.max(...game.bets) + Math.round((game.pot * 0.55) / 10) * 10,
-        ),
-      ),
-    }
-  }
-  return { type: legal.canCheck ? 'check' : 'call' }
 }

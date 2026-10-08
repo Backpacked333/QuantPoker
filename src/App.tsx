@@ -25,7 +25,6 @@ import {
 } from 'lucide-react'
 import {
   act,
-  botAction,
   cardKey,
   evaluate,
   guidedHand,
@@ -35,6 +34,9 @@ import {
 } from './lib/poker'
 import type { Action, EquityAnalysis, Game } from './lib/poker'
 import type { Lens } from './lib/finance'
+import { botAction } from './lib/atlas'
+import { nextScenarios, spotOutcome } from './lib/model'
+import type { FullSpot, SpotAnalysis } from './lib/range'
 import { readProgress, saveProgress } from './lib/storage'
 import { PlayingCard } from './components/PlayingCard'
 import { FinancePanel } from './components/FinancePanel'
@@ -44,24 +46,35 @@ import { Lessons } from './components/Lessons'
 type Dialog = 'library' | 'stats' | 'history' | 'help' | 'settings' | null
 const chips = (n: number) => n.toLocaleString('en-US')
 
-function useEquity(game: Game) {
-  const key = JSON.stringify({ hole: game.cards[0], board: game.board })
-  const [estimate, setEstimate] = useState<{
-    key: string
-    analysis: EquityAnalysis
-  } | null>(null)
+function useEquity(game: Game): EquityAnalysis | null {
+  const key = JSON.stringify({
+    hole: game.cards[0],
+    board: game.board,
+    history: game.history,
+  })
+  const [spot, setSpot] = useState<FullSpot | null>(null)
   useEffect(() => {
     const worker = new Worker(
       new URL('./lib/equity.worker.ts', import.meta.url),
       { type: 'module' },
     )
-    worker.onmessage = (
-      e: MessageEvent<{ key: string; analysis: EquityAnalysis }>,
-    ) => setEstimate(e.data)
-    worker.postMessage({ key, ...JSON.parse(key) })
+    worker.onmessage = (e: MessageEvent<SpotAnalysis>) => {
+      if (e.data.stage === 'full') setSpot(e.data)
+    }
+    const { hole, board, history } = JSON.parse(key)
+    worker.postMessage({ key, hole, board, history, style: 'balanced' })
     return () => worker.terminate()
   }, [key])
-  return estimate?.key === key ? estimate.analysis : null
+  if (spot?.key !== key) return null
+  const outcome = spotOutcome(spot, 'range')
+  const next = nextScenarios(spot, 'range')
+  return {
+    ...outcome,
+    improve: null,
+    nextCardVolatility: next.volatility,
+    bestNextCards: next.best,
+    worstNextCards: next.worst,
+  }
 }
 
 export default function App() {
@@ -683,7 +696,9 @@ export default function App() {
             key={lesson ?? 'library'}
             selected={lesson}
             onSelect={setLesson}
-            completed={progress.lessons}
+            completed={progress.lessons.filter((l): l is Lens =>
+              ['equity', 'options', 'insurance'].includes(l),
+            )}
             onComplete={(value) =>
               setProgress((previous) => ({
                 ...previous,
@@ -906,7 +921,7 @@ export default function App() {
                     'Clear saved lesson progress and hand results? Your current hand will not change.',
                   )
                 )
-                  setProgress({ hands: [], lessons: [] })
+                  setProgress((p) => ({ ...p, hands: [], lessons: [] }))
               }}
             >
               <RotateCcw size={13} /> Clear saved progress

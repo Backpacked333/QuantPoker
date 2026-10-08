@@ -1,34 +1,64 @@
 # Handoff
 
-## Current handoff: SDE → QA Engineer + Security Engineer
+## Current handoff: SDE → QA Engineer + Security Engineer (+ user actions)
+
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–2 done.** Step 2 code is merged into the branch and the database is migrated; production sign-in waits on two user actions. PR: https://github.com/Backpacked333/QuantPoker/pull/8
+
+### Read first
+
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 2: what was built, live verification, six deviations, tech debt, the exact user actions
+- The Step 1 items below (history) are still open for QA and Security
+
+### User actions (blocking production sign-in)
+
+1. Vercel project `quantpoker` → Settings → Environment Variables (Production, Preview, Development): `VITE_SUPABASE_URL=https://dbkfuxczfkawxqmaieii.supabase.co`, `VITE_SUPABASE_ANON_KEY=sb_publishable_DKfxJ0I2bbnrMHMyxiK4eg_tqsrKoI7`; redeploy.
+2. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.vercel.app`; redirect URLs `https://quantpoker.vercel.app/**`, `https://*-backpacked333s-projects.vercel.app/**`, `http://localhost:5173/**`. Optional: enable Google/GitHub providers.
+
+### What to test (QA)
+
+- With env set locally (`.env.local`): email magic link round trip (request → open link in the same browser → lands on `#lobby` → choose a name → lobby). Taken name, reserved name, bad characters. Sign out and back in skips the name step.
+- Without env: `#lobby` says online play is not set up; the trainer is untouched (e2e covers both).
+- Phone header at 320–600 px (swept in this step) and on a real device, especially iOS Safari.
+
+### What to review (Security)
+
+- `supabase/migrations/202610081*`: grants and RLS (players public-read, own-row column updates; `hands_private`/`incidents` service-role only; `record_hand` service-role only, `security definer`, `search_path=''`). Live PostgREST probes as anon are recorded in the SDE log.
+- `src/lib/authReturn.ts`: restores only a `#[\w/-]+` target from sessionStorage, one-shot.
+- `src/net/auth.ts`: PKCE; redirect is the bare origin + path; no tokens in URLs or logs.
+
+### Next implementation step (SDE)
+
+Step 3 — Table service (ADR §Migration path, days 6–8): `worker/` with `wrangler.jsonc`, `auth.ts` (ES256 JWKS), `TableDO` (hibernating sockets, `welcome`/`state`, `act` through `src/engine`, atomic persistence, `LocalController`), `POST /api/matches`, worker tests with `@cloudflare/vitest-plugin`. Needs from the user: a Cloudflare account on Workers Paid and an API token for deploys (ADR open question 5).
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE → QA + Security (Step 1; open items carried forward)
 
 Date: 2026-10-08 · Status: **Phase 0 Step 1 done** (engine, protocol, presets). Steps 2–7 not started.
 
-### Read first
+#### Read first
 
 - `.10x/decisions/sde/multiplayer-platform.md` — what was built, every test, the 8 deliberate deviations from the ADR, tech debt
 - `.10x/decisions/architect/multiplayer-platform.md` — §Engine, §Wire protocol, §Randomness (the spec this implements)
 
-### What to test (QA)
+#### What to test (QA)
 
 - The engine is user-invisible this step; the trainer must be unchanged. Gates run: typecheck, lint, 517 unit tests, build (entry 140.9 kB, unchanged), 12/12 Playwright. Re-run `npm run engine:soak` (100k hands per N; expect ~4–5 min) once to confirm the long tail.
 - Review the crafted cases in `src/engine/engine.test.ts` against TDA rules and suggest missing ones (e.g. multi-way all-ins across streets, button seat folding pre-flop at N = 3, all players all-in from the blinds at N ≥ 3).
 - `presets` moved out of `App.tsx`: bet-size buttons in the trainer should behave exactly as before (covered by e2e; worth a manual pass on mobile).
 
-### What to review (Security)
+#### What to review (Security)
 
 - `src/engine/redact.ts` + `redact.test.ts`: the only serializer. The permutation property (10k states, swap every unseen card and the whole deck → identical JSON) and the key allowlists are the guarantee that no client sees another seat's cards or the deck.
 - `src/engine/deck.ts`: per-slot commitment (`HMAC-SHA256(secret, i)[0..16]` salts, SHA-256 leaves, SHA-256 over leaves). Check the construction and that `verifyReveal` rejects every tampering we test; note the deliberate non-goal: it proves no re-deal after commitment, not that the shuffle was unbiased.
 - `src/shared/protocol.ts` `parseClientMsg`: allowlist validator (4 KB cap, exact keys, safe integers, `reqId` charset). Fuzzed 20k frames.
 - `SeatView` now also carries `actions` and `lastRaise` (public betting info). Confirm you agree they cannot leak private state.
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 2 — Accounts (ADR §Migration path, day 5): Supabase migrations `0001`–`0003` (DBA review first), OAuth + magic link, `src/net/supabase.ts` + `AuthGate` + `#lobby` route as a lazy chunk, `check-bundle.mjs` grep guard, Vercel env vars, verify the access-token `alg` is ES256. Requires from the user: Supabase dashboard access to enable providers, and answers to ADR open questions 2–4 before the lobby ships.
-
----
-
-## Handoff history
 
 ### 2026-10-08 — Principal Architect → Staff Engineer + Engineering Manager (then SDE)
 

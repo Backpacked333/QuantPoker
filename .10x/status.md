@@ -4,7 +4,9 @@ Last updated: 2026-10-08 by SDE
 
 ## Phase
 
-**Phase 0 implementation in progress.** Step 1 of 7 (engine, no UI) done; next Step 2 (Supabase accounts + sign-in), then Step 3 (`worker/` + `TableDO`).
+**Phase 0 implementation in progress.** Steps 1 (engine) and 2 (accounts) of 7 done; next Step 3 (`worker/` + `TableDO`). Step 2 needs two user actions to go live in production (Vercel env vars, Supabase redirect URLs).
+
+Supabase project `quantpoker` also carries an earlier, unmerged line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage). Multiplayer tables are additive beside it; see `.10x/decisions/sde/multiplayer-platform.md` §Step 2.
 
 Note: `.10x/` was created this session. Discovery of the codebase was done inline by the PM (`[DISCOVERED]` entries in `.10x/decisions/product-manager/_index.md`) and verified by the Architect's design workflow. CTO strategic review has not run; the one build-vs-buy call (Cloudflare Durable Objects vs. a Node server vs. Supabase-only) was made by the user directly.
 
@@ -32,6 +34,9 @@ Client: this repo's Vite build on Vercel project `quantpoker` (hash routes). Gam
 - [ ] User: answer the 5 open questions in the ADR (commitment scheme, invite-link visibility, domain, Vercel Hobby terms, Cloudflare plan)
 - [ ] Staff Engineer / EM: turn the 7 migration steps into tickets with acceptance tests; confirm day-10 milestone scope
 - [x] SDE: Step 1 — `src/engine/` + invariant, differential, redaction, commitment tests; `src/shared/protocol.ts`; `src/lib/presets.ts` (`.10x/decisions/sde/multiplayer-platform.md`). All gates green.
-- [ ] SDE: Steps 2–7 per ADR
+- [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
+- [ ] User: set Vercel env `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; set Supabase Auth Site URL and redirect URLs (values in the SDE log); optionally enable Google/GitHub
+- [ ] SDE: first real sign-in on the deployed site, then decode the access token header and confirm `alg: ES256` (ADR day-5 check)
+- [ ] SDE: Steps 3–7 per ADR
 - [ ] Security: light review of auth upgrade path, redaction tests and `hands_private` RLS before Step 7 deploy
-- [ ] DBA: review `0001`–`0003` migrations before `db push` (day 5)
+- [ ] DBA: post-hoc review of the four applied migrations (`supabase/migrations/202610081*`); RLS behaviour is covered by `supabase/tests/migrations.test.ts`

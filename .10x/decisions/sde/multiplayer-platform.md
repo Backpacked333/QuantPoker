@@ -1,5 +1,57 @@
 # multiplayer-platform — SDE log
 
+## Step 2 — Accounts (done 2026-10-08, two user actions pending)
+
+ADR: §Auth, §Data model, §Client integration, §Migration path step 2.
+
+### Discovery that changed the plan
+
+The Supabase project was **not empty**. Migration `20261007192620_learning_cloud` (from the unmerged branches `devin/1791400999-supabase-vercel` and `devin/1791354563-context-aware-coach`) is live and created `profiles` (private per-user settings, owner-only RLS), `hand_results`, `lesson_progress`, `practice_attempts`, `coach_messages` and `private.coach_usage`. Nothing of it exists on `main`. Step 2 therefore coexists with it and changes none of it.
+
+### What was built
+
+| Area                                                                                                                        | Files                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Migrations (applied to project `dbkfuxczfkawxqmaieii`; file names = recorded versions; live statement MD5s match the files) | `supabase/migrations/20261008133809_players.sql`, `…134201_matches_hands.sql`, `…134322_record_hand.sql`, `…134345_abandonments_match_index.sql` |
+| Migration/RLS tests on real Postgres (PGlite + a stub of Supabase's `auth` schema, roles and permissive default grants)     | `supabase/tests/migrations.test.ts` (9 tests; mutation-checked: removing a revoke or the column grant fails 3 of them)                           |
+| Auth return across hash routes                                                                                              | `src/lib/authReturn.ts` (+ test), called in `src/main.tsx` before render                                                                         |
+| Online area (lazy chunk)                                                                                                    | `src/net/{supabase,auth,players,AuthGate,Lobby,LiveApp}.ts(x)`, `src/net/live.css`                                                               |
+| App integration                                                                                                             | `#lobby` route, **Online** nav item, `LiveApp` lazy view in `src/App.tsx`; env typings in `src/vite-env.d.ts`                                    |
+| Guards                                                                                                                      | `scripts/check-bundle.mjs` fails if `supabase`/`gotrue`/`auth/v1/` reaches the entry chunk; `src/net/imports.test.ts` forbids analysis modules   |
+| Docs                                                                                                                        | `.env.example`, README (online section, corrected "no network/not multiplayer" lines)                                                            |
+
+Behaviour: the sign-in page reads `/auth/v1/settings` and shows only enabled methods (today: email only). Magic link and OAuth use PKCE and return to `/`; `authReturn` restores `#lobby` so the chunk loads and exchanges the code. First sign-in gets `player_<12 hex>` from a trigger; the gate then requires a real username (client and DB share the rules; a test asserts the reserved list matches the SQL). The lobby shows three cards: **Play 1v1** disabled with "Opening soon", **6-max** "Coming after heads-up", **Practice vs Atlas** live.
+
+### Verified live
+
+- PostgREST as anon: `players` 200, `hands` 200; `hands_private`, `incidents`, `rpc/record_hand` and `PATCH players` all 42501 permission denied.
+- Advisors: security shows only the intended INFO for `hands_private`/`incidents` (service-role only) plus the Devin migration's `private.coach_usage`; the one performance gap (unindexed `abandonments.match_id`) was fixed by the fourth migration.
+- JWKS publishes one ES256 key. The day-5 check of a real access token's `alg` still needs a real sign-in.
+
+### Gates
+
+typecheck ✓ · lint ✓ · prettier ✓ · `npm test` 49 files / 542 tests ✓ (48 s) · build ✓ entry 141.3 kB gzip (+0.4 kB), guard passes with and without Supabase env · e2e 15/15 ✓ (new: lobby + axe light/dark, phone lobby) · phone width sweep 320–600 px ✓ on `#table` and `#lobby`.
+
+### Deviations from the ADR
+
+1. **`players`, not `profiles`.** The live `profiles` is the Devin branch's private settings table; opening it for public reads would expose those settings. All multiplayer foreign keys point at `players(user_id)`.
+2. **Env var names follow the existing branch:** `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (ADR said `VITE_SUPABASE_KEY`). One set of config across both lines of work. The value is the `sb_publishable_…` key.
+3. **Timestamped migration names** (Supabase CLI convention, after `20261007192620`), not `0001`–`0003`, plus a fourth for the FK index.
+4. **Tighter SQL than the ADR sketch:** `search_path = ''` with qualified names; explicit `revoke all` from anon/authenticated before granting (Supabase's defaults grant everything); column-level `update (username, country, bio)`; reserved usernames; shape checks on `hands` (commitment hex, 1,664-byte leaves, id format) and `hands_private`; `record_hand` executable by `service_role` only.
+5. **OAuth/magic-link return** via `authReturn` (sessionStorage + `history.replaceState`), because providers append `?code=` to a URL that would otherwise lose the `#lobby` route.
+6. **Phone header fix** (`src/styles.css`): a fourth nav item overflowed the 412 px Pixel 7 header by 39 px, the browser zoomed out, and the tour's "Skip tour" button fell below the screen. Between 381–520 px the nav shows labels without icons; ≤ 380 px icons only (unchanged). The mobile overflow check now compares against the device width, since `scrollWidth > innerWidth` cannot fail once a phone browser widens its layout viewport.
+
+### Tech debt
+
+- The online chunk is 61.8 kB gzip because `@supabase/supabase-js` bundles realtime, storage and functions clients we do not use. Importing `@supabase/auth-js` + `@supabase/postgrest-js` directly could roughly halve it. Lazy-only, so the trainer is unaffected.
+- The magic link must be opened in the browser that requested it (PKCE verifier in localStorage); the UI says so.
+- `profiles` (Devin) and `players` (this work) are two per-user rows. If the learning-cloud branch is merged, consider one profile screen over both.
+
+### User actions pending (not code)
+
+1. **Vercel env vars** (the connector got 403 on both list and create): set `VITE_SUPABASE_URL = https://dbkfuxczfkawxqmaieii.supabase.co` and `VITE_SUPABASE_ANON_KEY = sb_publishable_DKfxJ0I2bbnrMHMyxiK4eg_tqsrKoI7` for Production, Preview and Development, then redeploy.
+2. **Supabase Auth → URL configuration:** Site URL `https://quantpoker.vercel.app`; redirect URLs `https://quantpoker.vercel.app/**`, `https://*-backpacked333s-projects.vercel.app/**` and `http://localhost:5173/**`. Optional: enable Google and GitHub providers (each needs an OAuth app); the sign-in page shows them automatically once enabled.
+
 ## Step 1 — Engine (done 2026-10-08)
 
 ADR: `.10x/decisions/architect/multiplayer-platform.md` §Engine, §Wire protocol, §Randomness, §Repository layout.

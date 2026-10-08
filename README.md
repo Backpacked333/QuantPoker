@@ -2,58 +2,64 @@
 
 **Play the hand. Understand the odds.**
 
-QuantPoker teaches the mathematics of uncertain decisions through a play-money poker game. A heads-up Texas Hold’em table sits beside a live finance panel: estimate equity, inspect expected value, rotate 3D payoff surfaces, and explore the connections—and differences—between poker, options, and insurance.
+QuantPoker is a decision trainer disguised as a poker game. You play heads-up Texas Hold’em for play money against **Atlas**, a transparent practice bot. Before the math appears you commit to a read, then a live quant lab prices every option. After each hand you get chess-style grades on the decisions, with luck shown separately from skill.
 
-This is a **single-player educational web app**, not an online gambling service, multiplayer platform, trading tool, or source of investment advice.
+This is a **single-player educational web app**, not a gambling service, multiplayer platform, trading tool or source of investment advice.
 
 ## Run locally
 
-Requirements: Node.js **22.12+** and npm. Node 22 LTS is specified in `.nvmrc`; Node 24 also works.
+Requirements: Node.js **22.12+** and npm (`.nvmrc` pins Node 22 LTS; Node 24 also works).
 
 ```sh
-nvm install           # optional, if using nvm
-nvm use
 npm ci
-npm run dev
+npm run dev          # http://localhost:5173
 ```
 
-Open the URL printed by Vite (normally `http://localhost:5173`). No API keys, database, account, or environment variables are required. `.env.example` documents that intentionally empty configuration.
+No API keys, database, account or environment variables are needed; `.env.example` documents that intentionally empty configuration.
 
 ```sh
-npm run typecheck    # strict TypeScript
-npm run lint         # ESLint and React hooks checks
-npm test             # engine, finance, curriculum, storage and component tests
-npm run build        # type-check + production assets in dist/
-npm run preview      # locally serve the production build
+npm run typecheck    # strict TypeScript, including e2e specs
+npm run lint         # ESLint and React hooks rules
+npm test             # unit and component tests (Vitest, jsdom)
+npm run e2e          # Playwright end-to-end, accessibility, mobile and frame-time checks
+npm run e2e:visual   # opt-in screenshot comparisons (baselines stay local)
+npm run build        # type-check, production assets in dist/, entry-bundle budget
+npm run preview      # serve the production build locally
 ```
 
-The app can be served by any static host. Build with `npm run build` and use `dist` as the output directory. There are no server routes or client-side path-routing requirements. A local preview is not a public deployment.
+The build is static: host `dist/` anywhere. There are no server routes or client-side routing requirements.
 
-## What you can do
+## The learning loop
 
-- Play heads-up no-limit Hold’em against **Atlas**, a lightweight probability-based practice bot.
-- Fold, check, call, bet, and raise; use half-pot, pot, or maximum-effective-stack sizing.
-- See correctly evaluated best-five-card hands, all-in runouts, split pots, alternating dealer/blinds, chip balances, and action history.
-- Start with a clearly labeled **guided flop** (`A♠ J♠` on `K♠ Q♠ 7♦`). Both players previously invested 60; Atlas bet another 40. The 160-chip pot, stacks, and call price are internally consistent. The opponent’s teaching hand is fixed, but never supplied to the hero’s equity estimator. Subsequent hands are shuffled.
-- Compare **fold, call/check, and raise scenarios** without playing an action. Raise sizing comes from the table; assumed fold probability is explicitly adjustable, not a hidden claim about Atlas.
-- Rotate animated **3D decision terrains**, inspect points with your pointer or keyboard-accessible sliders, and open a larger view. Readouts show both normalized values and chips. The live marker, surface, and formulas share the same model; overbets automatically expand the risk axis.
-- Select a likely favorable or unfavorable **next public card** and reprice every lens. What-if scenarios are clearly labeled, never change the dealt hand, and expire when the real board changes.
-- After settlement, compare the realized result with a **final-decision review** frozen at the information you had before acting. Later board cards and the opponent's revealed hand do not leak into that analysis.
-- Explore **optionality**: compare committing capital with preserving the choice to fold. Connect the zero-EV frontier, local sensitivity, next-card uncertainty, and finite information clock to options concepts—with explicit limits on the analogy.
-- Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
-- Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
-- Open **Foundations** for ten seven-step units and six specialist experiments; use the four pathway pages, searchable 96-family atlas, structured transfer/review cases and local notebook/evidence. The eight core modules and original lens mini-lessons remain available.
-- Pause the bot, enable optional gentle action sounds, and inspect hand history.
+1. **Read first.** On each street the lab stays locked until you guess how often your hand wins at showdown. Lock it in (Enter) and the lab opens, showing how close you were. Every read feeds your calibration statistics. You can skip, or turn this off in settings.
+2. **Act at the table.** Fold, check, call, bet or raise, with ½-pot, ¾-pot, pot and all-in presets. Once you have made your read, the call button carries an **equity ring** with a tick at break-even, and every bet size shows its modeled EV. Keyboard: `F` `C` `R`, `1–4` for sizes, `Enter`, `P` to pause, `?` for help.
+3. **See the decision.** The lab has two modes:
+   - **Simple:** an equity meter against the price, a plain-language verdict, the EV of every action, how Atlas’s actions shifted its likely range, and next-card what-ifs.
+   - **Analyst:** adds a 13×13 range grid of Atlas’s likely holdings, a 2D decision map (3D terrain on demand), quant metrics, a fold-probability override, and the optionality and protection lenses.
+4. **Review the hand.** Each decision gets a grade (Best, Good, Inaccuracy, Mistake, Blunder). You can replay any decision with the lab frozen at that moment. The review shows result versus model expectation, a face-up equity-by-street graph after a showdown, and Atlas’s reasoning, revealed only once the hand is over.
+5. **Track improvement.** The progress page charts luck versus skill (cumulative result against cumulative expectation), decision accuracy, grade distribution, read calibration with blind spots by hand type, and recent hands. You can export and import your progress.
 
-On narrow screens, the side-by-side layout becomes a vertical stack with the table first. Reduced-motion preferences, keyboard-operable controls, native modal focus handling, and text equivalents for chart formulas are included. 3D requires WebGL; if unavailable, the calculations and lessons remain usable.
+New visitors get a welcome screen, a short spotlight tour, three **guided hands** (a big draw, a price-sensitive straight draw, a river bluff-catch) and then shuffled practice. **Learn** opens the full curriculum (below). Six short **quick lessons** with interactive widgets and quizzes (expected value, outs and pot odds, variance, ranges, options and insurance) sit inside it at `#learn/quick`.
 
-## The math and its limits
+The app has light, dark and system themes, and a bottom-sheet lab on phones. It respects reduced-motion preferences and is keyboard-operable, with automated axe checks in both themes.
 
-### Integrated curriculum
+### Table feel and motion
 
-The table remains the default experience (`#table`). **Curriculum** opens Foundations at `#learn/path` (also `#learn` and `#learn/foundations`). Unit URLs use `#learn/unit/f01/brief` and steps `brief`, `predict`, `worked`, `practice`, `experiment`, `transfer`, `review`. The atlas is `#learn/map` (also `#learn/atlas`), the lab catalog is `#learn/lab`, pathways are `#learn/pathways`, delayed review reminders are `#learn/reviews`, and notes/evidence/export are `#learn/notebook`. Hash routes need no hosting rewrites. The **Core library** is `#learn/core`: original URLs such as `#learn/module/odds/learn` retain `learn`, `lab` and `check` tabs. Its legacy connection diagram remains at `#learn/connections`.
+- **Cards and felt:** original vector card faces and court cards with a paper grain, a lit felt with a stitched leather rail, and chips that stack by denomination (1, 5, 25, 100, 500).
+- **Choreography (Motion):** cards fly from the deck to their seats and lift as they turn over, and folded hands slide into the middle. When a hand ends all-in, both hands turn face up and the board is revealed one street at a time, with a pause before the river and equity bars that update after each card. Stacks, payouts and the review wait until the river lands.
+- **Atlas:** a drawn face that breathes and blinks, glances while it thinks, and has a sweeping ring around it. On phones its actions pop out as compact tags. The winner's side of the felt lights up.
+- **Lab:** meters, markers and EV bars move on springs, the Best tag glides between actions, tabs crossfade, and jargon (equity, break-even, EV, range) carries a definition on hover, focus or tap.
+- **Desktop layout:** drag the bar between the table and the lab to share the width. The table scales with its column, the split is remembered, and a double-click (or Enter) springs it back to the default. Arrow keys, Home and End resize it from the keyboard.
+- **Sound (optional):** cards snap, chips clack and checks knock, synthesized in the browser with no audio files. A volume slider appears in settings when sound is on.
+- **Phones:** the lab sheet can be dragged between peek, half and full, follows a flick, and gives a short vibration on snap when sound is on.
 
-Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Finance-panel what-if controls and camera position reset when the table panel is remounted; the game itself does not. Reloading still starts a fresh guided hand.
+Every animation stops or snaps under reduced motion. `?motion=off` forces that, and `?seed=<n>` makes deals and Atlas reproducible; both exist for tests and screenshots.
+
+## Integrated curriculum
+
+The table remains the default experience (`#table`). **Learn** opens Foundations at `#learn/path` (also `#learn` and `#learn/foundations`). Unit URLs use `#learn/unit/f01/brief` and steps `brief`, `predict`, `worked`, `practice`, `experiment`, `transfer`, `review`. The atlas is `#learn/map` (also `#learn/atlas`), the lab catalog is `#learn/lab`, pathways are `#learn/pathways`, delayed review reminders are `#learn/reviews`, and notes/evidence/export are `#learn/notebook`. Hash routes need no hosting rewrites. The **Core library** is `#learn/core`: original URLs such as `#learn/module/odds/learn` retain `learn`, `lab` and `check` tabs. Its legacy connection diagram remains at `#learn/connections`.
+
+Opening the curriculum pauses the bot without resetting your hand, stacks, raise size, selected lens, results, or manual pause setting. A visible-information hand summary carries your cards, public board, pot, call cost, estimated equity, and (when facing a bet) break-even equity into the lesson. **Return to this hand** resumes the same game. Lab inputs are independent experiments, not edits to dealt cards or bankroll. Lab what-if selections and the 3D camera reset when you return; the game itself does not. The six interactive quick lessons live at `#learn/quick` (linked from the curriculum sidebar and from every lab view), and progress is at `#progress`.
 
 | Stage            | Poker mechanic               | Finance connection                       | Experiment                                                                         |
 | ---------------- | ---------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -108,96 +114,131 @@ See the [frozen developer contract and runnable test fixture](src/curriculum/cor
 
 The curriculum is lazy-loaded and its CSS is scoped to `.curriculum-workspace`, so it does not restyle the table or 3D panel. Specialist Entries/Views and workers are lazy chunks; case/source metadata is registered together. Core models live in `src/curriculum/lib/math.ts`, shared adapters in `src/curriculum/core/foundationMath.ts`, and specialist models under `src/curriculum/experiences/`. None receives the root game, opponent private cards or future deck. Add new resources through the typed registry and acceptance tests rather than marking static placeholders available.
 
+## Atlas, a published strategy
+
+Atlas estimates its own equity against a random hand (250 samples, using only its cards and the board), then follows a simple policy with three selectable styles:
+
+| Style      | Extra equity wanted to continue | Weak hands defended\* | Value raise above | Value raise rate | Bluff rate | Bet sizes (× pot) |
+| ---------- | ------------------------------- | --------------------- | ----------------- | ---------------- | ---------- | ----------------- |
+| Tight      | +8 pts                          | 10%                   | 68%               | 60%              | 3%         | 0.5, 0.66         |
+| Balanced   | +4 pts                          | 15%                   | 65%               | 65%              | 7%         | 0.33, 0.55, 0.75  |
+| Aggressive | 0                               | 22%                   | 58%               | 75%              | 14%        | 0.66, 1           |
+
+\*Weak-hand defence applies fully to bets up to about half pot and fades to zero against large overbets, so Atlas cannot be exploited by huge shoves.
+
+Atlas never sees your cards. Its explanations are generated from its real inputs. During play the table shows only what it did; why it did it is revealed in the review.
+
+## The math and its limits
+
+### Atlas’s likely range (Bayesian, from public actions only)
+
+Every unseen starting combination (up to 1,326) begins equally likely. For each public action Atlas took, each combo is reweighted by the probability that Atlas’s published policy takes that action with that combo’s equity on the board at the time. Atlas’s own estimation noise is modeled by smoothing its thresholds. Your equity is then measured against the resulting posterior. A toggle switches the lab to the classic **any hand** model (uniform over unseen hands).
+
+The model is only as good as the strategy description. Against real opponents, ranges are far less predictable than Atlas’s.
+
 ### Showdown equity
 
-The hero’s estimator samples **2,000** uniformly random legal opponent hands and future boards, counting ties as half a win. It runs in a Web Worker and sees only the hero’s two cards and public board. It does **not** read Atlas’s hidden cards, condition on its betting range, or claim solver accuracy. At 2,000 independent samples, the worst-case approximate 95% sampling margin is ±2.2 percentage points; model error can be much larger. Estimates are stable through actions on the same board and recomputed when visible cards change.
+Results are computed per opponent combo:
 
-On the flop and turn, each legal next card gets **180 additional simulations**, retaining win, tie, and loss probabilities. The standard deviation of these conditional equity estimates is displayed as next-card volatility. This is a directional, noise-contaminated sensitivity diagnostic, **not annualized market volatility or an exact ranking of outs**. Favorable and unfavorable cards are selected from these noisy estimates. Before the flop it is unavailable (a flop reveals three cards); on the river no next-card uncertainty remains.
+- exactly on the river and turn;
+- with 80 sampled runouts per combo on the flop;
+- with 24 per combo pre-flop.
+
+They are then averaged under the selected model. Ties count as half. Each new spot first gets a fast 600-sample estimate, then the full analysis in a Web Worker. Expect a point or two of Monte Carlo noise, more for single next cards. Next-card what-ifs reprice every legal next card: exactly on the turn, by sampling on the flop.
 
 ### Expected value
 
-For current pot `P`, additional call cost `C`, and showdown equity `p`:
+For pot `P` (including all bets so far), call cost `C` and equity `p`:
 
 ```text
-EV(call) = p × P − (1 − p) × C
-Break-even equity = C / (P + C)
-Normalized 3D surface = p − (1 − p) × (C / P)
+EV(call)        = p × P − (1 − p) × C
+Break-even      = C / (P + C)
+EV(raise to R)  = f × P + (1 − f) × [p_called × (P + A) − (1 − p_called) × R]
+EV(fold)        = 0   (incremental; chips already in are sunk)
 ```
 
-The call formula assumes **no further betting, no rake, and no fold equity**. Previously invested chips are sunk costs. A free check's value is its modeled check-down pot share, not a guaranteed profit or an estimate of future betting value. A realized hand result is not evidence that a decision was good or bad.
+`f` is the chance Atlas folds to your raise, computed from its policy over its likely range. `A` is what Atlas must add to call. `p_called` is your equity against only the hands that continue. You can override `f`; the override then applies to the whole range. EV assumes **no betting after this decision**, no rake, and treats re-raises as calls. A free check is valued as its check-down share of the pot.
 
-For a raise risking `R` additional chips, an opponent call of `A`, and an explicitly assumed fold probability `f`:
+### Grades
 
-```text
-EV(raise) = f × P + (1 − f) × [p × (P + A) − (1 − p) × R]
-EV(fold) = 0  (incremental, excluding sunk chips)
-```
+A decision’s grade is the EV it gave up against the best modeled option at that moment, as a share of the pot:
 
-The raise model assumes the alternative to folding is calling, not reraising. Equity is still against a uniform random hand, not a conditioned calling range. The terrain varies equity and capital at risk while holding the pot, opponent call amount, and fold-probability assumption fixed. It is a sensitivity surface, not a set of recommendations or exclusively legal poker actions. The current-action marker always evaluates the actual selected risk.
+| Grade      | EV given up |
+| ---------- | ----------- |
+| Best       | ≤ 3% of pot |
+| Good       | ≤ 8%        |
+| Inaccuracy | ≤ 18%       |
+| Mistake    | ≤ 35%       |
+| Blunder    | > 35%       |
+
+The thresholds leave room for Monte Carlo noise. Accuracy is 100 for a best-EV choice, falling linearly to 0 at half a pot given up.
+
+Bets above 1.5× pot are priced and shown, but they are not used as the grading benchmark unless you chose them. The model values calling as a check-down (no implied odds) while a shove has no later betting, which would otherwise bias grades toward huge bets.
+
+Grades judge decisions under this model, not results, and not perfect play.
+
+### Luck versus skill
+
+Expected result = the EV of your final decision minus the chips you had already put in. Variance = the actual result minus the expected result. Hands that ended with no decision from you count as zero variance.
 
 ### Optionality and the market analogy
 
 ```text
-Decision choice value = max(0, EV(selected continuation))
-Call-EV sensitivity per percentage point = (P + C) / 100
-Raise-EV sensitivity per percentage point = (1 − f) × (P + A + R) / 100
+Choice value              = max(0, EV(selected continuation))
+EV sensitivity per point  = (1 − f) × (P + A + R) / 100   (f = 0, A = 0 for a call)
 ```
 
-This surface clips negative modeled EV at zero because you can decline before committing. The kink illustrates convexity in a decision value function, **not an actual option payoff or option price**. Once you pay, losses are possible. The panel maps probability, price, sensitivity, information arrival, and optionality into plain-language financial concepts. Next-card dispersion is not implied volatility, the finite card clock is not market theta, and local EV sensitivity is not a Black–Scholes Greek. Poker has no traded underlying, risk-neutral measure, continuous hedge, interest-rate curve, or dividends. The beginner lesson separately explains a real vanilla call's expiration payoff `max(S − K, 0) − premium`.
+The kink at zero illustrates the convexity of being able to decline before committing. It is not an option price. Next-card swing is not implied volatility, the information clock is not theta, and local sensitivity is not a Black–Scholes Greek. The lesson separately covers a vanilla call’s expiration payoff, `max(S − K, 0) − premium`.
 
 ### Insurance
 
 ```text
-Net outcome = −loss + min(loss, coverage) − premium
-Fair premium = loss-event probability × coverage
+Net outcome  = −loss + min(loss, coverage) − premium
+Fair premium = loss probability × coverage
 ```
 
-Coverage ranges from zero to the selected decision's incremental exposure. The loss-event probability comes from the Monte Carlo **loss** frequency, not `1 − equity` (which would misprice ties). For a raise it is additionally multiplied by `1 − f`. The hypothetical premium is paid in every state, and coverage pays only on a loss; ties and opponent folds do not trigger payment. The outcome distribution includes fold, win, tie, and loss states. Its mean is unchanged by fair coverage, while standard deviation falls. The terrain varies loss probability and coverage, repricing the premium for each point and normalizing bad-state net outcome by exposure. No exposure produces a flat zero surface. Real policies include expenses, margins, exclusions, and often deductibles. The model does not purchase insurance or affect the poker bankroll.
+The loss probability comes from simulated losses (not `1 − equity`, which would misprice ties), times `1 − f` for raises. Coverage pays only in the losing state. Fair cover leaves the mean unchanged and lowers the spread. Real policies add expenses, exclusions and deductibles.
+
+The Protection lens also previews an all-in cashout (1% fee), run-it-twice dispersion and a full-Kelly ceiling for the selected exposure, using `allInCashout` and `kellyFraction`. These treat the exposure as terminal, compress ties into equity, treat two runouts as independent and assume a known, repeatable edge.
 
 These are **conceptual connections**, not measured correlations with financial assets.
 
 ## Architecture
 
-| Area         | Implementation                                                                                                           |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| Interface    | React 19 + TypeScript; Vite; responsive CSS; Lucide icons                                                                |
-| Poker engine | Immutable game transitions in `src/lib/poker.ts`; all nine hand categories and tie-breakers                              |
-| Equity       | Worker in `src/lib/equity.worker.ts`; visible-information Monte Carlo                                                    |
-| Finance      | Pure functions in `src/lib/finance.ts` shared with charts/tests                                                          |
-| 3D           | Lazy-loaded Three.js + OrbitControls; raycast inspection, numerical probes, animated marker; static under reduced motion |
-| Persistence  | Versioned, validated browser localStorage in `src/lib/storage.ts`                                                        |
-| Fonts        | Bundled DM Sans and Manrope (Fontsource, SIL Open Font License); no Google Fonts requests                                |
-| CI           | GitHub Actions: clean install, typecheck, lint, tests, production build                                                  |
+| Area              | Implementation                                                                                                                           |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Interface         | React 19 + TypeScript, Vite, hand-written CSS with light/dark design tokens, Lucide icons, bundled DM Sans and Manrope                   |
+| Motion            | `motion` with shared spring tokens (`src/motion.ts`); feature code loads lazily through `LazyMotion`, as does the lab                    |
+| Poker engine      | `src/lib/poker.ts`: immutable transitions with a public action history                                                                   |
+| Hand evaluator    | `src/lib/sim.ts`: bitmask evaluator on integer cards, checked score-for-score against the original readable evaluator                    |
+| Atlas             | `src/lib/atlas.ts`: style-dependent probabilistic policy and explanations                                                                |
+| Spot analysis     | `src/lib/range.ts`: range posterior, per-combo tables and next-card repricing, run in one long-lived Web Worker with caches              |
+| Model and grading | `src/lib/model.ts`, `src/lib/grading.ts`, `src/lib/finance.ts`: pure functions shared by the UI and tests                                |
+| App state         | `src/state/trainer.ts` (reducer for hands, decisions, guesses, guided path) and `src/state/spots.ts` (keyed analysis cache)              |
+| Persistence       | `src/lib/storage.ts`: validated localStorage v2 with v1 migration, export/import, and a `SyncAdapter` seam for optional cloud sync later |
+| 3D                | Lazy-loaded Three.js view, opened on demand. GL contexts are released on close                                                           |
 
-All play is client-side. The application makes no analytics or AI-provider requests and stores no credentials. Reloading starts a fresh guided table while preserving lesson completion and recorded results. Settings, the current hand, and the current session bankroll are not persisted. When a player runs out of chips, **Refill & deal next hand** resets both practice stacks to 2,000 and keeps the recorded results.
+All play is client-side. The app makes no analytics, AI or network requests beyond loading itself, and stores no credentials. Settings, lessons and the last 100 hands (with decision grades and reads) stay in the browser. Reloading deals a fresh hand.
 
 ## Validation
 
-Automated coverage includes:
+- **Engine:** the fast evaluator matches the reference evaluator on 6,000 random 5–7 card hands; also covered are categories, kickers, wheel straights, blinds, minimum raises, effective-stack caps, short and covered all-ins, chip conservation over 500 randomized hands, and immutability.
+- **Atlas:** the policy is monotone in equity and sums to one, styles are ordered, explanations are generated, and outputs are independent of the hero's cards.
+- **Range model:** the posterior is normalized and excludes visible cards; a bet strengthens the range; uniform mode agrees with the independent estimator; river results are exact; bigger raises fold more of the range; and raise EV matches the finance formula.
+- **Grading:** grades are monotone; folding the nuts is a blunder; overbets are excluded from the grading bar.
+- **Trainer:** the guided path has unique hand ids, decision snapshots are frozen, guesses attach once per street, and finished hands queue for recording.
+- **Components:** the guess gate hides the math until a read is locked; the action bar and hand review are covered.
+- **Table and curriculum integration (Vitest + Testing Library):** lens links to curriculum modules; the paused live-hand bridge shows only visible cards; Atlas waits while you study; pause state and notebook survive round trips; deep links; returning focuses the table; hands are saved before grading finishes.
+- **End to end (Playwright):** the full guess, act and review loop by keyboard; persistence across reload; every analyst view and the 3D view opened repeatedly without GL context warnings; lessons; dark mode with reduced motion; axe accessibility in light and dark; a phone layout with no horizontal scroll and a lab sheet that drags between snap points; and a frame-time check through an all-in runout.
+- **Budgets and visuals:** `npm run build` fails if the entry chunk exceeds 150 kB gzip. `npm run e2e:visual` compares 24 seeded screenshots (light and dark, desktop and phone); record baselines with `-- --update-snapshots` before a UI change.
 
-- Category ordering, wheel straights, kickers, double-triplet full houses, and three-pair best-hand selection.
-- Comparison of seven-card evaluation with all 21 five-card subsets over 1,000 deterministic random hands.
-- Blinds, big-blind option, action order, minimum raises, effective-stack caps, short all-ins, folds, showdown ties, and input immutability.
-- Chip conservation and termination across 500 deterministic randomized hands.
-- Bot action validity and independence from the hero’s hidden cards.
-- Known equity cases, conditional next-card distributions, fold/call/raise arithmetic, sensitivity surfaces, and unclamped overbet markers.
-- Fair protection preserving expected wealth with ties and opponent folds; reduced payoff dispersion; premium-inclusive vanilla option payoffs in the lesson utilities.
-- Corrupt/unavailable browser storage and bounded saved history.
-- Curriculum mathematics: exact outs, EV, variance, binomial replication, put-call parity, Black–Scholes benchmarks, and IV inversion.
-- Module integrity, checkpoint retry/completion, notebook export/reset, and malformed curriculum storage.
-- Table-to-lesson deep links, preserved hands and manual pause state, suspended/resumed bot turns, and isolation of legacy history from curriculum resets. Component tests mock the equity worker and WebGL renderer; engine and finance calculations are tested separately.
-- All ten registered banks, six lazy specialist Entries, F10 independent golden values/policy enumeration, critical-item grading, assistance/repeat exclusions and ungraded reflection.
-- v1→v2 migration/recovery, blocked/quota storage, conflict detection, bounded compaction, exports, deterministic stream separation, worker identity/cancel/stale messages, delayed review clocks and immutable snapshots.
-- Specialist numeric endpoints, impossible/undefined conditionals, state-ledger conservation, selected-label assumptions, capital/default mixture endpoints and frozen synthetic backtest protocols. Native browser worker/performance evidence is still unrun.
-
-These tests do not replace browser end-to-end, screen-reader, mobile-device, or cross-browser testing.
+These do not replace testing with real learners, screen-reader users and a range of devices.
 
 ## Deliberate boundaries
 
-- **Not multiplayer:** no lobby, accounts, matchmaking, or authoritative server.
-- **Not money-safe:** cards and state can be inspected in browser developer tools. Randomness uses `Math.random`, adequate for a non-adversarial local teaching game, not gambling.
-- **Not a solver:** Atlas estimates its own equity against random hands with a small simulation budget and simple betting rules. It is a practice opponent, not an expert strategy model.
-- **Heads-up only:** bets are capped at the effective stack, so multiway side pots are not needed. A standard burn-card ritual is omitted without changing the distribution of dealt cards.
-- **Not a certification:** the lessons are an introductory explanation of risk, not a full quantitative-finance curriculum.
+- **Not multiplayer, not money-safe:** there are no accounts or server. Randomness uses `Math.random`, and state is inspectable in developer tools.
+- **Not a solver:** Atlas is a transparent practice opponent. Grades reflect a simplified one-decision model of Atlas, not game-theory-optimal play.
+- **Heads-up only:** bets are capped at the effective stack, so side pots never arise.
+- **Not a certification:** the lessons are an introduction to risk thinking, not a quantitative-finance curriculum.
 
-The next product steps should be driven by learner feedback: richer hand-by-hand explanations, calibrated opponent ranges, further lessons, and independently validated financial models—before adding multiplayer or account infrastructure.
+Next steps should come from learner feedback: multi-street EV, opponent styles learned from your own play, more lessons, and optional cloud sync of progress through the existing `SyncAdapter` seam.

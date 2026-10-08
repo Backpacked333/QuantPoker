@@ -8,22 +8,28 @@
   },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/check-bundle.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "e2e:visual": "VISUAL=1 playwright test --project=visual-desktop --project=visual-mobile"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",
     "@fontsource-variable/manrope": "^5.3.0",
     "lucide-react": "^0.468.0",
+    "motion": "^12.43.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "three": "^0.180.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
     "@eslint/js": "^9.36.0",
+    "@playwright/test": "^1.56.1",
+    "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",
@@ -37,6 +43,7 @@
     "eslint-plugin-react-refresh": "^0.4.22",
     "globals": "^16.4.0",
     "jsdom": "^26.1.0",
+    "playwright-core": "^1.56.1",
     "prettier": "^3.6.2",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.44.1",

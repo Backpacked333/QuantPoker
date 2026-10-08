@@ -4339,10 +4339,17 @@ button.range-cell:focus-visible {
     font-size: 13px;
     gap: 5px;
   }
+  /* Four destinations fit a phone header as words; icons return below. */
+  .nav button svg {
+    display: none;
+  }
 }
 @media (max-width: 380px) {
   .stage {
     height: 410px;
+  }
+  .nav button svg {
+    display: block;
   }
   .nav button span {
     display: none;

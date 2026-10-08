@@ -1,0 +1,88 @@
+/* Online area. Uses the app's tokens; loaded only with the online chunk. */
+.live-page {
+  max-width: 880px;
+}
+.live-status,
+.live-muted {
+  color: var(--text-2);
+}
+.live-error {
+  color: var(--negative);
+}
+.live-signin {
+  display: grid;
+  gap: 14px;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.live-signin h2 {
+  margin: 0;
+}
+.live-wide {
+  width: 100%;
+}
+.live-email {
+  display: grid;
+  gap: 6px;
+}
+.live-email label {
+  font-weight: 600;
+}
+.live-row {
+  display: flex;
+  gap: 8px;
+}
+.live-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.live-row input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.live-sent {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+}
+.live-account {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.live-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+.live-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 20px;
+}
+.live-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+.live-card p {
+  margin: 0;
+}
+.live-card .btn {
+  justify-self: start;
+}
+@media (max-width: 520px) {
+  .live-row {
+    flex-direction: column;
+  }
+}

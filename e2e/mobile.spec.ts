@@ -1,14 +1,26 @@
 import { expect, test } from '@playwright/test'
+import type { Page } from '@playwright/test'
 import { onboard, playHand } from './helpers'
+
+/**
+ * Nothing wider than the device. Comparing with innerWidth alone is not
+ * enough: when content overflows, a phone browser zooms out and widens the
+ * layout viewport to match, so scrollWidth === innerWidth still holds.
+ */
+async function expectNoOverflow(page: Page) {
+  const device = page.viewportSize()!.width
+  const widths = await page.evaluate(() => ({
+    layout: window.innerWidth,
+    content: document.documentElement.scrollWidth,
+  }))
+  expect(widths).toEqual({ layout: device, content: device })
+}
 
 test('phone layout has no horizontal scroll and a working lab sheet', async ({
   page,
 }) => {
   await onboard(page)
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(overflow).toBe(false)
+  await expectNoOverflow(page)
   await page.getByRole('button', { name: /Lock in/ }).click()
   await page.locator('.sheet-handle').click()
   await expect(page.locator('.sheet-body .meter')).toBeVisible({
@@ -49,4 +61,15 @@ test('the lab sheet drags between snap points', async ({ page }) => {
   await page.mouse.up()
   await expect(handle).toHaveAttribute('aria-expanded', 'false')
   await expect(page.locator('.sheet-body')).toBeHidden()
+})
+
+test('the online lobby fits a phone without horizontal scroll', async ({
+  page,
+}) => {
+  await onboard(page)
+  await page.getByRole('button', { name: 'Online', exact: true }).click()
+  await expect(
+    page.getByText('Online play is not set up on this site yet.'),
+  ).toBeVisible()
+  await expectNoOverflow(page)
 })

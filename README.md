@@ -4,7 +4,7 @@
 
 QuantPoker is a decision trainer disguised as a poker game. You play heads-up Texas Hold’em for play money against **Atlas**, a transparent practice bot. Before the math appears you commit to a read, then a live quant lab prices every option. After each hand you get chess-style grades on the decisions, with luck shown separately from skill.
 
-This is a **single-player educational web app**, not a gambling service, multiplayer platform, trading tool or source of investment advice.
+This is an **educational web app played for play money only**, not a gambling service, trading tool or source of investment advice. Online play against other people is being built (see [Online play](#online-play-in-progress)); the trainer works fully offline without it.
 
 ## Run locally
 
@@ -15,7 +15,15 @@ npm ci
 npm run dev          # http://localhost:5173
 ```
 
-No API keys, database, account or environment variables are needed; `.env.example` documents that intentionally empty configuration.
+No API keys, database, account or environment variables are needed for the trainer. Online play is optional: `.env.example` lists the two browser-safe values that turn on sign-in.
+
+### Online play (in progress)
+
+`#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. Matches are not playable yet: the table server (Cloudflare Durable Objects) is the next build step. The plan and its decisions live in `.10x/decisions/architect/multiplayer-platform.md`.
+
+- `src/engine/`: the server-authoritative N-player engine (2–6 seats, side pots, deck commitment, per-seat redaction). It is not used by the trainer, which keeps `src/lib/poker.ts`.
+- `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules.
+- `supabase/migrations/`: players, matches and the hand archive with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project manually; CI never touches the database.
 
 ```sh
 npm run typecheck    # strict TypeScript, including e2e specs
@@ -218,7 +226,7 @@ These are **conceptual connections**, not measured correlations with financial a
 | Persistence       | `src/lib/storage.ts`: validated localStorage v2 with v1 migration, export/import, and a `SyncAdapter` seam for optional cloud sync later |
 | 3D                | Lazy-loaded Three.js view, opened on demand. GL contexts are released on close                                                           |
 
-All play is client-side. The app makes no analytics, AI or network requests beyond loading itself, and stores no credentials. Settings, lessons and the last 100 hands (with decision grades and reads) stay in the browser. Reloading deals a fresh hand.
+Practice against Atlas is client-side. The trainer makes no analytics, AI or network requests beyond loading itself, and stores no credentials; only opening the **Online** tab contacts the account service, and only when a deployment configures one. Settings, lessons and the last 100 hands (with decision grades and reads) stay in the browser. Reloading deals a fresh hand.
 
 ## Validation
 
@@ -236,7 +244,7 @@ These do not replace testing with real learners, screen-reader users and a range
 
 ## Deliberate boundaries
 
-- **Not multiplayer, not money-safe:** there are no accounts or server. Randomness uses `Math.random`, and state is inspectable in developer tools.
+- **The trainer is not money-safe:** practice against Atlas runs entirely in the browser with `Math.random`, and its state is inspectable in developer tools. Online play is designed to be server-authoritative instead, and is still play money only.
 - **Not a solver:** Atlas is a transparent practice opponent. Grades reflect a simplified one-decision model of Atlas, not game-theory-optimal play.
 - **Heads-up only:** bets are capped at the effective stack, so side pots never arise.
 - **Not a certification:** the lessons are an introduction to risk thinking, not a quantitative-finance curriculum.

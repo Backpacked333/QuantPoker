@@ -16,6 +16,7 @@ import {
   Coins,
   Diamond,
   Gauge,
+  Globe,
   GraduationCap,
   Lightbulb,
   Lock,
@@ -81,15 +82,19 @@ import { Tour } from './components/Tour'
 import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
 
-type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery'
+type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery' | 'live'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
+const LiveApp = lazy(() => import('./net/LiveApp'))
 const Gallery = lazy(() => import('./dev/Gallery'))
 // The lab is the heaviest view; it loads in parallel with the first paint.
 const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
-/** Hash routes: #table (default), #progress, #learn/... and #learn/quick[/id]. */
+/**
+ * Hash routes: #table (default), #progress, #lobby (online play), #learn/...
+ * and #learn/quick[/id].
+ */
 function parseRoute(hash: string): Route {
   const quick = hash.match(/^#learn\/quick(?:\/([\w-]+))?$/)
   if (quick) {
@@ -98,6 +103,7 @@ function parseRoute(hash: string): Route {
   }
   if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
   if (hash === '#progress') return { view: 'progress', lesson: null }
+  if (hash === '#lobby') return { view: 'live', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }
   return { view: 'play', lesson: null }
@@ -797,6 +803,7 @@ export default function App() {
           {(
             [
               ['play', 'Play', Diamond, 'table'],
+              ['live', 'Online', Globe, 'lobby'],
               ['learn', 'Learn', BookOpen, 'learn/path'],
               ['progress', 'Progress', ChartNoAxesCombined, 'progress'],
             ] as const
@@ -1058,6 +1065,17 @@ export default function App() {
             }
             onPlay={() => go('table')}
           />
+        )}
+        {view === 'live' && (
+          <Suspense
+            fallback={
+              <div className="curriculum-loading" role="status">
+                Opening online play… Your hand is paused.
+              </div>
+            }
+          >
+            <LiveApp />
+          </Suspense>
         )}
         {view === 'gallery' && (
           <Suspense fallback={null}>

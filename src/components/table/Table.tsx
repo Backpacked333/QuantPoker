@@ -7,6 +7,8 @@ import type { Card, Game } from '../../lib/poker'
 import { guidedIntro } from '../../lib/scripted'
 import type { GuidedStep } from '../../lib/scripted'
 import { score, toId } from '../../lib/sim'
+import { faceUpEquity } from '../../lib/showdown'
+import type { Runout } from '../../state/runout'
 import { AnimatedNumber } from '../AnimatedNumber'
 import { ChipPile } from './ChipPile'
 import { PlayingCard } from '../PlayingCard'
@@ -57,6 +59,7 @@ export function Table({
   onHistory,
   onSettings,
   onSkipGuided,
+  runout,
 }: {
   game: Game
   style: AtlasStyle
@@ -69,6 +72,7 @@ export function Table({
   onHistory: () => void
   onSettings: () => void
   onSkipGuided: () => void
+  runout: Runout
 }) {
   const [flights, setFlights] = useState<Flight[]>([])
   const previous = useRef(game)
@@ -92,14 +96,33 @@ export function Table({
         if (collected > 0)
           add(p === 0 ? 'hero-bet' : 'atlas-bet', 'pot', collected)
       })
-    if (game.result && !before.result) {
-      const { winner } = game.result
-      const total = game.invested[0] + game.invested[1]
-      if (winner === 'tie') {
-        add('pot', 'hero', total / 2, 420)
-        add('pot', 'atlas', total / 2, 420)
-      } else add('pot', winner === 0 ? 'hero' : 'atlas', total, 420)
-    }
+    launch(next)
+  }, [game])
+
+  // The pot flies to the winner once the result is shown (after any
+  // all-in runout has been revealed).
+  const settled = !!game.result && !runout.revealing
+  const paidOut = useRef<number | null>(null)
+  useEffect(() => {
+    if (!settled || !game.result || paidOut.current === game.id) return
+    paidOut.current = game.id
+    const { winner } = game.result
+    const total = game.invested[0] + game.invested[1]
+    const pay = (to: Spot, amount: number): Flight => ({
+      id: ++flightId.current,
+      from: 'pot',
+      to,
+      delay: 420,
+      amount,
+    })
+    launch(
+      winner === 'tie'
+        ? [pay('hero', total / 2), pay('atlas', total / 2)]
+        : [pay(winner === 0 ? 'hero' : 'atlas', total)],
+    )
+  }, [settled, game])
+
+  function launch(next: Flight[]) {
     if (!next.length) return
     setFlights((list) => [...list, ...next])
     const ids = new Set(next.map((f) => f.id))
@@ -109,25 +132,42 @@ export function Table({
         1300,
       ),
     )
-  }, [game])
+  }
 
-  const result = game.result
-  const showdown = !!result?.showdown
+  const result = settled ? game.result : undefined
+  const showdown = !!game.result?.showdown
+  const visibleBoard = game.board.slice(0, runout.visible)
+  // Until a runout finishes, show stacks and pot as they were before payout.
+  const potTotal = game.invested[0] + game.invested[1]
+  const heroPayout =
+    runout.revealing && game.result ? game.result.net + game.invested[0] : 0
+  const stacks: [number, number] = runout.revealing
+    ? [game.stacks[0] - heroPayout, game.stacks[1] - (potTotal - heroPayout)]
+    : game.stacks
+  const live = useMemo(
+    () =>
+      runout.revealing
+        ? faceUpEquity(game.cards[0], game.cards[1], visibleBoard)
+        : null,
+    // visibleBoard is derived from these two.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [runout.revealing, runout.visible, game],
+  )
   const winning = useMemo(() => {
-    if (!showdown || !result || result.winner === 'tie') return null
+    if (!result?.showdown || result.winner === 'tie') return null
     return bestFive([...game.cards[result.winner], ...game.board])
-  }, [showdown, result, game.cards, game.board])
+  }, [result, game.cards, game.board])
   const handName =
-    game.board.length >= 3
-      ? evaluate([...game.cards[0], ...game.board]).name
+    visibleBoard.length >= 3
+      ? evaluate([...game.cards[0], ...visibleBoard]).name
       : game.cards[0][0].rank === game.cards[0][1].rank
         ? 'Pocket pair'
         : `${game.cards[0][0].suit === game.cards[0][1].suit ? 'Suited' : 'Offsuit'} hole cards`
   const atlasName =
-    showdown && game.board.length === 5
-      ? evaluate([...game.cards[1], ...game.board]).name
+    showdown && visibleBoard.length >= 3
+      ? evaluate([...game.cards[1], ...visibleBoard]).name
       : null
-  const thinking = game.turn === 1 && !result && !paused
+  const thinking = game.turn === 1 && !game.result && !paused
   const guided = guidedStep ? guidedIntro[guidedStep] : null
 
   return (
@@ -212,7 +252,7 @@ export function Table({
                 Atlas <em className="seat-badge">{STYLES[style].label}</em>
               </strong>
               <span>
-                <AnimatedNumber value={game.stacks[1]} /> chips
+                <AnimatedNumber value={stacks[1]} /> chips
               </span>
             </span>
             {game.dealer === 1 && <span className="dealer-btn">D</span>}
@@ -241,16 +281,26 @@ export function Table({
           )}
         </div>
 
-        <BetChips who="atlas" amount={result ? 0 : game.bets[1]} />
+        <BetChips who="atlas" amount={game.result ? 0 : game.bets[1]} />
 
         <div className="pot">
           <ChipPile
-            amount={result ? 0 : game.pot - game.bets[0] - game.bets[1]}
+            maxStacks={3}
+            maxPerStack={5}
+            amount={
+              runout.revealing
+                ? potTotal
+                : result
+                  ? 0
+                  : game.pot - game.bets[0] - game.bets[1]
+            }
           />
-          <span className="pot-label">{result ? 'Hand complete' : 'Pot'}</span>
+          <span className="pot-label">
+            {runout.revealing ? 'All-in' : result ? 'Hand complete' : 'Pot'}
+          </span>
           <strong>
-            {result ? (
-              chips(game.invested[0] + game.invested[1])
+            {result || runout.revealing ? (
+              chips(potTotal)
             ) : (
               <AnimatedNumber value={game.pot} />
             )}
@@ -259,7 +309,7 @@ export function Table({
 
         <div className="board" role="group" aria-label="Community cards">
           {Array.from({ length: 5 }, (_, i) =>
-            game.board[i] ? (
+            game.board[i] && i < runout.visible ? (
               <PlayingCard
                 key={`${game.id}-b${i}-${cardKey(game.board[i])}`}
                 card={game.board[i]}
@@ -281,10 +331,10 @@ export function Table({
           ))}
         </div>
 
-        <BetChips who="hero" amount={result ? 0 : game.bets[0]} />
+        <BetChips who="hero" amount={game.result ? 0 : game.bets[0]} />
 
         <div
-          className={`seat seat-hero ${yourTurn ? 'seat-active' : ''} ${result && result.winner === 0 ? 'seat-won' : ''}`}
+          className={`seat seat-hero ${yourTurn ? 'seat-active' : ''} ${result && result.winner === 0 ? 'seat-won' : ''} ${result?.text.startsWith('You fold') ? 'seat-folded' : ''}`}
         >
           <div className="seat-cards">
             {game.cards[0].map((card, i) => (
@@ -308,7 +358,7 @@ export function Table({
                 You {yourTurn && <em className="seat-badge turn">Your turn</em>}
               </strong>
               <span>
-                <AnimatedNumber value={game.stacks[0]} /> chips
+                <AnimatedNumber value={stacks[0]} /> chips
               </span>
             </span>
             {game.dealer === 0 && <span className="dealer-btn">D</span>}
@@ -325,6 +375,33 @@ export function Table({
           )}
         </div>
 
+        {live && (
+          <div className="runout" role="status" aria-live="polite">
+            <span className="runout-label">Running it out</span>
+            <div className="runout-bars">
+              <span className="runout-row">
+                <b>You</b>
+                <span className="runout-track">
+                  <i
+                    className="hero"
+                    style={{ width: `${live.hero * 100}%` }}
+                  />
+                </span>
+                <em>{Math.round(live.hero * 100)}%</em>
+              </span>
+              <span className="runout-row">
+                <b>Atlas</b>
+                <span className="runout-track">
+                  <i
+                    className="atlas"
+                    style={{ width: `${live.atlas * 100}%` }}
+                  />
+                </span>
+                <em>{Math.round(live.atlas * 100)}%</em>
+              </span>
+            </div>
+          </div>
+        )}
         {flights.map((flight) => (
           <span
             key={flight.id}

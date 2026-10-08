@@ -5,13 +5,15 @@ import { chipStacks } from '../../lib/chips'
 export function ChipPile({
   amount,
   maxStacks = 4,
+  maxPerStack = 7,
   className = '',
 }: {
   amount: number
   maxStacks?: number
+  maxPerStack?: number
   className?: string
 }) {
-  const { stacks } = chipStacks(amount, { maxStacks, maxPerStack: 7 })
+  const { stacks } = chipStacks(amount, { maxStacks, maxPerStack })
   if (!stacks.length) return null
   return (
     <span className={`chip-pile ${className}`} aria-hidden="true">

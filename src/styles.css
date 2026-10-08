@@ -1247,6 +1247,67 @@ main {
   }
 }
 
+.runout {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 168px;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: rgb(6 20 15 / 0.82);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(6px);
+  animation: bubble-in 0.3s ease-out both;
+}
+.runout-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.runout-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.runout-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.runout-row em {
+  font-style: normal;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.runout-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  overflow: hidden;
+}
+.runout-track i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.runout-track i.hero {
+  background: var(--accent);
+}
+.runout-track i.atlas {
+  background: #c9a7f0;
+}
 .paused {
   position: absolute;
   inset: 0;
@@ -1355,41 +1416,22 @@ main {
 .board .pcard-highlight {
   transform: translateY(-6px);
 }
-.deal-hero {
-  animation: deal-hero 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: var(--deal-delay, 0ms);
+.pcard-motion {
+  position: absolute;
+  inset: 0;
 }
-.deal-atlas {
-  animation: deal-atlas 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: var(--deal-delay, 0ms);
+/* A folded hand slides toward the middle and fades, like a mucked hand. */
+.seat-folded .seat-cards .pcard {
+  transition:
+    transform 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.6s;
+  opacity: 0.25;
 }
-.deal-board {
-  animation: deal-board 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  animation-delay: var(--deal-delay, 0ms);
+.seat-atlas.seat-folded .seat-cards .pcard {
+  transform: translateY(70px) scale(0.86);
 }
-@keyframes deal-hero {
-  from {
-    opacity: 0;
-    translate: 190px -230px;
-    rotate: 24deg;
-    scale: 0.6;
-  }
-}
-@keyframes deal-atlas {
-  from {
-    opacity: 0;
-    translate: 200px 150px;
-    rotate: -20deg;
-    scale: 0.7;
-  }
-}
-@keyframes deal-board {
-  from {
-    opacity: 0;
-    translate: 200px 0;
-    rotate: 16deg;
-    scale: 0.7;
-  }
+.seat-hero.seat-folded .seat-cards .pcard {
+  transform: translateY(-80px) scale(0.86);
 }
 .mini-card {
   display: inline-flex;
@@ -4095,6 +4137,13 @@ button.range-cell:focus-visible {
     --fx: 86%;
     --fy: 25%;
   }
+  .runout {
+    left: 50%;
+    top: auto;
+    bottom: 34%;
+    transform: translateX(-50%);
+    width: 210px;
+  }
   /* The action bar already narrates Atlas on phones; keep the felt clear. */
   .bubble {
     display: none;
@@ -4305,5 +4354,8 @@ button.range-cell:focus-visible {
   }
   .flight {
     display: none;
+  }
+  .seat-folded .seat-cards .pcard {
+    transform: none !important;
   }
 }

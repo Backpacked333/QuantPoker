@@ -155,6 +155,7 @@ export function ActionBar({
   onAct,
   onDeal,
   onReview,
+  revealing = false,
 }: {
   game: Game
   legal: ReturnType<typeof legalActions>
@@ -171,8 +172,22 @@ export function ActionBar({
   onAct: (kind: 'fold' | 'continue' | 'raise') => void
   onDeal: () => void
   onReview: () => void
+  /** An all-in runout is still being revealed; hold the result. */
+  revealing?: boolean
 }) {
   const result = game.result
+  if (result && revealing)
+    return (
+      <div className="action-bar action-done">
+        <div className="action-status" aria-live="polite">
+          <span className="status-dot wait" />
+          <strong>All-in</strong>
+          <span className="muted">
+            Both hands are face up. Running out the board…
+          </span>
+        </div>
+      </div>
+    )
   if (result)
     return (
       <div className="action-bar action-done">

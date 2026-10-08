@@ -58,6 +58,8 @@ import { isLearningRoute, useHash } from './lib/navigation'
 import type { LearningSession } from './curriculum/core/session'
 import { spotKey, useSpots } from './state/spots'
 import { guessKey, initialTrainer, trainerReducer } from './state/trainer'
+import { useRunout } from './state/runout'
+import { useReducedMotionConfig } from 'motion/react'
 import type { FinishedHand } from './state/trainer'
 import { Table } from './components/table/Table'
 import { ActionBar } from './components/table/ActionBar'
@@ -236,6 +238,8 @@ export default function App() {
   const prefersDark = useMediaQuery('(prefers-color-scheme: dark)')
 
   const game = trainer.game
+  const runout = useRunout(game)
+  const reducedMotion = useReducedMotionConfig()
   const style = trainer.style
   const model = settings.opponentModel
   const welcome = !progress.onboarded
@@ -324,6 +328,9 @@ export default function App() {
     if (before.id !== game.id || game.board.length > before.board.length)
       sound('deal')
     if (game.result && !before.result) {
+      // An all-in runout plays its own cues as the board is revealed.
+      if (game.result.showdown && before.board.length < 5 && !reducedMotion)
+        return
       const won = game.result.net >= 0
       window.setTimeout(() => sound(won ? 'win' : 'lose'), 380)
       return
@@ -341,7 +348,19 @@ export default function App() {
             ? 'check'
             : 'chip',
       )
-  }, [game, sound])
+  }, [game, sound, reducedMotion])
+
+  const lastVisible = useRef(runout.visible)
+  useEffect(() => {
+    if (runout.revealing && runout.visible > lastVisible.current) sound('deal')
+    lastVisible.current = runout.visible
+  }, [runout.visible, runout.revealing, sound])
+  const wasRevealing = useRef(false)
+  useEffect(() => {
+    if (wasRevealing.current && !runout.revealing && game.result)
+      sound(game.result.net >= 0 ? 'win' : 'lose')
+    wasRevealing.current = runout.revealing
+  }, [runout.revealing, game.result, sound])
 
   // ---- Guess first -------------------------------------------------------------
   const currentGuessKey = guessKey(game)
@@ -480,7 +499,8 @@ export default function App() {
   )
 
   // ---- Review and recording ---------------------------------------------------
-  const reviewing = !!game.result
+  // The review opens once the result is shown, after any all-in runout.
+  const reviewing = !!game.result && !runout.revealing
   const decisions = trainer.decisions
   const grades = useMemo(
     () =>
@@ -588,8 +608,14 @@ export default function App() {
   ])
 
   // ---- Lab inputs (live or a frozen review snapshot) ------------------------------
-  const reviewDecision =
-    reviewing && reviewIndex >= 0 ? decisions[reviewIndex] : null
+  // While a runout is revealed, the lab stays on the last decision, frozen.
+  const reviewDecision = reviewing
+    ? reviewIndex >= 0
+      ? decisions[reviewIndex]
+      : null
+    : game.result
+      ? (decisions[decisions.length - 1] ?? null)
+      : null
   const labGame = reviewDecision?.snapshot ?? game
   const labSpot = reviewDecision ? spots.get(reviewDecision.key) : liveSpot
   let labRaise = raiseTo
@@ -624,8 +650,10 @@ export default function App() {
   ) : null
 
   // ---- Session summary ---------------------------------------------------------------
-  const session = progress.hands.filter((h) =>
-    h.id.startsWith(sessionId.current),
+  // A hand still being revealed is not counted yet, so it can't spoil it.
+  const hidden = runout.revealing ? `${sessionId.current}:${game.id}` : null
+  const session = progress.hands.filter(
+    (h) => h.id.startsWith(sessionId.current) && h.id !== hidden,
   )
   const sessionNet = session.reduce((s, h) => s + h.net, 0)
   const sessionDecisions = session.flatMap((h) => h.decisions ?? [])
@@ -825,6 +853,7 @@ export default function App() {
                 onHistory={() => setDialog('history')}
                 onSettings={() => setDialog('settings')}
                 onSkipGuided={skipGuided}
+                runout={runout}
               />
               <ActionBar
                 game={game}
@@ -855,6 +884,7 @@ export default function App() {
                 onAct={heroAct}
                 onDeal={deal}
                 onReview={showReview}
+                revealing={runout.revealing}
               />
               {trainer.notice && (
                 <p className="notice" role="status">

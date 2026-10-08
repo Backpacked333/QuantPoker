@@ -17,6 +17,7 @@ import {
 } from 'vitest'
 import { dealSlots, fromBase64, verifyDeal } from '../../src/engine/deck'
 import type { HandRecordV1 } from '../../src/shared/protocol'
+import { START_WITHIN_MS } from '../src/lobby'
 import { NEXT_HAND_MS, OUTBOX_SAFETY_MS } from '../src/table'
 import type { Outbox, TableDO } from '../src/table'
 import {
@@ -25,6 +26,7 @@ import {
   elapse,
   freezeClock,
   isState,
+  lobby,
   peek,
   stub,
 } from './helpers'
@@ -218,6 +220,30 @@ describe('the archive', () => {
     await until(() => calls.length === 2)
     expect(calls[1].rpc).toBe('record_hand')
     expect(await outbox(matchId)).toEqual([])
+  })
+
+  it('records a no-show as a void match naming the absent seat', async () => {
+    const [la, lb] = [await lobby(ALICE), await lobby(BOB)]
+    la.send({ t: 'queue', kind: 'hu-casual' })
+    await la.next((f) => f.t === 'queued')
+    lb.send({ t: 'queue', kind: 'hu-casual' })
+    const m = await la.next((f) => f.t === 'matched')
+    const matchId = m.t === 'matched' ? m.matchId : ''
+    await connect(matchId, ALICE)
+    await freezeClock(matchId)
+    await elapse(matchId, START_WITHIN_MS)
+    await until(() => calls.length === 1)
+    expect(calls[0]).toMatchObject({
+      rpc: 'record_match',
+      p: {
+        id: matchId,
+        players: [
+          { seat: 0, userId: ALICE },
+          { seat: 1, userId: BOB },
+        ],
+        result: { reason: 'no_show', noShow: [1] },
+      },
+    })
   })
 
   it('archives nothing for local dev accounts', async () => {

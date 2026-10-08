@@ -105,9 +105,10 @@ describe('migrations', () => {
       '20261008134201_matches_hands.sql',
       '20261008134322_record_hand.sql',
       '20261008134345_abandonments_match_index.sql',
+      '20261008173914_record_match.sql',
       MIGRATIONS.at(-1),
     ])
-    expect(MIGRATIONS.at(-1)).toMatch(/^\d{14}_record_match\.sql$/)
+    expect(MIGRATIONS.at(-1)).toMatch(/^\d{14}_record_match_no_show\.sql$/)
   })
 })
 
@@ -345,5 +346,41 @@ describe('match records', () => {
       `select status from public.matches where id = '${other}'`,
     )
     expect(row.status).toBe('finished')
+  })
+})
+
+describe('no-shows', () => {
+  it('void the match and record each absent seat once', async () => {
+    const id = '66666666-6666-4666-8666-666666666666'
+    const p = {
+      id,
+      kind: 'hu-casual',
+      config: {},
+      players: [
+        { seat: 0, userId: ALICE },
+        { seat: 1, userId: BOB },
+      ],
+      handNo: 0,
+      timeouts: { 0: 0, 1: 0 },
+      result: { netBySeat: { 0: 0, 1: 0 }, reason: 'no_show', noShow: [1] },
+    }
+    const call = `select public.record_match('${JSON.stringify(p)}'::jsonb)`
+    await as('service_role', call)
+    await as('service_role', call)
+    const [match] = await as<{ status: string }>(
+      'anon',
+      `select status from public.matches where id = '${id}'`,
+    )
+    expect(match.status).toBe('void')
+    const seats = await as<{ abandoned: boolean }>(
+      'anon',
+      `select abandoned from public.match_players where match_id = '${id}' order by seat`,
+    )
+    expect(seats.map((s) => s.abandoned)).toEqual([false, true])
+    const left = await as<{ user_id: string; kind: string }>(
+      'anon',
+      `select user_id, kind from public.abandonments where match_id = '${id}'`,
+    )
+    expect(left).toEqual([{ user_id: BOB, kind: 'no_show' }])
   })
 })

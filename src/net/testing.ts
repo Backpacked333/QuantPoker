@@ -18,7 +18,7 @@ export class FakeSocket {
   readyState = 0
   onopen: (() => void) | null = null
   onmessage: ((e: { data: string }) => void) | null = null
-  onclose: ((e: { code: number }) => void) | null = null
+  onclose: ((e: { code: number; reason: string }) => void) | null = null
   closedWith: number | null = null
   constructor(
     readonly url: string,
@@ -40,9 +40,9 @@ export class FakeSocket {
   emit(msg: ServerMsg) {
     this.onmessage?.({ data: JSON.stringify(msg) })
   }
-  drop(code = 1006) {
+  drop(code = 1006, reason = '') {
     this.readyState = 3
-    this.onclose?.({ code })
+    this.onclose?.({ code, reason })
   }
   static last() {
     return FakeSocket.all[FakeSocket.all.length - 1]

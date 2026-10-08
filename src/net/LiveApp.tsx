@@ -28,11 +28,18 @@ export default function LiveApp() {
     }
   }, [dev])
 
+  // #lobby/find starts looking straight away ("Find another match"); the
+  // hash goes back to #lobby so a reload does not queue again.
+  const [autoFind] = useState(() => hash === '#lobby/find')
+  useEffect(() => {
+    if (hash === '#lobby/find') window.history.replaceState(null, '', '#lobby')
+  }, [hash])
+
   const content = (identity: Identity): ReactNode =>
     matchId ? (
       <LiveTable key={matchId} matchId={matchId} identity={identity} />
     ) : (
-      <Lobby identity={identity} />
+      <Lobby identity={identity} autoFind={autoFind} />
     )
 
   return (

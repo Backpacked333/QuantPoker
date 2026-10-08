@@ -14,10 +14,16 @@
     "run_worker_first": ["/api/*", "/ws/*"],
   },
   "durable_objects": {
-    "bindings": [{ "name": "TABLE", "class_name": "TableDO" }],
+    "bindings": [
+      { "name": "TABLE", "class_name": "TableDO" },
+      { "name": "LOBBY", "class_name": "LobbyDO" },
+    ],
   },
   // The storage backend is fixed when a class is first created: SQLite.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TableDO"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TableDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] },
+  ],
   // Browser-safe values the online area reads from /api/config at runtime.
   // The service-role key is never here: `wrangler secret put` only.
   "vars": {

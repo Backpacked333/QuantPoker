@@ -159,6 +159,8 @@ export type ServerMsg = { seq: number; matchId: string } & (
         netBySeat: Record<SeatId, number>
         reason: MatchEndReason
         forfeit?: SeatId
+        /** Seats that never connected, for a no-show. */
+        noShow?: SeatId[]
       }
     }
   | { t: 'error'; code: ErrorCode; reqId?: string; message: string }
@@ -166,8 +168,10 @@ export type ServerMsg = { seq: number; matchId: string } & (
 
 export type LobbyMsg = { seq: number } & (
   | { t: 'queued'; position: number; since: number }
-  | { t: 'matched'; matchId: string }
+  /** A table to go to: a new pairing, or (resumed) one already in play. */
+  | { t: 'matched'; matchId: string; resumed?: boolean }
   | { t: 'presence'; online: number; queued: number }
+  | { t: 'error'; code: ErrorCode; message: string }
 )
 
 // ---- Validation ---------------------------------------------------------------

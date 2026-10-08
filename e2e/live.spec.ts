@@ -32,15 +32,22 @@ async function player(browser: Browser, name: string) {
   return { page, frames, close: () => context.close() }
 }
 
+// The local server keeps its state between runs, and an account with an
+// unfinished table is (correctly) sent back to it; fresh names each run.
+const RUN = Date.now().toString(36)
+const named = (who: string) => `${who}_${RUN}`
+
 const myTurn = (page: Page) =>
   page.locator('.action-status strong', { hasText: 'Your move' })
 
 test('two browsers play a hand against each other', async ({ browser }) => {
-  const alice = await player(browser, 'alice')
-  const bob = await player(browser, 'bob')
+  const alice = await player(browser, named('alice'))
+  const bob = await player(browser, named('bob'))
 
   await alice.page.goto('/#lobby')
-  await expect(alice.page.getByText('Signed in as')).toContainText('alice')
+  await expect(alice.page.getByText('Signed in as')).toContainText(
+    named('alice'),
+  )
   await alice.page
     .getByRole('button', { name: 'Play a friend by link' })
     .click()
@@ -58,10 +65,10 @@ test('two browsers play a hand against each other', async ({ browser }) => {
   }
   await expect(
     alice.page.getByRole('region', { name: 'Poker table' }),
-  ).toContainText('vs bob')
+  ).toContainText(`vs ${named('bob')}`)
   await expect(
     bob.page.getByRole('region', { name: 'Poker table' }),
-  ).toContainText('vs alice')
+  ).toContainText(`vs ${named('alice')}`)
 
   // Exactly one of them is to act at any time; check or call down.
   const everyone = [alice, bob]
@@ -118,9 +125,9 @@ test('two browsers play a hand against each other', async ({ browser }) => {
 })
 
 test('a third person cannot take a full table', async ({ browser }) => {
-  const alice = await player(browser, 'alice2')
-  const bob = await player(browser, 'bob2')
-  const carol = await player(browser, 'carol')
+  const alice = await player(browser, named('alice2'))
+  const bob = await player(browser, named('bob2'))
+  const carol = await player(browser, named('carol'))
   await alice.page.goto('/#lobby')
   await alice.page
     .getByRole('button', { name: 'Play a friend by link' })
@@ -136,4 +143,26 @@ test('a third person cannot take a full table', async ({ browser }) => {
     },
   )
   for (const p of [alice, bob, carol]) await p.close()
+})
+
+test('two players find each other with quick match', async ({ browser }) => {
+  const ann = await player(browser, named('ann'))
+  const ben = await player(browser, named('ben'))
+  for (const { page } of [ann, ben]) await page.goto('/#lobby')
+  await ann.page.getByRole('button', { name: 'Find a match' }).click()
+  await expect(ann.page.getByText('Looking for an opponent')).toBeVisible()
+  await ben.page.getByRole('button', { name: 'Find a match' }).click()
+  for (const { page } of [ann, ben]) {
+    await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
+    await expect(page.getByText('Hand 1 of 20')).toBeVisible()
+  }
+  expect(ann.page.url()).toBe(ben.page.url())
+  // Looking again sends you back to the table you are playing.
+  await ann.page.goto('/#lobby')
+  await expect(
+    ann.page.getByRole('link', { name: 'Return to your table' }),
+  ).toBeVisible()
+  await ann.page.getByRole('button', { name: 'Find a match' }).click()
+  await expect(ann.page).toHaveURL(ben.page.url())
+  for (const p of [ann, ben]) await p.close()
 })

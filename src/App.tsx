@@ -92,8 +92,8 @@ const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
- * Hash routes: #table (default), #progress, #lobby and #play/<id> (online
- * play), #learn/...
+ * Hash routes: #table (default), #progress, #lobby[/find] and #play/<id>
+ * (online play), #learn/...
  * and #learn/quick[/id].
  */
 function parseRoute(hash: string): Route {
@@ -104,7 +104,7 @@ function parseRoute(hash: string): Route {
   }
   if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
   if (hash === '#progress') return { view: 'progress', lesson: null }
-  if (hash === '#lobby' || /^#play\/[0-9a-f-]{36}$/.test(hash))
+  if (/^#lobby(?:\/find)?$/.test(hash) || /^#play\/[0-9a-f-]{36}$/.test(hash))
     return { view: 'live', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }

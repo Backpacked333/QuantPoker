@@ -31,6 +31,18 @@ export function LiveTable({
   const { state, act } = useTable(matchId, identity.getToken)
   const { status, table, view, seat } = state
 
+  if (status === 'elsewhere')
+    return (
+      <div className="empty live-empty" role="alert">
+        <h3>You are already playing at another table.</h3>
+        <p>Finish that match first; one table at a time.</p>
+        {state.elsewhere && (
+          <a className="btn btn-primary" href={`#play/${state.elsewhere}`}>
+            Go to your table
+          </a>
+        )}
+      </div>
+    )
   if (status === 'failed' || status === 'replaced')
     return (
       <div className="empty live-empty" role="alert">
@@ -69,7 +81,12 @@ export function LiveTable({
           act={act}
         />
       ) : (
-        <WaitingRoom matchId={matchId} table={table} seat={seat} />
+        <WaitingRoom
+          matchId={matchId}
+          table={table}
+          seat={seat}
+          ended={state.ended}
+        />
       )}
     </div>
   )
@@ -120,10 +137,12 @@ function WaitingRoom({
   matchId,
   table,
   seat,
+  ended,
 }: {
   matchId: string
   table: MatchInfo
   seat: SeatId
+  ended: TableState['ended']
 }) {
   const link = inviteLink(matchId)
   const [copied, setCopied] = useState(false)
@@ -135,7 +154,45 @@ function WaitingRoom({
       setCopied(false)
     }
   }
+  const opponent = table.players.find((p) => p.seat !== seat)
+  if (ended?.reason === 'no_show')
+    return (
+      <section className="panel live-signin" aria-labelledby="waiting-title">
+        <h2 id="waiting-title">
+          {opponent ? `${opponent.username} did not show up` : 'Nobody came'}
+        </h2>
+        <p className="live-muted">
+          The table closed after 30 seconds. Nothing was played or recorded
+          against you.
+        </p>
+        <a className="btn btn-primary" href="#lobby/find">
+          Find another match
+        </a>
+      </section>
+    )
+  if (table.status === 'finished')
+    return (
+      <section className="panel live-signin" aria-labelledby="waiting-title">
+        <h2 id="waiting-title">This table has closed</h2>
+        <p className="live-muted">
+          Not everyone arrived in time, so no hands were dealt.
+        </p>
+        <a className="btn btn-primary" href="#lobby/find">
+          Find a match
+        </a>
+      </section>
+    )
   const full = table.players.length === 2
+  if (full && opponent && !opponent.connected)
+    return (
+      <section className="panel live-signin" aria-labelledby="waiting-title">
+        <h2 id="waiting-title">Waiting for {opponent.username}</h2>
+        <p className="live-muted">
+          You were paired. The first hand deals as soon as they open the table;
+          if they do not within 30 seconds, the table closes.
+        </p>
+      </section>
+    )
   return (
     <section className="panel live-signin" aria-labelledby="waiting-title">
       <h2 id="waiting-title">

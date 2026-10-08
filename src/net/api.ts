@@ -13,7 +13,10 @@ export type Identity = {
 export async function createMatch(
   getToken: Identity['getToken'],
   fetcher: typeof fetch = fetch,
-): Promise<{ ok: true; matchId: string } | { ok: false; reason: string }> {
+): Promise<
+  | { ok: true; matchId: string }
+  | { ok: false; reason: string; activeMatch?: string }
+> {
   const token = await getToken()
   if (!token) return { ok: false, reason: 'Sign in again to create a table.' }
   try {
@@ -25,6 +28,14 @@ export async function createMatch(
       const { matchId } = (await response.json()) as { matchId: string }
       return { ok: true, matchId }
     }
+    if (response.status === 409) {
+      const { matchId } = (await response.json()) as { matchId: string }
+      return {
+        ok: false,
+        reason: 'You are already playing at another table.',
+        activeMatch: matchId,
+      }
+    }
     return {
       ok: false,
       reason:
@@ -34,6 +45,25 @@ export async function createMatch(
     }
   } catch {
     return { ok: false, reason: 'No connection to the table server.' }
+  }
+}
+
+/** The table this account is playing at, if any. */
+export async function fetchActiveMatch(
+  getToken: Identity['getToken'],
+  fetcher: typeof fetch = fetch,
+): Promise<string | null> {
+  const token = await getToken()
+  if (!token) return null
+  try {
+    const response = await fetcher(`${apiOrigin()}/api/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!response.ok) return null
+    return ((await response.json()) as { activeMatch: string | null })
+      .activeMatch
+  } catch {
+    return null
   }
 }
 

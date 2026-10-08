@@ -18,6 +18,8 @@ export type ConnectionStatus =
   | 'reconnecting'
   /** Another tab took this seat; reconnecting would fight it. */
   | 'replaced'
+  /** This account is playing at another table (`elsewhere`). */
+  | 'elsewhere'
   /** Gave up: no token, or the server kept refusing. */
   | 'failed'
 
@@ -45,6 +47,8 @@ export type TableState = {
     reason: MatchEndReason
     forfeit?: SeatId
   } | null
+  /** The table this account is already playing at, when refused here. */
+  elsewhere: string | null
   /** Server time minus this device's time, from the latest snapshot. */
   clockOffset: number
   hands: Record<number, HandSeen>
@@ -58,6 +62,7 @@ export const INITIAL_STATE: TableState = {
   pending: null,
   error: null,
   ended: null,
+  elsewhere: null,
   clockOffset: 0,
   hands: {},
 }
@@ -184,6 +189,8 @@ export class TableConnection {
       if (this.socket !== socket || this.stopped) return
       this.socket = null
       if (event.code === 4001) return this.set({ status: 'replaced' })
+      if (event.code === 4409)
+        return this.set({ status: 'elsewhere', elsewhere: event.reason })
       this.attempts++
       const limit = this.everOpened
         ? this.options.maxAttempts

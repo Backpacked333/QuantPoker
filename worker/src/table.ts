@@ -38,6 +38,7 @@ import {
 } from './deadlines'
 import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
+import { lobbyStub } from './lobby'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
 
@@ -74,6 +75,7 @@ type Match = {
   net: Record<SeatId, number>
   endReason?: MatchEndReason
   forfeit?: SeatId
+  noShow?: SeatId[]
 }
 /** The hand in progress: its commitment and per-action timing. */
 type Current = {
@@ -91,8 +93,18 @@ export type Outbox = ArchiveCall & { attempts: number }
 export type InitBody = {
   matchId: string
   creator: { userId: string; username: string }
+  /** Set by the lobby: both seats are taken from the start. */
+  opponent?: { userId: string; username: string }
+  /** Set by the lobby: both must connect within this time. */
+  startWithinMs?: number
   handsTotal?: number
 }
+/**
+ * For the lobby's one-table-per-account rule: `playing`, or `starting` (a
+ * paired table waiting for its players) holds an account; an `open` invite
+ * nobody has joined, or an `over` table, does not.
+ */
+export type Liveness = 'playing' | 'starting' | 'open' | 'over'
 
 const OPEN = 1
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
@@ -174,8 +186,26 @@ export class TableDO extends DurableObject<WorkerEnv> {
       net: { 0: 0, 1: 0 },
     }
     this.match.players.push(this.newPlayer(0, body.creator))
-    await this.ctx.storage.put({ match: this.match, seq: this.seq })
+    if (body.opponent) this.match.players.push(this.newPlayer(1, body.opponent))
+    if (body.startWithinMs)
+      this.deadlines = [
+        { kind: 'start', at: this.clock() + body.startWithinMs },
+      ]
+    await this.ctx.storage.put({
+      match: this.match,
+      seq: this.seq,
+      deadlines: this.deadlines,
+    })
+    await this.armAlarm()
     return json({ matchId: body.matchId }, 201)
+  }
+
+  /** RPC from the lobby. */
+  async liveness(): Promise<Liveness> {
+    const match = this.match
+    if (!match || match.status === 'finished') return 'over'
+    if (match.status === 'playing') return 'playing'
+    return match.players.length === 2 ? 'starting' : 'open'
   }
 
   private newPlayer(
@@ -193,6 +223,16 @@ export class TableDO extends DurableObject<WorkerEnv> {
       // Invite link: the first other account to open it takes the empty seat.
       if (match.status !== 'waiting' || match.players.length >= 2)
         return json({ error: 'table full' }, 403)
+      if (match.status !== 'waiting' || match.players.length >= 2)
+        return json({ error: 'table full' }, 403)
+      // One table per account: someone playing elsewhere is sent back there.
+      const elsewhere = await lobbyStub(this.env).claim(userId, match.id)
+      if (elsewhere) return this.refuse(4409, elsewhere)
+      // The claim awaited: another account may have taken the seat meanwhile.
+      if (match.players.length >= 2) {
+        await lobbyStub(this.env).release([userId], match.id)
+        return json({ error: 'table full' }, 403)
+      }
       player = this.newPlayer(1, { userId, username })
       match.players.push(player)
       await this.ctx.storage.put('match', match)
@@ -216,6 +256,21 @@ export class TableDO extends DurableObject<WorkerEnv> {
     return new Response(null, {
       status: 101,
       webSocket: client,
+      headers: { 'Sec-WebSocket-Protocol': PROTOCOL },
+    })
+  }
+
+  /**
+   * Browsers cannot read why an upgrade failed, so a refusal the player
+   * should understand is an accepted socket closed with a code and reason.
+   */
+  private refuse(code: number, reason: string) {
+    const pair = new WebSocketPair()
+    pair[1].accept()
+    pair[1].close(code, reason)
+    return new Response(null, {
+      status: 101,
+      webSocket: pair[0],
       headers: { 'Sec-WebSocket-Protocol': PROTOCOL },
     })
   }
@@ -287,6 +342,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
       for (const d of due) {
         if (d.kind === 'outbox') {
           void this.flushOutbox()
+          continue
+        }
+        if (d.kind === 'start') {
+          if (this.match?.status === 'waiting') await this.noShow()
           continue
         }
         if (this.match?.status !== 'playing') continue
@@ -603,11 +662,24 @@ export class TableDO extends DurableObject<WorkerEnv> {
     }
   }
 
-  private async finish(reason: MatchEndReason, forfeit?: SeatId) {
+  /** A paired table not everyone opened in time. */
+  private noShow() {
+    const absent = this.match!.players.map((p) => p.seat).filter(
+      (seat) => !this.seated(seat),
+    )
+    return this.finish('no_show', undefined, absent)
+  }
+
+  private async finish(
+    reason: MatchEndReason,
+    forfeit?: SeatId,
+    noShow?: SeatId[],
+  ) {
     const match = this.match!
     match.status = 'finished'
     match.endReason = reason
     if (forfeit !== undefined) match.forfeit = forfeit
+    if (noShow) match.noShow = noShow
     this.seq++
     this.setGameDeadline(null)
     const writes: Record<string, unknown> = {
@@ -629,9 +701,20 @@ export class TableDO extends DurableObject<WorkerEnv> {
           netBySeat: { ...match.net },
           reason,
           ...(forfeit !== undefined ? { forfeit } : {}),
+          ...(noShow ? { noShow } : {}),
         },
       })
     void this.flushOutbox()
+    // Free both accounts for their next table. If this is lost, the lobby
+    // finds the table over the next time it asks.
+    try {
+      await lobbyStub(this.env).release(
+        match.players.map((p) => p.userId),
+        match.id,
+      )
+    } catch (error) {
+      console.error('lobby release failed', error)
+    }
   }
 
   // ---- Archive ---------------------------------------------------------------
@@ -666,6 +749,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
                 ...(match.forfeit !== undefined
                   ? { forfeit: match.forfeit }
                   : {}),
+                ...(match.noShow ? { noShow: match.noShow } : {}),
               },
             }
           : {}),

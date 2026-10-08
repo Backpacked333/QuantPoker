@@ -23,5 +23,6 @@ export default defineConfig({
   test: {
     root: fileURLToPath(new URL('.', import.meta.url)),
     include: ['test/**/*.test.ts'],
+    setupFiles: ['test/setup.ts'],
   },
 })

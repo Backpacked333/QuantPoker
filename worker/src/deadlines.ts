@@ -14,6 +14,8 @@ export type Deadline =
     }
   | { kind: 'nextHand'; at: number; handNo: number }
   | { kind: 'outbox'; at: number }
+  /** A paired table both players must open by `at`, or it is a no-show. */
+  | { kind: 'start'; at: number }
 
 /** Consecutive missed decisions that end the match as a forfeit. */
 export const FORFEIT_TIMEOUTS = 3

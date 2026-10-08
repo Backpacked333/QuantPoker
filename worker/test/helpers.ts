@@ -1,6 +1,6 @@
 import { env, SELF } from 'cloudflare:test'
 import type { HandState } from '../../src/engine/types'
-import type { ClientMsg, ServerMsg } from '../../src/shared/protocol'
+import type { ClientMsg, LobbyMsg, ServerMsg } from '../../src/shared/protocol'
 import type { InitBody, TableDO } from '../src/table'
 
 export const ORIGIN = 'https://quantpoker.test'
@@ -104,4 +104,66 @@ export async function freezeClock(matchId: string, at = 1_800_000_000_000) {
   await runInDurableObject(stub(matchId), (instance: TableDO) => {
     instance.clock = () => at
   })
+}
+
+export type LobbyClient = {
+  ws: WebSocket
+  frames: LobbyMsg[]
+  closed: { code: number; reason: string } | null
+  send(msg: ClientMsg): void
+  next(test: (f: LobbyMsg) => boolean, from?: number): Promise<LobbyMsg>
+}
+
+/** A signed-in player's lobby socket. */
+export async function lobby(user: string): Promise<LobbyClient> {
+  const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
+    headers: {
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
+    },
+  })
+  if (response.status !== 101)
+    throw new Error(`upgrade ${response.status}: ${await response.text()}`)
+  const ws = response.webSocket!
+  const client: LobbyClient = {
+    ws,
+    frames: [],
+    closed: null,
+    send: (msg) => ws.send(JSON.stringify(msg)),
+    async next(test, from = 0) {
+      for (let i = 0; i < 400; i++) {
+        const found = client.frames.slice(from).find(test)
+        if (found) return found
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      throw new Error(`no matching lobby frame among ${client.frames.length}`)
+    },
+  }
+  ws.addEventListener('message', (e) =>
+    client.frames.push(JSON.parse(e.data as string) as LobbyMsg),
+  )
+  ws.addEventListener('close', (e) => {
+    client.closed = { code: e.code, reason: e.reason }
+  })
+  ws.accept()
+  return client
+}
+
+/** Opens a table socket that the server may close straight away. */
+export async function tryConnect(matchId: string, user: string) {
+  const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
+    headers: {
+      Upgrade: 'websocket',
+      'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
+    },
+  })
+  if (response.status !== 101) return { status: response.status, closed: null }
+  const ws = response.webSocket!
+  const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+    ws.addEventListener('close', (e) =>
+      resolve({ code: e.code, reason: e.reason }),
+    ),
+  )
+  ws.accept()
+  return { status: 101, closed }
 }

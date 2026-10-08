@@ -2,14 +2,13 @@
 
 ## Current handoff: SDE → QA Engineer + Security Engineer (+ user actions)
 
-Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs on Cloudflare's runtime locally and in tests; it deploys to production once the Worker's production branch is `main` and PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged.
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser milestone is reached locally.** It goes live when PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged and the Cloudflare Worker builds from `main`.
 
 ### Read first
 
-- `.10x/decisions/sde/multiplayer-platform.md` §Step 3 (built, verified, deviations, user actions)
-- `.10x/decisions/architect/multiplayer-platform.md` §Amendment 2026-10-08 (one Worker hosts everything)
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 4
 
-### User actions
+### User actions (unchanged from Step 3, still pending)
 
 1. Cloudflare Worker `quantpoker` → Settings → Build: production branch `main`; build `npm run build`; deploy `npx wrangler deploy`.
 2. Supabase → Integrations → GitHub: production branch `main`.
@@ -17,22 +16,53 @@ Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs 
 
 ### What to test (QA)
 
+- Locally: `npm run worker:dev`, two browsers (or one normal + one private window); in each, `sessionStorage.setItem('qp.devToken', 'dev.<name>.<secret>')` with the secret passed as `--var DEV_AUTH_SECRET:<secret>`, then `#lobby` → Play a friend by link.
+- After deploy: two real accounts, email link sign-in, invite link opened by a signed-out friend (sign-in should return to the table).
+- Not covered yet: someone who never acts (no clock until Step 5), long disconnects, iOS Safari background tabs.
+
+### What to review (Security)
+
+- `src/net/api.ts` `devIdentity`: client-side only; the server is the gate (`DEV_AUTH_SECRET` absent in production).
+- `src/net/client.ts`: token only in the subprotocol; one in-flight move; a stale snapshot never overwrites a newer one.
+- Invite links: anyone signed in with the link takes the empty seat (intended for Phase 0).
+
+### Next implementation step (SDE)
+
+Step 5 — Clocks, commitment, records (ADR days 11–12): `worker/src/deadlines.ts` (turn clock + time bank + auto check/fold + 3-timeout forfeit, one alarm over a deadlines list), `commitDeck` at `hand_start` and `reveal` after the hand, the Supabase outbox calling `record_hand` (service-role secret via `wrangler secret put`), `ReviewLive` with "Deck verified", `TurnClock` on the live table, keyboard shortcuts and sounds on the live table.
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE → QA + Security (Step 3)
+
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs on Cloudflare's runtime locally and in tests; it deploys to production once the Worker's production branch is `main` and PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged.
+
+#### Read first
+
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 3 (built, verified, deviations, user actions)
+- `.10x/decisions/architect/multiplayer-platform.md` §Amendment 2026-10-08 (one Worker hosts everything)
+
+#### User actions
+
+1. Cloudflare Worker `quantpoker` → Settings → Build: production branch `main`; build `npm run build`; deploy `npx wrangler deploy`.
+2. Supabase → Integrations → GitHub: production branch `main`.
+3. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`.
+
+#### What to test (QA)
+
 - `npm run worker:dev` (builds, then serves site + API on :8787 with Cloudflare's local runtime). Pass `--var DEV_AUTH_SECRET:<s>` to enable `dev.<user>.<s>` tokens for scripted clients.
 - Edge cases not yet covered: a player who never acts (no clock until Step 5), both players disconnecting mid-hand for a long time, many tables at once.
 
-### What to review (Security)
+#### What to review (Security)
 
 - `worker/src/auth.ts`: ES256-pinned verification; dev tokens only when `DEV_AUTH_SECRET` is set (never in `wrangler.jsonc`); token only in the subprotocol, never a URL.
 - `worker/src/table.ts`: every frame from `seatView`; write-then-send; `reqId`/`actionIndex` idempotency; invite-link seat assignment (anyone with the link and an account can take seat 1 while the table waits — intended for Phase 0).
 - `/api/config` returns only the URL and publishable key (test asserts no secret-like fields).
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 4 — Live table (ADR days 9–10): `src/net/client.ts` (socket, backoff, `seq`), `store.ts`, `LiveTable.tsx` reusing `Table`/`ActionBar` via `toHeroGame`, the four additive props, `#play/<id>` route, "Play a friend by link" in the lobby; Playwright two-context e2e against `wrangler dev`. Milestone: two browsers play a full match.
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE → QA + Security (Step 2)
 

@@ -4,7 +4,7 @@ Last updated: 2026-10-08 by SDE
 
 ## Phase
 
-**Phase 0 implementation in progress.** Steps 1 (engine), 2 (accounts) and 3 (table server) of 7 done; next Step 4 (live table in the browser — the two-browser milestone). Hosting is now one Cloudflare Worker for site + game server (Vercel retired); see the ADR amendment.
+**Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–4 of 7 done; next Step 5 (shot clock, deck commitment frames, hand records to Postgres). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
 
 Supabase project `quantpoker` also carries an earlier, unmerged line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage). Multiplayer tables are additive beside it; see `.10x/decisions/sde/multiplayer-platform.md` §Step 2.
 
@@ -39,6 +39,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [ ] User: set production branch to `main` in Cloudflare (Worker build) and Supabase (GitHub integration); set Supabase Auth Site URL / redirect URLs to the workers.dev address (values in the SDE log §Step 3); optionally enable Google/GitHub
 - [ ] SDE: first real sign-in on the deployed site, then decode the access token header and confirm `alg: ES256` (ADR day-5 check)
 - [x] SDE: Step 3 — `worker/` + root `wrangler.jsonc`: `TableDO`, ES256 auth, invite-by-link matches, runtime `/api/config`; 9 Workers-runtime tests + a real two-client smoke run. All gates green.
-- [ ] SDE: Steps 4–7 per ADR (next: Step 4 live table)
+- [x] SDE: Step 4 — live table in the browser (`src/net/client.ts`, `LiveTable`, `#play/<id>`, Play a friend by link); two-browser e2e against `wrangler dev`; full 20-hand match verified. All gates green.
+- [ ] SDE: Steps 5–7 per ADR (next: Step 5 clocks, commitment, records)
 - [ ] Security: light review of auth upgrade path, redaction tests and `hands_private` RLS before Step 7 deploy
 - [ ] DBA: post-hoc review of the four applied migrations (`supabase/migrations/202610081*`); RLS behaviour is covered by `supabase/tests/migrations.test.ts`

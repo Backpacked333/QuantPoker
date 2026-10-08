@@ -4,9 +4,9 @@ Last updated: 2026-10-08
 
 ## Active features
 
-| Slug                   | Description                              | Status                                                                                                                         |
-| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1 (engine) and 2 (accounts) **done**; 2 user actions pending (Vercel env, Supabase redirect URLs); Steps 3–7 not started |
+| Slug                   | Description                              | Status                                                                                                                               |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–4 **done** (engine, accounts, table server, live table — two-browser milestone); Steps 5–7 next; 3 dashboard actions pending |
 
 ## Cross-cutting notes
 
@@ -16,4 +16,6 @@ Last updated: 2026-10-08
 - **Profile before trimming tests.** The first fix for a slow suite was in the engine (structural clone), not in fewer assertions.
 - **Check the live project before writing migrations.** The Supabase project already held another branch's schema; list tables and migrations first, then write strictly additive SQL with timestamped names after the latest recorded version.
 - **SQL is tested on real Postgres.** `supabase/tests/` runs migrations in PGlite against a stub of Supabase's roles and permissive default grants, so revokes and RLS are exercised. Mutation-check new access rules (remove the grant, see the test fail).
+- **Prove fresh state in restart tests.** A restart test passed while nothing restarted; assert a new instance (a marker on the object) before trusting it.
+- **Real clients find what harnesses miss.** The Workers test harness accepted `:` in a subprotocol; Node and browsers reject it. Run a real two-client smoke against `wrangler dev` for every protocol change.
 - **Phones zoom out instead of scrolling.** An overflow check must compare against the device width (`page.viewportSize()`), not `innerWidth`.

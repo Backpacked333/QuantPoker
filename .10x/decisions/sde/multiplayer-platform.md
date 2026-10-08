@@ -1,5 +1,47 @@
 # multiplayer-platform — SDE log
 
+## Step 4 — Live table in the browser (done 2026-10-08) — Phase 0 milestone reached
+
+ADR: §Client integration, §Lobby, §Wire protocol (reconnect), §Local development/testing.
+
+### What was built
+
+| File                                              | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/net/client.ts`                               | `TableConnection`: socket with `qp.v1` + `bearer.<token>` subprotocols; keeps the newest snapshot (`state` with a lower `seq` dropped, equal kept for presence, `welcome` always accepted); one move in flight (`reqId`, cleared by `lastReqId` or a matching `error`); reconnect 0.5 → 8 s with a fresh token; gives up after 3 tries if the table never opened (refused upgrades are opaque to browsers), after 8 otherwise; stops on `4001 replaced`; `stop()` on unmount |
+| `src/net/useTable.ts`                             | React hook (`useSyncExternalStore`) owning one connection per mounted table                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `src/net/api.ts`                                  | `Identity` type, `createMatch` (bearer POST), `inviteLink`, `devIdentity` (`sessionStorage['qp.devToken'] = 'dev.<user>.<secret>'`, honoured only by servers started with `DEV_AUTH_SECRET`)                                                                                                                                                                                                                                                                                 |
+| `src/net/LiveTable.tsx`                           | Match bar (hand n of 20, opponent + connection, reconnecting), waiting room with copyable invite link, live hand: `toHeroGame(view)` → existing `Table` + `ActionBar`, `useRunout`, presets, server `legal` (hero-perspective `legalActions` from `lib/poker` when it is not our turn), errors flashed for 3 s, match-over panel. No lab, no read prompt, no EV, no shortcuts                                                                                                |
+| `src/net/Lobby.tsx`                               | **Play a friend by link** (creates a table, routes to `#play/<id>`); 1v1 card now says matchmaking is coming                                                                                                                                                                                                                                                                                                                                                                 |
+| `src/net/LiveApp.tsx`                             | Routes `#lobby` and `#play/<uuid>`; dev identity bypasses Supabase; otherwise `AuthGate`                                                                                                                                                                                                                                                                                                                                                                                     |
+| `src/net/AuthGate.tsx`, `auth.ts`                 | Children receive an `Identity` (`player`, stable `getToken`, `signOut`); sign-in returns to the current hash (an invite link survives the round trip)                                                                                                                                                                                                                                                                                                                        |
+| `src/components/table/Table.tsx`, `ActionBar.tsx` | Optional `versus` prop: opponent name/initial avatar instead of Atlas, "Live table · vs <name>", no pause/history/settings, no deal/review buttons, `next` caption. Trainer rendering unchanged when absent                                                                                                                                                                                                                                                                  |
+| `src/App.tsx`                                     | `#play/<uuid>` → online view; welcome dialog not shown on online routes (an invited friend goes straight to the table)                                                                                                                                                                                                                                                                                                                                                       |
+| `playwright.config.ts`, `e2e/live.spec.ts`        | Second web server (`wrangler dev :8787`, `DEV_AUTH_SECRET=e2e`, started after the build is served); `live` project                                                                                                                                                                                                                                                                                                                                                           |
+
+### Verification
+
+- Unit/component (jsdom, fake socket): 11 connection tests, API helpers, lobby, LiveTable on real engine snapshots (waiting room, live hand, move frame, opponent's turn, result without deal/review, replaced tab, no practice controls).
+- **e2e `live` project (two browser contexts → real Worker):** lobby → "Play a friend by link" → invite link → second browser joins → both see "Hand 1 of 20" and "vs <other>" → a full hand by clicks → both see the result → the server deals hand 2 by itself → **every WebSocket frame either browser received is checked: the opponent's cards are null until shown, the deck never appears** → axe has no serious issues. A third browser is refused a full table within seconds.
+- **Full 20-hand match** with two Node clients on `wrangler dev`: 160 moves, 0 errors, 0 leaks in 366 frames, `match_end` complete.
+- Phone widths 360/390 on the waiting room and the live table: no overflow; screenshot checked.
+- Gates: typecheck (app + worker), lint, prettier, 566 unit tests, 9 worker tests, build (entry 141.4 kB of 150), e2e 17/17 (desktop 12, mobile 3, live 2).
+
+### Deviations
+
+1. `versus` prop on `Table`/`ActionBar` instead of the ADR's four separate props (`seatNames`, `folded`, `clock`, `opponentName`/`showDeal`): one object covers name, folded detection and hidden controls. `clock` comes with Step 5.
+2. A first-letter avatar for the opponent instead of Atlas's face (cheap, so done now rather than carried as debt).
+3. Dev identity is read by the client (`qp.devToken`) and skips Supabase entirely, so e2e needs no account service.
+4. Fast failure for never-opened tables (3 attempts) — browsers cannot tell a refused upgrade from a network error.
+5. No keyboard shortcuts and no sounds on the live table yet (`useTableSounds` extraction deferred).
+6. The e2e test plays one hand plus the deal of the next; the full 20-hand match is verified with the Node smoke client (a UI run would add about 2 minutes to CI).
+
+### Tech debt
+
+- Live table has no keyboard shortcuts or sounds; add with the shot clock in Step 5.
+- The online chunk is now 65.8 kB gzip (supabase-js dominates).
+- `wrangler dev` logs "Connection reset by peer" when it refuses an upgrade; harmless noise in e2e output.
+
 ## Step 3 — Table service (done 2026-10-08)
 
 ADR: §Durable Objects, §Wire protocol, §Auth, and the 2026-10-08 hosting amendment (one Worker for site + game server).

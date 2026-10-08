@@ -1,38 +1,65 @@
 # Handoff
 
-## Current handoff: SDE → QA Engineer + Security Engineer (+ user actions)
+## Current handoff: QA Engineer → SDE (Step 5) + Security Engineer + DevOps
 
-Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser milestone is reached locally.** It goes live when PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged (it merges into the default branch, which Cloudflare deploys).
+Date: 2026-10-08 · Status: **Steps 1–4 reviewed. Release-ready for the invite-link beta; no blocking bugs.** Live once PR https://github.com/Backpacked333/QuantPoker/pull/8 merges and the Supabase Site URL is set (user actions below, unchanged).
 
 ### Read first
 
+- `.10x/decisions/qa/multiplayer-platform.md` (risk profile, gaps closed, quality gates)
+- `.10x/reviews/2026-10-08-qa-report.md`
+
+### What changed
+
+- 27 tests: `worker/test/auth.test.ts` (new, real ES256 tokens), table rejoin presence, 4 engine crafted cases, `src/engine/project.test.ts` (new), live-table offline states, `#play` sign-in return.
+- Bug fix in `worker/src/table.ts`: after a rejoin the opponent no longer sees "disconnected" (`broadcast({ gone, skip })`).
+
+### For the SDE (Step 5)
+
+Quality gates in the QA file apply. Step 5 must add tests for: turn-clock timeout → auto check/fold; time bank use; 3 timeouts → forfeit; alarm ordering when a deadline and the next-hand alarm coincide; `record_hand` outbox retry after a Supabase failure (no duplicate hands); `reveal` matches `hand_start` commitment.
+
+### For Security
+
+`worker/src/auth.ts` is now covered by real-token tests (see the QA file for the mutation results). Still yours: `hands_private` RLS and the upgrade path before Step 7.
+
+### User actions (unchanged)
+
+1. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev` (redirect URLs already done).
+2. Confirm Cloudflare build `npm run build`, deploy `npx wrangler deploy`; merge PR #8.
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE → QA Engineer + Security Engineer (+ user actions)
+
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser milestone is reached locally.** It goes live when PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged (it merges into the default branch, which Cloudflare deploys).
+
+#### Read first
+
 - `.10x/decisions/sde/multiplayer-platform.md` §Step 4
 
-### User actions (unchanged from Step 3, still pending)
+#### User actions (unchanged from Step 3, still pending)
 
 1. Cloudflare Worker `quantpoker` → Settings → Build: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct); build `npm run build`; deploy `npx wrangler deploy`.
 2. Supabase → Integrations → GitHub: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct).
 3. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`.
 
-### What to test (QA)
+#### What to test (QA)
 
 - Locally: `npm run worker:dev`, two browsers (or one normal + one private window); in each, `sessionStorage.setItem('qp.devToken', 'dev.<name>.<secret>')` with the secret passed as `--var DEV_AUTH_SECRET:<secret>`, then `#lobby` → Play a friend by link.
 - After deploy: two real accounts, email link sign-in, invite link opened by a signed-out friend (sign-in should return to the table).
 - Not covered yet: someone who never acts (no clock until Step 5), long disconnects, iOS Safari background tabs.
 
-### What to review (Security)
+#### What to review (Security)
 
 - `src/net/api.ts` `devIdentity`: client-side only; the server is the gate (`DEV_AUTH_SECRET` absent in production).
 - `src/net/client.ts`: token only in the subprotocol; one in-flight move; a stale snapshot never overwrites a newer one.
 - Invite links: anyone signed in with the link takes the empty seat (intended for Phase 0).
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 5 — Clocks, commitment, records (ADR days 11–12): `worker/src/deadlines.ts` (turn clock + time bank + auto check/fold + 3-timeout forfeit, one alarm over a deadlines list), `commitDeck` at `hand_start` and `reveal` after the hand, the Supabase outbox calling `record_hand` (service-role secret via `wrangler secret put`), `ReviewLive` with "Deck verified", `TurnClock` on the live table, keyboard shortcuts and sounds on the live table.
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE → QA + Security (Step 3)
 

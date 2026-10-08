@@ -18,7 +18,10 @@ beforeEach(() => {
   FakeSocket.all = []
   vi.stubGlobal('WebSocket', FakeSocket)
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 async function opened() {
   await act(async () => {})
@@ -92,6 +95,37 @@ describe('LiveTable', () => {
     expect(screen.getByText('Next hand in a few seconds.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Deal next hand/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Review hand' })).toBeNull()
+  })
+
+  it('flags a dropped opponent and its own reconnects, and disables moves', async () => {
+    render(<LiveTable matchId={MATCH} identity={alice} />)
+    const socket = await opened()
+    const hand = firstHand()
+    act(() => socket.emit(frame('welcome', 1, 0, hand)))
+    const bar = () => screen.getAllByRole('status')[0]
+    expect(bar()).not.toHaveTextContent('disconnected')
+
+    const away = frame('state', 2, 0, hand)
+    if (away.t !== 'state') throw new Error('expected state')
+    away.table.players[1].connected = false
+    act(() => socket.emit(away))
+    expect(bar()).toHaveTextContent('vs bob · disconnected')
+
+    vi.useFakeTimers()
+    act(() => socket.drop(1006))
+    expect(bar()).toHaveTextContent('Reconnecting…')
+    // A move made now would go nowhere, so none can be made.
+    expect(screen.getByRole('button', { name: /Call 10/ })).toBeDisabled()
+
+    await act(async () => vi.advanceTimersByTime(10_000))
+    vi.useRealTimers()
+    await act(async () => {})
+    const again = FakeSocket.last()
+    expect(again).not.toBe(socket)
+    act(() => again.open())
+    act(() => again.emit(frame('welcome', 3, 0, hand)))
+    expect(bar()).not.toHaveTextContent(/Reconnecting|disconnected/)
+    expect(screen.getByRole('button', { name: /Call 10/ })).toBeEnabled()
   })
 
   it('explains when another tab took the seat', async () => {

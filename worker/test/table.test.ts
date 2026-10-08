@@ -255,6 +255,37 @@ describe('a heads-up table', () => {
     expect(alice.closed?.code).toBe(4001)
   })
 
+  it('shows an opponent dropping and returning, and gives the seat back intact', async () => {
+    const { matchId, alice, bob } = await seatBoth()
+    const before = (await peek(matchId)).hand!
+    const connected = (f: ServerMsg, seat: number) =>
+      (f.t === 'state' || f.t === 'welcome') && f.table.players[seat].connected
+
+    let from = alice.frames.length
+    bob.ws.close(1000)
+    await alice.next((f) => f.t === 'state' && !connected(f, 1), from)
+
+    from = alice.frames.length
+    const back = await connect(matchId, 'bob')
+    await alice.next((f) => f.t === 'state' && connected(f, 1), from)
+    const welcome = await back.next((f) => f.t === 'welcome')
+    if (welcome.t !== 'welcome') throw new Error('expected welcome')
+    expect(welcome.view!.you).toBe(1)
+    expect(welcome.view!.players[1].cards).toEqual(before.players[1].cards)
+    expect(welcome.view!.players[0].cards).toBeNull()
+    expect(welcome.view!.actions).toEqual(before.actions)
+    expect(welcome.table.players.every((p) => p.connected)).toBe(true)
+
+    // Frames to one socket only ever move forward.
+    const seqs = alice.frames.map((f) => f.seq)
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b))
+
+    // The returning player can still play the hand.
+    const clients = { 0: alice, 1: back } as Record<number, Client>
+    const hand = await playOut(matchId, clients)
+    expect(hand!.street).toBe('showdown')
+  })
+
   it('restarts mid-hand from storage, and play continues', async () => {
     const { matchId, clients } = await seatBoth()
     const { hand } = await peek(matchId)

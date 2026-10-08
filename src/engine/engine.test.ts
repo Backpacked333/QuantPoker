@@ -299,6 +299,85 @@ describe('crafted cases', () => {
     expect(state.result!.showdown).toBe(true)
     expect(Object.values(state.result!.netBySeat)).toEqual([0, 0, 0, 0, 0, 0])
   })
+  it('builds three pots from all-ins on a later street', () => {
+    // Button 0, blinds 1 and 2, UTG 3. Everyone limps, then the flop gets
+    // two all-ins of different sizes, a call, and a fold.
+    const cfg = config([1000, 200, 500, 1000], 0)
+    const deck = deckWith(
+      cfg,
+      { 0: 'Js Jh', 1: 'As Ah', 2: 'Ks Kh', 3: '7c 2d' },
+      '2c 8d 9h 4c 3s',
+    )
+    let state = startHand(cfg, deck)
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 0, { type: 'call' })
+    state = act(state, 1, { type: 'call' })
+    state = act(state, 2, { type: 'check' })
+    expect(state.street).toBe('flop')
+    expect(state.toAct).toBe(1)
+    state = act(state, 1, { type: 'raise', to: 180 })
+    expect(seatOf(state, 1).allIn).toBe(true)
+    state = act(state, 2, { type: 'raise', to: 480 })
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 0, { type: 'fold' })
+    // Only seat 3 has chips behind: the board runs out with no more action.
+    expect(isOver(state)).toBe(true)
+    expect(state.board).toHaveLength(5)
+    expect(state.pots).toEqual([
+      { amount: 620, eligible: [1, 2, 3] },
+      { amount: 600, eligible: [2, 3] },
+    ])
+    expect(stacks(state)).toEqual([980, 620, 600, 500])
+    expect(state.result!.netBySeat).toEqual({ 0: -20, 1: 420, 2: 100, 3: -500 })
+    assertInvariants(state, 2700)
+  })
+  it('three-handed: the button folds first and the blinds play on', () => {
+    const cfg = config([2000, 2000, 2000], 0)
+    let state = startHand(cfg, deckWith(cfg, {}, ''))
+    expect(state.toAct).toBe(0) // the button is first to act three-handed
+    state = act(state, 0, { type: 'fold' })
+    expect(state.toAct).toBe(1)
+    state = act(state, 1, { type: 'call' })
+    state = act(state, 2, { type: 'check' })
+    expect(state.street).toBe('flop')
+    // After the flop the small blind leads; the folded button is skipped.
+    expect(state.toAct).toBe(1)
+    state = act(state, 1, { type: 'check' })
+    expect(state.toAct).toBe(2)
+  })
+  it('three-handed: the big blind wins the blinds when both others fold', () => {
+    const cfg = config([2000, 2000, 2000], 0)
+    let state = startHand(cfg, deckWith(cfg, {}, ''))
+    state = act(state, 0, { type: 'fold' })
+    state = act(state, 1, { type: 'fold' })
+    expect(isOver(state)).toBe(true)
+    expect(state.result!.showdown).toBe(false)
+    expect(state.board).toEqual([])
+    expect(state.result!.netBySeat).toEqual({ 0: 0, 1: -10, 2: 10 })
+  })
+  it('three short stacks all in from the blinds', () => {
+    // Both blinds are all in posting; the button can only call or fold.
+    const cfg = config([5, 8, 15], 0)
+    const deck = deckWith(
+      cfg,
+      { 0: 'As Ah', 1: 'Ks Kh', 2: 'Qs Qh' },
+      '2c 7d 9h Tc 3s',
+    )
+    let state = startHand(cfg, deck)
+    expect(seatOf(state, 1).allIn && seatOf(state, 2).allIn).toBe(true)
+    expect(state.toAct).toBe(0)
+    expect(legalActions(state).canRaise).toBe(false)
+    state = act(state, 0, { type: 'call' })
+    expect(isOver(state)).toBe(true)
+    // The big blind's 7 nobody could match comes back.
+    expect(state.players.map((p) => p.invested)).toEqual([5, 8, 8])
+    expect(state.pots).toEqual([
+      { amount: 15, eligible: [0, 1, 2] },
+      { amount: 6, eligible: [1, 2] },
+    ])
+    expect(stacks(state)).toEqual([15, 6, 7])
+    expect(state.result!.netBySeat).toEqual({ 0: 10, 1: -2, 2: -8 })
+  })
   it('gives the big blind the option after limps', () => {
     const cfg = config([2000, 2000, 2000], 0)
     let state = startHand(cfg, deckWith(cfg, {}, ''))

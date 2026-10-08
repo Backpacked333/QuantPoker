@@ -17,6 +17,13 @@ describe('auth return', () => {
     expect(window.location.hash).toBe('')
   })
 
+  it('brings an invited player back to the table they were opening', () => {
+    const table = '#play/33333333-3333-4333-8333-333333333333'
+    rememberAuthReturn(table)
+    restoreAuthReturn(at('/?code=abc'))
+    expect(window.location.hash).toBe(table)
+  })
+
   it('also restores after a provider error so the lobby can show it', () => {
     rememberAuthReturn('#lobby')
     restoreAuthReturn(at('/?error_description=denied'))

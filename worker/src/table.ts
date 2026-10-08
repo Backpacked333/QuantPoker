@@ -138,7 +138,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (match.status === 'waiting' && this.seated(0) && this.seated(1)) {
       match.status = 'playing'
       await this.startNextHand()
-    } else this.broadcast('state', server)
+    } else this.broadcast('state', { skip: server })
     return new Response(null, {
       status: 101,
       webSocket: client,
@@ -182,11 +182,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } catch {
       // Already closed.
     }
-    this.broadcast('state', ws)
+    this.broadcast('state', { gone: ws })
   }
 
   async webSocketError(ws: WebSocket) {
-    this.broadcast('state', ws)
+    this.broadcast('state', { gone: ws })
   }
 
   async alarm() {
@@ -339,10 +339,18 @@ export class TableDO extends DurableObject<WorkerEnv> {
       : { ...base, t: 'state', table, view }
   }
 
-  private broadcast(kind: 'state', exclude?: WebSocket) {
-    for (const ws of this.openSockets(exclude)) {
+  /**
+   * `gone` is a socket that is closing: offline, and not sent to. `skip`
+   * already has its frame (a fresh welcome) but still counts as connected.
+   */
+  private broadcast(
+    kind: 'state',
+    { gone, skip }: { gone?: WebSocket; skip?: WebSocket } = {},
+  ) {
+    for (const ws of this.openSockets(gone)) {
+      if (ws === skip) continue
       const { seat } = ws.deserializeAttachment() as Attachment
-      this.send(ws, this.frame(kind, seat, exclude))
+      this.send(ws, this.frame(kind, seat, gone))
     }
   }
 

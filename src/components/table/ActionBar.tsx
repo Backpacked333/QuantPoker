@@ -7,13 +7,15 @@ import {
 } from 'lucide-react'
 import type { Game } from '../../lib/poker'
 import type { legalActions } from '../../lib/poker'
+import type { Preset } from '../../lib/presets'
+
+export type { Preset }
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 const signed = (n: number) =>
   `${n < 0 ? '−' : '+'}${Math.abs(n).toFixed(Math.abs(n) < 10 ? 1 : 0)}`
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
-export type Preset = { label: string; key: string; to: number; ev?: number }
 export type ActionMath = {
   revealed: boolean
   ready: boolean

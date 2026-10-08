@@ -1140,7 +1140,8 @@ main {
 .streets {
   position: absolute;
   left: 50%;
-  top: calc(39% + 98px);
+  /* Just under the board, whatever size the cards are (faces are 5:7). */
+  top: calc(39% + var(--card-md-w, 60px) * 1.4 + 14px);
   transform: translateX(-50%);
   display: flex;
   gap: 18px;
@@ -4599,4 +4600,115 @@ button.range-cell:focus-visible {
   transition:
     opacity 0.15s ease,
     translate 0.15s ease;
+}
+
+.setting-range {
+  flex-wrap: nowrap;
+  padding: 2px 0 6px;
+}
+.setting-range input {
+  flex: 1;
+  accent-color: var(--brand-2);
+}
+.setting-range output {
+  min-width: 3.5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ---- Resizable table / lab split (desktop) ------------------------------- */
+@media (min-width: 941px) {
+  .workspace.resizable {
+    grid-template-columns:
+      minmax(520px, var(--split-a, 54fr))
+      26px
+      minmax(360px, var(--split-b, 46fr));
+    gap: 0;
+  }
+  /* The table scales with its column, not the window. */
+  .workspace.resizable .play-column {
+    container-type: inline-size;
+  }
+  .workspace.resizable .stage {
+    height: clamp(460px, 71cqi, 680px);
+    --card-sm-w: clamp(40px, 6.3cqi, 64px);
+    --card-md-w: clamp(52px, 8.2cqi, 84px);
+    --card-lg-w: clamp(62px, 9.8cqi, 100px);
+  }
+}
+.split-handle {
+  position: sticky;
+  top: 80px;
+  display: grid;
+  place-items: center;
+  height: calc(100vh - 96px);
+  max-height: 900px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+.split-handle::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--border);
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease;
+}
+.split-grip {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 9px 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm, 0 2px 6px rgb(0 0 0 / 0.08));
+  transition:
+    transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.split-grip i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.split-handle:hover::before,
+.split-handle.dragging::before,
+.split-handle:focus-visible::before {
+  opacity: 1;
+  background: var(--brand-2);
+}
+.split-handle:hover .split-grip,
+.split-handle:focus-visible .split-grip {
+  transform: scaleY(1.15);
+  border-color: var(--brand-2);
+}
+.split-handle.dragging .split-grip {
+  transform: scale(1.12);
+  background: var(--brand-2);
+  border-color: var(--brand-2);
+}
+.split-handle.dragging .split-grip i {
+  background: var(--brand-ink, #fff);
+}
+.split-handle:focus-visible .split-grip {
+  outline: 3px solid var(--focus, var(--brand-2));
+  outline-offset: 3px;
+}
+html.resizing,
+html.resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }

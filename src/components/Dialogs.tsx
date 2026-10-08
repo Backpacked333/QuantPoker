@@ -5,6 +5,7 @@ import type { AtlasStyle } from '../lib/atlas'
 import type { Settings } from '../lib/storage'
 import type { Game } from '../lib/poker'
 import { Modal } from './Modal'
+import { playSound, setVolume } from '../lib/sound'
 
 function Segmented<T extends string>({
   label,
@@ -145,8 +146,31 @@ export function SettingsDialog({
           label="Gentle sounds"
           hint="Soft cues for cards, chips and results."
           value={settings.sound}
-          onChange={(sound) => onChange({ sound })}
+          onChange={(sound) => {
+            onChange({ sound })
+            if (sound) playSound('chip')
+          }}
         />
+        {settings.sound && (
+          <label className="setting setting-range">
+            <span className="setting-label">Volume</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(settings.volume * 100)}
+              onChange={(event) => {
+                const volume = Number(event.target.value) / 100
+                onChange({ volume })
+                setVolume(volume)
+              }}
+              onPointerUp={() => playSound('chip')}
+              onKeyUp={() => playSound('chip')}
+            />
+            <output>{Math.round(settings.volume * 100)}%</output>
+          </label>
+        )}
         <Toggle
           label="Learning hints"
           hint="Short tips beneath the table."

@@ -64,6 +64,10 @@ export type Settings = {
   guessFirst: boolean
   atlasVoice: boolean
   sound: boolean
+  /** Sound volume, 0–1. */
+  volume: number
+  /** Share of the desktop width given to the table; the lab gets the rest. */
+  split: number
   hints: boolean
   opponentModel: OpponentModel
 }
@@ -83,6 +87,8 @@ export const DEFAULT_SETTINGS: Settings = {
   guessFirst: true,
   atlasVoice: true,
   sound: false,
+  volume: 0.7,
+  split: 0.54,
   hints: true,
   opponentModel: 'range',
 }
@@ -207,6 +213,14 @@ function cleanSettings(value: unknown): Settings {
     guessFirst: bool('guessFirst'),
     atlasVoice: bool('atlasVoice'),
     sound: bool('sound'),
+    volume:
+      typeof v.volume === 'number' && v.volume >= 0 && v.volume <= 1
+        ? v.volume
+        : DEFAULT_SETTINGS.volume,
+    split:
+      typeof v.split === 'number' && v.split >= 0.2 && v.split <= 0.8
+        ? v.split
+        : DEFAULT_SETTINGS.split,
     hints: bool('hints'),
   }
 }

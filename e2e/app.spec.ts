@@ -135,3 +135,28 @@ for (const colorScheme of ['light', 'dark'] as const)
     )
     expect(serious.map((v) => `${v.id}: ${v.help}`)).toEqual([])
   })
+
+test('the table and lab split drags, persists and resets', async ({ page }) => {
+  await onboard(page)
+  const handle = page.getByRole('separator', { name: /Resize the table/ })
+  const table = page.locator('.play-column')
+  const before = (await table.boundingBox())!.width
+  const box = (await handle.boundingBox())!
+  const x = box.x + box.width / 2
+  const y = box.y + 120
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 220, y, { steps: 15 })
+  await page.mouse.up()
+  const after = (await table.boundingBox())!.width
+  expect(after).toBeGreaterThan(before + 180)
+  const value = Number(await handle.getAttribute('aria-valuenow'))
+  expect(value).toBeGreaterThan(54)
+  await handle.focus()
+  await page.keyboard.press('ArrowLeft')
+  await expect(handle).toHaveAttribute('aria-valuenow', String(value - 2))
+  await page.reload()
+  await expect(handle).toHaveAttribute('aria-valuenow', String(value - 2))
+  await handle.dblclick()
+  await expect(handle).toHaveAttribute('aria-valuenow', '54')
+})

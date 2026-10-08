@@ -49,6 +49,8 @@ The app has light, dark and system themes, and a bottom-sheet lab on phones. It 
 - **Choreography (Motion):** cards fly from the deck to their seats and lift as they turn over, and folded hands slide into the middle. When a hand ends all-in, both hands turn face up and the board is revealed one street at a time, with a pause before the river and equity bars that update after each card. Stacks, payouts and the review wait until the river lands.
 - **Atlas:** a drawn face that breathes and blinks, glances while it thinks, and has a sweeping ring around it. On phones its actions pop out as compact tags. The winner's side of the felt lights up.
 - **Lab:** meters, markers and EV bars move on springs, the Best tag glides between actions, tabs crossfade, and jargon (equity, break-even, EV, range) carries a definition on hover, focus or tap.
+- **Desktop layout:** drag the bar between the table and the lab to share the width. The table scales with its column, the split is remembered, and a double-click (or Enter) springs it back to the default. Arrow keys, Home and End resize it from the keyboard.
+- **Sound (optional):** cards snap, chips clack and checks knock, synthesized in the browser with no audio files. A volume slider appears in settings when sound is on.
 - **Phones:** the lab sheet can be dragged between peek, half and full, follows a flick, and gives a short vibration on snap when sound is on.
 
 Every animation stops or snaps under reduced motion. `?motion=off` forces that, and `?seed=<n>` makes deals and Atlas reproducible; both exist for tests and screenshots.

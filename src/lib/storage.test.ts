@@ -17,6 +17,32 @@ const storage = (entries: Record<string, string>) => ({
 })
 
 describe('local progress storage', () => {
+  it.each([
+    [0.62, 0.62],
+    [0.05, DEFAULT_SETTINGS.split],
+    ['wide', DEFAULT_SETTINGS.split],
+  ])('keeps a sane table/lab split and defaults others (%s)', (split, kept) => {
+    vi.stubGlobal(
+      'localStorage',
+      storage({ [STORAGE_KEY]: JSON.stringify({ settings: { split } }) }),
+    )
+    expect(readProgress().settings.split).toBe(kept)
+  })
+  it.each([
+    [0.35, 0.35],
+    [0, 0],
+    [1.5, DEFAULT_SETTINGS.volume],
+    ['loud', DEFAULT_SETTINGS.volume],
+  ])(
+    'keeps a valid volume and defaults an invalid one (%s)',
+    (volume, kept) => {
+      vi.stubGlobal(
+        'localStorage',
+        storage({ [STORAGE_KEY]: JSON.stringify({ settings: { volume } }) }),
+      )
+      expect(readProgress().settings.volume).toBe(kept)
+    },
+  )
   it.each(['not json', 'null', '5', '{}'])(
     'recovers safely from %s',
     (value) => {

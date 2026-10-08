@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CSSProperties } from 'react'
 import {
   BookOpen,
   ChartNoAxesCombined,
@@ -36,7 +37,7 @@ import type { Action, Game } from './lib/poker'
 import type { FullSpot } from './lib/range'
 import { motionOff } from './env'
 import { random } from './lib/random'
-import { playSound } from './lib/sound'
+import { playSound, setVolume } from './lib/sound'
 import type { SoundKind } from './lib/sound'
 import {
   emptyProgress,
@@ -65,6 +66,7 @@ import { ActionBar } from './components/table/ActionBar'
 import type { Preset } from './components/table/ActionBar'
 import { LabSkeleton } from './components/lab/LabSkeleton'
 import { LabSheet } from './components/LabSheet'
+import { SplitHandle } from './components/SplitHandle'
 import { HandReview } from './components/review/HandReview'
 import { ProgressView } from './components/progress/ProgressView'
 import { LearnView } from './components/learn/LearnView'
@@ -238,6 +240,7 @@ export default function App() {
   } | null>(null)
   const sessionId = useRef(crypto.randomUUID())
   const labRef = useRef<HTMLDivElement>(null)
+  const workspaceRef = useRef<HTMLDivElement>(null)
   const playHeading = useRef<HTMLHeadingElement>(null)
   const compact = useMediaQuery('(max-width: 940px)')
   const finePointer = useMediaQuery('(pointer: fine)')
@@ -259,6 +262,7 @@ export default function App() {
       setProgress((p) => ({ ...p, settings: { ...p.settings, ...patch } })),
     [],
   )
+  useEffect(() => setVolume(settings.volume), [settings.volume])
   const sound = useCallback(
     (kind: SoundKind) => {
       if (settings.sound && !playSound(kind)) updateSettings({ sound: false })
@@ -848,7 +852,18 @@ export default function App() {
 
       <main id="main">
         {view === 'play' && (
-          <div className="workspace">
+          <div
+            className={`workspace ${compact ? '' : 'resizable'}`}
+            ref={workspaceRef}
+            style={
+              compact
+                ? undefined
+                : ({
+                    '--split-a': `${settings.split * 100}fr`,
+                    '--split-b': `${(1 - settings.split) * 100}fr`,
+                  } as CSSProperties)
+            }
+          >
             <section className="play-column" aria-label="Play">
               <h1 className="sr-only" tabIndex={-1} ref={playHeading}>
                 Play the hand. Understand the odds.
@@ -985,9 +1000,16 @@ export default function App() {
                 {lab}
               </LabSheet>
             ) : (
-              <div className="lab-column" ref={labRef}>
-                {lab}
-              </div>
+              <>
+                <SplitHandle
+                  target={workspaceRef}
+                  value={settings.split}
+                  onCommit={(split) => updateSettings({ split })}
+                />
+                <div className="lab-column" ref={labRef}>
+                  {lab}
+                </div>
+              </>
             )}
           </div>
         )}

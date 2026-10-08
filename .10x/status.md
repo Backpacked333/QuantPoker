@@ -4,7 +4,7 @@ Last updated: 2026-10-08 by SDE
 
 ## Phase
 
-**Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–5 of 7 done: shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 6 (lobby quick-match). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
+**Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
 
 Supabase project `quantpoker` also carries an earlier, unmerged line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage). Multiplayer tables are additive beside it; see `.10x/decisions/sde/multiplayer-platform.md` §Step 2.
 
@@ -42,7 +42,8 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 4 — live table in the browser (`src/net/client.ts`, `LiveTable`, `#play/<id>`, Play a friend by link); two-browser e2e against `wrangler dev`; full 20-hand match verified. All gates green.
 - [x] SDE: Step 5 — turn clock + bank + auto check/fold + 3-timeout forfeit via one DO alarm; `hand_start` commitment, `hand_end` + `reveal`, in-browser "Deck verified" review; outbox → `record_match`/`record_hand` (new migration applied live, dry-run verified). 592 unit, 38 worker, 17 e2e; 20-hand smoke with a real 80 s timeout. (`.10x/decisions/sde/multiplayer-platform.md` §Step 5)
 - [ ] User: create a Supabase secret key and add it to the Worker as `SUPABASE_SECRET_KEY` (until then nothing is archived)
-- [ ] SDE: Steps 6–7 per ADR (next: Step 6 lobby quick-match)
+- [x] SDE: Step 6 — `LobbyDO` quick-match (persisted queue, oldest-first pairing, ≤ 2 pairings per pair per day), one active table per account (queue resumes, invite 409/4409, self-healing), 30 s no-show (void match + abandonment; migration applied live), Find a match enabled with wait timer and 60 s bail-out. 605 unit, 52 worker, 18 e2e; real-time no-show smoke. (`.10x/decisions/sde/multiplayer-platform.md` §Step 6)
+- [ ] SDE: Step 7 per ADR (hardening, verify consumer, CI deploy, rate limits, Fair Play page)
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.
 - [ ] Security: light review of auth upgrade path, redaction tests and `hands_private` RLS before Step 7 deploy
 - [ ] DBA: post-hoc review of the four applied migrations (`supabase/migrations/202610081*`); RLS behaviour is covered by `supabase/tests/migrations.test.ts`

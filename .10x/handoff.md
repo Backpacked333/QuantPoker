@@ -1,39 +1,69 @@
 # Handoff
 
-## Current handoff: SDE (Step 5) → QA Engineer + Security Engineer (+ user action)
+## Current handoff: SDE (Step 6) → QA Engineer + Security Engineer
+
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–6 done.** "Find a match" pairs two waiting players at a new heads-up table; each account plays one table at a time; the same two accounts meet at most twice a day; a paired player who does not open the table within 30 s is a no-show. Live with PR https://github.com/Backpacked333/QuantPoker/pull/8.
+
+### Read first
+
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 6
+
+### User actions (unchanged)
+
+1. Add the Supabase secret key as Worker secret `SUPABASE_SECRET_KEY` (archive).
+2. Supabase Auth Site URL `https://quantpoker.bbcroysalman.workers.dev`; merge PR #8.
+
+### What to test (QA)
+
+- Two accounts (two browsers or a private window): both Find a match → same table. Cancel; close the tab while waiting (the other sees the count drop). Wait alone for 60 s → the Atlas offer.
+- Open a second tab on the lobby while queued (the first stops: replaced). Queue while at a table → you are sent back to it. Open someone's invite link while playing → "already playing" with a link to your table.
+- Pair, then do not open the table in one browser → after 30 s the other sees "did not show up" and can find another match.
+- Not covered: many players queuing at once (pairing is sequential in one object; fine at launch scale), the UTC-midnight edge of the pair limit.
+
+### What to review (Security)
+
+- `worker/src/lobby.ts`: identity only from the Worker's verified headers; one socket per account; queue rows only for connected sockets.
+- `worker/src/table.ts` `join`: invite seat claim order (full check → claim → recheck → release on a lost race); the `4409` reason carries only the caller's own match id.
+- No lobby frame rate limit yet (Step 7).
+
+### Next implementation step (SDE)
+
+Step 7 — Hardening, CI, launch (ADR day 15): `HAND_QUEUE` verify consumer + DLQ, `bench.test.ts`, deploy workflow, engine-soak workflow, Origin allowlist, frame rate limits (table and lobby), Workers Logs, 20-client smoke against production, Fair Play stub page, play-money ToS copy, README, Phase 1 hand-off notes.
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE (Step 5) → QA Engineer + Security Engineer (+ user action)
 
 Date: 2026-10-08 · Status: **Phase 0 Steps 1–5 done.** Live tables now have a shot clock with a time bank and forfeit, every deal is committed before the first card and checked in the browser ("Deck verified"), and finished hands are archived to Postgres. Goes live with PR https://github.com/Backpacked333/QuantPoker/pull/8.
 
-### Read first
+#### Read first
 
 - `.10x/decisions/sde/multiplayer-platform.md` §Step 5 (what was built, verification, deviations)
 - `.10x/decisions/qa/multiplayer-platform.md` (quality gates; the Step 5 test list there is covered — see the SDE log)
 
-### User action (new)
+#### User action (new)
 
 1. Supabase → Project Settings → API Keys → create a **secret key**. Cloudflare → Worker `quantpoker` → Settings → Variables and Secrets → add it as secret `SUPABASE_SECRET_KEY`. Without it play works and nothing is archived.
 2. Still pending from before: Supabase Auth Site URL `https://quantpoker.bbcroysalman.workers.dev`; merge PR #8.
 
-### What to test (QA)
+#### What to test (QA)
 
 - Walk away from a live table: after 20 s the clock moves into the bank, at 80 s the server folds (or checks) for you; three in a row ends the match as a forfeit with a clear message to both players.
 - After each hand: "Review hand n" → "Deck verified". Earlier/Later between hands of the match.
 - With the secret set (after deploy): play a match with two real accounts and confirm `matches`, `match_players`, `hands`, `hand_holes` rows; each player sees only their own `hand_holes`.
 - Not covered: iOS Safari background tabs during a running clock; clock skew on a device with a wrong system time (the countdown uses the server offset, the server enforces).
 
-### What to review (Security)
+#### What to review (Security)
 
 - `worker/src/table.ts` `endOfHand`: the reveal opens only `publicSlots` (board + shown hands); the full deck and secret go only to the service-role `record_hand`.
 - `worker/src/supabase.ts`: the secret key is sent only to `${SUPABASE_URL}/rest/v1/rpc/*`.
 - `supabase/migrations/20261008173914_record_match.sql`: security definer, `search_path = ''`, execute revoked from anon/authenticated (verified on the live project).
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 6 — Lobby (ADR days 13–14): `LobbyDO` (persisted queue, pairing, limiter, active map, presence, release, no-show via `start` deadline), lobby UI with the wait/bail-out flow, `/api/me`, `lobby.test.ts`.
-
----
-
-## Handoff history
 
 ### 2026-10-08 — QA Engineer → SDE (Step 5) + Security Engineer + DevOps
 

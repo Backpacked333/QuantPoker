@@ -4,9 +4,9 @@ Last updated: 2026-10-08
 
 ## Active features
 
-| Slug                   | Description                              | Status                                                                                                                                                              |
-| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–5 **done** (engine, accounts, table server, live table, clocks/commitment/records); Steps 6–7 next; dashboard actions pending (incl. `SUPABASE_SECRET_KEY`) |
+| Slug                   | Description                              | Status                                                                                                                                                                              |
+| ---------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–6 **done** (engine, accounts, table server, live table, clocks/commitment/records, lobby quick-match); Step 7 next; dashboard actions pending (incl. `SUPABASE_SECRET_KEY`) |
 
 ## Cross-cutting notes
 
@@ -22,3 +22,5 @@ Last updated: 2026-10-08
 - **Freeze the table clock in time tests.** Real milliseconds pass between test steps; `freezeClock` + `elapse` make "1 ms before the deadline" exact.
 - **Check where the awaits are before claiming a race.** A lock added for a click/clock race turned out to guard "frames before the write" instead; the mutation check showed the race test passed without it, so the comment says what it really does.
 - **Dry-run SQL against production inside a transaction that raises.** It proves the real schema accepts the real payloads and leaves nothing behind.
+- **Ask the source of truth, not a cache, before refusing a user.** The lobby's active-table map is checked against the table itself, so a lost release cannot lock anyone out.
+- **Refusals the user must understand go over an accepted socket.** Browsers hide why an upgrade failed; accept and close with a code and reason instead.

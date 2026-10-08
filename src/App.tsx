@@ -8,6 +8,7 @@ import {
   ChartNoAxesCombined,
   Check,
   CircleHelp,
+  Cloud,
   Diamond,
   Keyboard,
   Lightbulb,
@@ -35,8 +36,18 @@ import './game.css'
 import { FinancePanel } from './components/FinancePanel'
 import { Modal } from './components/Modal'
 import { Lessons } from './components/Lessons'
+import { AccountPanel } from './components/AccountPanel'
+import { useCloud } from './lib/cloud-context'
+import { mergeProgress } from './lib/cloud-data'
 
-type Dialog = 'library' | 'stats' | 'history' | 'help' | 'settings' | null
+type Dialog =
+  | 'library'
+  | 'stats'
+  | 'history'
+  | 'help'
+  | 'settings'
+  | 'account'
+  | null
 const chips = (n: number) => n.toLocaleString('en-US')
 const wideLayoutQuery = '(min-width: 1100px)'
 const subscribeLayout = (listener: () => void) => {
@@ -67,17 +78,29 @@ function useEquity(game: Game) {
 }
 
 export default function App() {
+  const cloud = useCloud()
+  const cloudStore = cloud?.state.user ? cloud.store : null
+  const cloudProgress = cloud?.state.cache.progress
+  const cloudSettings = cloud?.state.cache.settings
   const [engineGame, setGame] = useState(guidedHand)
   const [lens, setLens] = useState<Lens>('equity')
   const [dialog, setDialog] = useState<Dialog>(null)
   const [lesson, setLesson] = useState<Lens | null>(null)
-  const [progress, setProgress] = useState(readProgress)
+  const [progress, setProgress] = useState(
+    () => cloudStore?.snapshot().cache.progress ?? readProgress(),
+  )
   const [paused, setPaused] = useState(false)
   const [showTip, setShowTip] = useState(true)
   const [raiseTo, setRaiseTo] = useState(100)
   const [storageAvailable, setStorageAvailable] = useState(true)
-  const [sound, setSound] = useState(false)
-  const [fast, setFast] = useState(false)
+  const [progressError, setProgressError] = useState('')
+  const [clearing, setClearing] = useState(false)
+  const [sound, setSound] = useState(
+    cloudStore?.snapshot().cache.settings.sound ?? false,
+  )
+  const [fast, setFast] = useState(
+    cloudStore?.snapshot().cache.settings.fast ?? false,
+  )
   const wideLayout = useSyncExternalStore(
     subscribeLayout,
     getWideLayout,
@@ -188,8 +211,31 @@ export default function App() {
   }, [game.id, game.result, game.guided])
 
   useEffect(() => {
-    setStorageAvailable(saveProgress(progress))
-  }, [progress])
+    if (cloudStore) cloudStore.writeProgress(progress)
+    else setStorageAvailable(saveProgress(progress))
+  }, [progress, cloudStore])
+  useEffect(() => {
+    if (cloudStore && cloudProgress)
+      setProgress((current) =>
+        JSON.stringify(current) === JSON.stringify(cloudProgress)
+          ? current
+          : cloudProgress,
+      )
+  }, [cloudStore, cloudProgress])
+  useEffect(() => {
+    if (cloudStore && cloudSettings) {
+      setSound(cloudSettings.sound)
+      setFast(cloudSettings.fast)
+    }
+  }, [cloudStore, cloudSettings])
+  useEffect(() => {
+    if (cloudStore)
+      cloudStore.writeSettings({
+        ...cloudStore.snapshot().cache.settings,
+        sound,
+        fast,
+      })
+  }, [sound, fast, cloudStore])
 
   function choose(action: Action) {
     if (!yourTurn) return
@@ -260,6 +306,26 @@ export default function App() {
           </button>
         </nav>
         <div className="qp-top-right">
+          {cloud?.store.client && (
+            <button
+              className="qp-cloud"
+              aria-label="Account and cloud saves"
+              onClick={() => setDialog('account')}
+            >
+              <Cloud size={16} />
+              <span>
+                {cloud.state.status === 'loading'
+                  ? 'Connecting'
+                  : cloud.state.status === 'offline'
+                    ? 'Sync paused'
+                    : cloud.state.status === 'saving'
+                      ? 'Saving…'
+                      : cloud.state.user
+                        ? 'Cloud saved'
+                        : 'Save progress'}
+              </span>
+            </button>
+          )}
           <span className="qp-session" aria-label="Session result">
             <span>Session</span>
             <strong
@@ -591,7 +657,9 @@ export default function App() {
           wide
         >
           <p className="modal-intro">
-            Your learning progress, saved on this device.
+            {cloudStore
+              ? 'Your learning progress, saved to your private account. Showing your latest 100 hands.'
+              : 'Your learning progress, saved on this device.'}
           </p>
           <div className="stats-summary">
             <div>
@@ -656,21 +724,51 @@ export default function App() {
           )}
           <div className="stats-bottom">
             <span>
-              <Check size={14} /> Stored on this device only
+              <Check size={14} />{' '}
+              {cloudStore
+                ? cloud?.state.status === 'offline'
+                  ? 'Waiting to sync'
+                  : 'Private cloud save'
+                : 'Stored on this device only'}
             </span>
             <button
-              onClick={() => {
+              disabled={clearing}
+              onClick={async () => {
                 if (
                   window.confirm(
                     'Clear saved lesson progress and hand results? Your current hand will not change.',
                   )
-                )
-                  setProgress({ hands: [], lessons: [] })
+                ) {
+                  setClearing(true)
+                  setProgressError('')
+                  try {
+                    if (cloudStore) await cloudStore.clearProgress()
+                    setProgress({ hands: [], lessons: [] })
+                  } catch (cause) {
+                    setProgressError(
+                      cause instanceof Error
+                        ? cause.message
+                        : 'Could not clear progress.',
+                    )
+                  } finally {
+                    setClearing(false)
+                  }
+                }
               }}
             >
               <RotateCcw size={13} /> Clear saved progress
             </button>
           </div>
+          {progressError && <p role="alert">{progressError}</p>}
+        </Modal>
+      )}
+      {dialog === 'account' && (
+        <Modal title="Your learning account" onClose={() => setDialog(null)}>
+          <AccountPanel
+            onImport={() =>
+              setProgress((previous) => mergeProgress(previous, readProgress()))
+            }
+          />
         </Modal>
       )}
     </div>

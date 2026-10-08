@@ -17,11 +17,17 @@ export function HandLesson({
   ready,
   onExplore,
   onLesson,
+  onAttempt,
 }: {
   lesson: HandLessonContent
   ready: boolean
   onExplore: (x: number | null) => void
   onLesson: () => void
+  onAttempt?: (
+    stage: 'prediction' | 'transfer',
+    answerId: string,
+    correct: boolean,
+  ) => void
 }) {
   const [step, setStep] = useState<Step>('Understand')
   const [answers, setAnswers] = useState<
@@ -207,12 +213,17 @@ export function HandLesson({
                 <button
                   className="learning-primary"
                   disabled={!answer}
-                  onClick={() =>
+                  onClick={() => {
                     setAnswers((previous) => ({
                       ...previous,
                       [step]: { selected: answer!.selected, reviewed: true },
                     }))
-                  }
+                    onAttempt?.(
+                      step === 'Predict' ? 'prediction' : 'transfer',
+                      answer!.selected,
+                      correct,
+                    )
+                  }}
                 >
                   Check my reasoning
                 </button>

@@ -32,10 +32,14 @@ The game can still be served by any static host using `dist`. **Static hosting a
 
 ## Conversational coach
 
+The Vercel deployment uses Supabase account authentication and AI Gateway's
+automatic OIDC identity. No provider key is embedded in the browser. For local
+development or a private standalone Node deployment:
+
 1. Copy `.env.example` to `.env.local` and set `AI_GATEWAY_API_KEY` using your approved Vercel AI Gateway credential. No `VITE_` secret variables are used. The npm development/start scripts load this uncommitted file.
 2. Start `npm run dev`. Under the graph, the coach should report **AI configured**. This badge means the backend is configured, not that the provider has been contacted; provider errors are shown when you send a question.
 3. Try “Explain the point I am inspecting,” “Compare calling with raising,” or “What if the turn is the ten of spades?” Responses stream, and the coach can offer **Show on graph** buttons to change the finance lens, preview an action, inspect a calculated point, or apply a next-card what-if. These never place a bet or change the real deck.
-4. Each question captures the current visible-hand/model snapshot. Replies from older snapshots are labeled, and their demonstration buttons are disabled once the model changes. Chat resets when the hand or final-decision review panel resets; it is not persisted by this app.
+4. Each question captures the current visible-hand/model snapshot. Replies from older snapshots are labeled, and their demonstration buttons are disabled once the model changes. Signed-in users restore their last 40 saved messages; historical graph demonstrations are not restored. Guest chat remains in memory only.
 
 The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's model catalog when implemented. `COACH_MODEL` can select another tool-capable Gateway model; check its availability and pricing first. Calls cost provider credits. Nothing calls the model until you send a question.
 
@@ -43,11 +47,112 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 
 - Only your two hole cards, public board/bets, model assumptions, graph coordinates, and chat are sent. A strict allowlisted serializer excludes Atlas's private cards, the deck, action logs, and settlement text. Runtime validation rejects extra fields. Provider credentials stay in the server environment.
 - The LLM receives canonical EV/break-even/insurance calculations and bounded tools that reuse the same math as the charts. Tool simulations use 2,000 random legal hands; visual next-card buttons based on the worker's sensitivity scan use 180 samples. Neither conditions on a learned opponent range. AI prose may still be wrong—inspect the math and assumptions.
-- Chat text goes to the configured provider; this app does not save it or log request bodies. The provider's retention policy still applies. Do not put personal information in chat. The game itself remains entirely local and non-authoritative.
-- Full production-mode startup requires `COACH_ACCESS_TOKEN`, a long random **site access token distinct from the AI key**. Share it privately with invited users, who enter it in the coach UI. It is held in browser memory only. Without it, production AI requests fail closed. Leave `COACH_ALLOWED_ORIGINS` empty for the mode's loopback origins (5173 in dev, `COACH_PORT` or 3001 in production), or set the exact HTTPS origin(s) for deployment; no wildcard CORS is enabled.
+- Chat text goes to the configured provider. Signed-in questions and completed replies are saved under per-user database policies; guest chat stays in memory. Request bodies are not logged. The provider's retention policy still applies. Do not put personal information in chat. The game itself remains client-side and non-authoritative.
+- Production requests require either a verified Supabase account (when the server Supabase credentials are configured) or `COACH_ACCESS_TOKEN`, a long random **site access token distinct from the AI key**, for private standalone deployments. The client cannot fall back to the shared token in account mode. Leave `COACH_ALLOWED_ORIGINS` empty for loopback origins, or set exact HTTPS origins; no wildcard CORS is enabled. Vercel's own deployment URL is allowed automatically.
 - The preview caps requests at six per minute, two concurrent, and 30 per process by default (`COACH_REQUEST_BUDGET`). Each question is bounded to three model steps, 900 output tokens per step, a 45-second deadline, and at most two next-card simulations. Cancelling a response aborts the upstream request; already generated tokens can still be billed.
-- **These are private-preview protections, not production multi-user billing controls.** In-memory limits reset on restart and are not shared between replicas. Set a provider-side budget before exposing the service, and add proper user authentication and durable shared quotas before a public launch. Do not publicly expose the unauthenticated development server.
+- Cloud mode adds an atomic Postgres allowance: **3 requests per minute and 10 per UTC day per verified account, 100 per UTC day site-wide**, shared across replicas and restarts. Only the server role can reserve usage; quota outages fail closed. Attempts count even if the provider later fails. Usage counters expire after two days when the next reservation runs. Private-token mode retains the per-process allowance, which resets on restart. Set an additional provider-side spending budget; request limits are not dollar limits. Never publicly expose the unauthenticated development server.
 - If the key/backend is absent, poker and the deterministic learning tools keep working, and chat explicitly reports that AI is unavailable. There is no canned answer disguised as an LLM response.
+
+## Cloud database and deployment
+
+Production: **https://quantpoker.vercel.app**. Infrastructure is owned by the existing
+`backpacked333s-projects` Vercel team and `Backpacked333's Org` in Supabase.
+The dedicated Supabase project is `dbkfuxczfkawxqmaieii` (`us-east-1`).
+
+### What is persisted
+
+| Data | Database table | Behavior |
+| --- | --- | --- |
+| Verified email identity | Supabase Auth | Passwordless sign-in links; verification stays enabled |
+| Sound and quick-play preferences | `profiles` | Private to the signed-in user |
+| Completed hand summaries | `hand_results` | Session-grouped IDs; full synced history retained, last 100 displayed |
+| Completed lessons | `lesson_progress` | Deduplicated by user and lens |
+| Prediction and transfer checks | `practice_attempts` | Answer, correctness, teaching prompt, pot/call context; not certification or mastery |
+| Coach questions/completed replies | `coach_messages` | Last 40 restored; hidden cards and graph execution state excluded |
+| Coach usage limits | `private.coach_usage` | Server-only, shared across function instances |
+
+Guest play still uses the original validated local progress store. **Import this
+device's guest progress** is explicit so one person's browser history is not
+silently attached to another account. Signed-in changes use a versioned,
+account-scoped local outbox with idempotent writes; failed saves stay pending and
+retry when connectivity returns, or through **Account → Retry cloud save**.
+Keep the tab open if browser storage is unavailable. Signing out flushes pending
+writes and clears that account's local cache. A late offline change can merge
+back after a reset made on another device; this is eventual sync, not collaborative
+editing or authoritative gameplay.
+
+Reloading/signing in starts a new table: in-progress hands, decks, bankrolls,
+graph scenarios, animation state and hidden cards are deliberately **not** stored.
+Static curriculum content remains version-controlled. There are no payment,
+multiplayer, or analytics tables. Learning progress can be cleared from Progress;
+this removes hand results, lesson completion and practice checks, not coach history.
+An administrator can delete an account through Supabase Auth, cascading all owned
+public data. Account self-deletion and a full-history browsing/export UI are not
+implemented.
+
+### Reproduce the Supabase setup
+
+1. Create a dedicated project. Apply the SQL in `supabase/migrations/` in filename
+   order using the Supabase SQL editor, CLI, or Management API. The hosted migration
+   was applied through the Management API; the local version matches its recorded
+   `20261007192620` migration. Do not replay it on this existing project.
+2. Enable email authentication, keep confirmation enabled, disable anonymous
+   sign-ups, and set the **Site URL** and allowed redirect URL to the exact production
+   origin. Add a separate localhost redirect only for a development project.
+3. **Configure custom SMTP before inviting public users.** Supabase's default mailer
+   only sends to team members, with a very low limit. Do not bypass verification to
+   work around this. See [Supabase SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp).
+4. Set the two `VITE_SUPABASE_*` variables from `.env.example` for browser access.
+   Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only on the server for coach
+   authentication/quotas. Never use a service-role or management token in `VITE_*`.
+5. Run `supabase/tests/learning_rls.test.sql` in a SQL session against the target
+   project, or with `supabase test db` against a migrated local database. It uses
+   transactional fixtures and pgTAP, covering anonymous access, both users' CRUD,
+   ownership changes, reset isolation and quota permissions. `finish()` must report
+   **72 passing checks**, then rollback removes fixtures.
+
+The explicit live integration test creates **two temporary verified fixture
+accounts**, exercises all five public tables and the durable quota, and deletes
+both accounts in `finally`. It does not validate real email delivery:
+
+```sh
+# Supply these only through a secure shell environment:
+# SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+node scripts/cloud-smoke.mjs
+# Optional: after npm run build, add DEPLOYMENT_URL to verify the deployed coach.
+# This sends one real, bounded model request and consumes provider credits.
+DEPLOYMENT_URL=https://quantpoker.vercel.app node scripts/cloud-smoke.mjs
+```
+
+### Reproduce the Vercel deployment
+
+The frontend is Vite's `dist`; `api/index.ts` adapts the existing Express coach to a
+Node Vercel Function. `vercel.json` routes `/api/*` to it, keeps assets static, sets
+a 60-second function limit, and adds security headers. A plain static deployment
+cannot answer coach requests.
+
+```sh
+vercel whoami
+vercel link --project quantpoker --scope backpacked333s-projects
+vercel pull --yes --environment=production
+vercel build --prod
+vercel deploy --prebuilt --prod
+```
+
+The production project has the four Supabase variables, `COACH_MODEL`, and
+`COACH_ALLOWED_ORIGINS`. The service-role key is marked sensitive. Vercel provides
+the short-lived `VERCEL_OIDC_TOKEN` for AI Gateway; there is no copied AI provider
+secret. These variables are **production-only**. Use a separate Supabase project
+for development/previews rather than sharing production data. `.vercel` and all
+real environment files are ignored by git. The project is CLI-deployed, not linked
+to automatic Git deployments, so an older repository branch cannot overwrite it.
+Do not deploy an unreviewed source tree or commit downloaded credentials.
+
+After deployment, check `/`, the referenced JavaScript/worker assets, and
+`/api/coach/health`. A guest coach request should return 401 in account mode.
+Then test a verified account, persistence after refresh, cross-account isolation,
+and one streamed coach answer. The health badge confirms configuration, not model
+availability or SMTP delivery.
 
 ## What you can do
 
@@ -63,7 +168,7 @@ The default model is `anthropic/claude-sonnet-5.5`, verified in AI Gateway's mod
 - Explore **protection** priced from this decision's modeled loss probability and exposure. Compare unhedged versus protected downside and outcome dispersion, including ties and opponent folds.
 - Read a chip-denominated **payoff slice** with a labeled break-even line, current estimate, and pointer/keyboard what-if inspection. Switch to 3D for the full sensitivity terrain, world-space axis labels, the gold zero-EV frontier and white current-exposure slice.
 - Walk through **The price → The possibilities → The market connection**, including a 100-dot illustration of the estimated showdown distribution. Ask the context-aware coach for a different explanation or a calculated visual demonstration.
-- Complete three short lessons with explanatory quizzes; track the last 100 hand results on the current device.
+- Complete three short lessons with explanatory quizzes; track your last 100 hand results locally or in your signed-in account.
 - Pause the bot, enable optional gentle action sounds, and inspect hand history.
 
 ### The Decision Room
@@ -104,7 +209,8 @@ viewports or expanded custom controls can scroll rather than clip the game.
   call/check baseline and clears next-card hypotheticals without playing an action.
   Practice answers survive model sizing/estimate updates and hiding the panel, but
   reset when the hand, visible board, pot, call price or lens changes. The two-check
-  counter is per-decision practice, not persistent course completion or mastery.
+  counter is per-decision practice, not course completion or mastery. Signed-in
+  answer checks are stored separately for future learning-history features.
 - **Small-screen insights.** Below 1100px, **Hand insights** opens a closed-by-default
   drawer that pauses Atlas and the staged hand. A native modal dialog provides
   focus containment, Escape dismissal and focus restoration. Desktop and mobile
@@ -122,7 +228,7 @@ viewports or expanded custom controls can scroll rather than clip the game.
   Pause freezes presentation and Atlas; dialogs also suspend the table. Reduced
   motion is respected live.
 
-These presentation settings are session-local. This does not introduce multiplayer,
+Sound and quick play persist for signed-in users; other presentation state stays session-local. This does not introduce multiplayer,
 new poker rules, real money, or a stronger opponent model.
 
 On narrow screens, the game adapts to portrait and Hand insights fills the screen
@@ -190,11 +296,11 @@ These are **conceptual connections**, not measured correlations with financial a
 | Finance      | Pure functions in `src/lib/finance.ts` shared with charts/tests                                                          |
 | 3D           | Lazy-loaded Three.js + OrbitControls; raycast inspection, numerical probes, animated marker; static under reduced motion |
 | Coach        | AI SDK 6 `ToolLoopAgent` through AI Gateway; Express API, NDJSON streaming, strict Zod public-state contracts            |
-| Persistence  | Versioned, validated browser localStorage in `src/lib/storage.ts`                                                        |
+| Persistence  | Local guest progress; Supabase Auth/Postgres/RLS and account-scoped outbox in `src/lib/cloud-store.ts`                    |
 | Fonts        | Bundled DM Sans and Manrope (Fontsource, SIL Open Font License); no Google Fonts requests                                |
 | CI           | GitHub Actions: clean install, typecheck, lint, tests, production build                                                  |
 
-All play is client-side. There are no analytics requests. Model-provider requests happen server-side only after an explicit coach question; no provider credentials are bundled into the frontend. Reloading starts a fresh guided table while preserving lesson completion and recorded results. Settings, chat, the current hand, and the current session bankroll are not persisted. When a player runs out of chips, **Refill & deal next hand** resets both practice stacks to 2,000 and keeps the recorded results.
+All play is client-side. There are no analytics requests. Signed-in progress is sent to Supabase; model-provider requests happen server-side only after an explicit coach question. No provider credentials are bundled into the frontend. Reloading starts a fresh guided table while preserving lesson completion and recorded results. Signed-in settings and completed chat messages persist, but the current hand and session bankroll do not. When a player runs out of chips, **Refill & deal next hand** resets both practice stacks to 2,000 and keeps the recorded results.
 
 ## Validation
 
@@ -214,10 +320,10 @@ These tests do not replace browser end-to-end, screen-reader, mobile-device, or 
 
 ## Deliberate boundaries
 
-- **Not multiplayer:** no lobby, accounts, matchmaking, or authoritative server.
+- **Not multiplayer:** accounts save learning progress; there is no lobby, matchmaking, or authoritative game server.
 - **Not money-safe:** cards and state can be inspected in browser developer tools. Randomness uses `Math.random`, adequate for a non-adversarial local teaching game, not gambling.
 - **Not a solver:** Atlas estimates its own equity against random hands with a small simulation budget and simple betting rules. It is a practice opponent, not an expert strategy model.
 - **Heads-up only:** bets are capped at the effective stack, so multiway side pots are not needed. A standard burn-card ritual is omitted without changing the distribution of dealt cards.
 - **Not a certification:** the lessons are an introductory explanation of risk, not a full quantitative-finance curriculum.
 
-The next product steps should be driven by learner feedback: richer hand-by-hand explanations, calibrated opponent ranges, further lessons, and independently validated financial models—before adding multiplayer or account infrastructure.
+The next product steps should be driven by learner feedback: richer hand-by-hand explanations, calibrated opponent ranges, further lessons, and independently validated financial models—not real-money play.

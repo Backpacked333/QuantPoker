@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import type { CoachSnapshot, Demonstration } from '../lib/coach'
 import { readCoachStream } from '../lib/coach-stream'
+import { useCloud } from '../lib/cloud-context'
 
 type Message = {
   id: string
@@ -16,6 +17,7 @@ type Message = {
   text: string
   snapshotId: string
   label: string
+  createdAt: string
   demonstrations: { title: string; value: Demonstration; snapshotId: string }[]
 }
 export function Coach({
@@ -27,7 +29,14 @@ export function Coach({
   question: { text: string; id: number } | null
   onDemonstrate: (demonstration: Demonstration) => void
 }) {
-  const [messages, setMessages] = useState<Message[]>([])
+  const cloud = useCloud()
+  const cloudStore = cloud?.state.user ? cloud.store : null
+  const [messages, setMessages] = useState<Message[]>(
+    () =>
+      cloudStore
+        ?.snapshot()
+        .cache.messages.map((m) => ({ ...m, demonstrations: [] })) ?? [],
+  )
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
@@ -35,6 +44,7 @@ export function Coach({
   const [health, setHealth] = useState<{
     configured: boolean
     authRequired: boolean
+    authMode?: string
   } | null>(null)
   const [accessToken, setAccessToken] = useState('')
   const controller = useRef<AbortController | null>(null)
@@ -48,6 +58,7 @@ export function Coach({
         setHealth({
           configured: data.configured === true,
           authRequired: data.authRequired === true,
+          authMode: data.authMode,
         }),
       )
       .catch(() => {
@@ -75,6 +86,7 @@ export function Coach({
     if (!draft.trim() || !snapshot || !health?.configured || controller.current)
       return
     const captured = snapshot
+    const owner = cloudStore?.snapshot().user?.id
     const label = `${captured.mode === 'review' ? 'Review' : 'Hand'} ${captured.hand} · ${captured.lens === 'equity' ? 'decision' : captured.lens} · ${captured.probe ? 'inspected point' : 'current hand'}`
     const user: Message = {
       id: crypto.randomUUID(),
@@ -82,6 +94,7 @@ export function Coach({
       text: draft.trim(),
       snapshotId: captured.id,
       label,
+      createdAt: new Date().toISOString(),
       demonstrations: [],
     }
     const reply: Message = {
@@ -90,6 +103,7 @@ export function Coach({
       text: '',
       snapshotId: captured.id,
       label,
+      createdAt: new Date(Date.now() + 1).toISOString(),
       demonstrations: [],
     }
     const history = [...messages.filter((m) => m.text.trim()), user]
@@ -103,11 +117,21 @@ export function Coach({
     setError('')
     setStatus('Connecting to your coach…')
     try {
+      const token =
+        health.authMode === 'account'
+          ? (await cloudStore?.client?.auth.getSession())?.data.session
+              ?.access_token
+          : accessToken
+      if (health.authMode === 'account' && !token)
+        throw new Error(
+          'Open Save progress in the top bar and sign in to use the AI coach.',
+        )
+      let replyText = ''
       const response = await fetch('/api/coach', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ snapshot: captured, messages: history }),
         signal: abort.signal,
@@ -121,9 +145,12 @@ export function Coach({
         )
       }
       if (!response.body) throw new Error('No response stream was received.')
+      if (cloudStore?.snapshot().user?.id === owner)
+        cloudStore?.writeMessage(user)
       await readCoachStream(response.body, (event) => {
         if (event.type === 'status') setStatus(event.text)
         if (event.type === 'text') {
+          replyText += event.text
           setStatus('')
           setMessages((previous) =>
             previous.map((m) =>
@@ -150,6 +177,12 @@ export function Coach({
             ),
           )
       })
+      if (
+        !abort.signal.aborted &&
+        cloudStore?.snapshot().user?.id === owner &&
+        replyText.trim()
+      )
+        cloudStore?.writeMessage({ ...reply, text: replyText })
     } catch (cause) {
       setError(
         abort.signal.aborted
@@ -287,7 +320,13 @@ export function Coach({
           are calculated by the poker engine, not a pretend AI response.
         </p>
       )}
-      {health?.authRequired && (
+      {health?.authMode === 'account' && !cloudStore && (
+        <p className="coach-error" role="status">
+          Sign in through Save progress in the top bar to ask the coach. Guest
+          learning tools remain available.
+        </p>
+      )}
+      {health?.authRequired && health.authMode !== 'account' && (
         <label className="coach-access">
           Private coach access token
           <input
@@ -345,8 +384,11 @@ export function Coach({
           Your visible cards, public bets, selected model, graph point, and this
           chat are sent to the configured model provider only when you send a
           question. Never send personal information. Atlas’s hidden cards and
-          the deck are excluded. Chat is held in memory, not saved by this app;
-          the provider’s retention policy still applies. AI can be wrong.
+          the deck are excluded.{' '}
+          {cloudStore
+            ? 'Questions and completed replies are saved privately to your account; graph demonstrations are not restored across sessions.'
+            : 'Guest chat is held in memory only.'}{' '}
+          The provider’s retention policy still applies. AI can be wrong.
           Calculations and assumptions remain inspectable.
         </p>
       </details>

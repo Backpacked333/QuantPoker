@@ -7,6 +7,8 @@ import {
   surfaceRiskRange,
 } from '../../lib/finance'
 import type { Lens, SurfaceScenario } from '../../lib/finance'
+import { m } from 'motion/react'
+import { spring } from '../../motion'
 
 const AXES: Record<Lens, { x: string; z: string; value: string }> = {
   equity: {
@@ -190,12 +192,14 @@ export function Heatmap({
           onPointerLeave={() => setProbe(null)}
         >
           <canvas ref={canvas} />
-          <span
+          <m.span
             className="heat-marker"
-            style={{ left: `${live.x * 100}%`, bottom: `${live.z * 100}%` }}
+            initial={false}
+            animate={{ left: `${live.x * 100}%`, bottom: `${live.z * 100}%` }}
+            transition={spring.smooth}
           >
             <i />
-          </span>
+          </m.span>
           {probe && (
             <>
               <span

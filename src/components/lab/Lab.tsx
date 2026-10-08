@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState } from 'react'
+import { m } from 'motion/react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import {
   ArrowUpRight,
@@ -28,6 +29,7 @@ import {
   WhatIfBanner,
 } from './DecisionView'
 import { pct0 } from '../format'
+import { duration, ease, spring } from '../../motion'
 import { Heatmap } from './Heatmap'
 import { useLabModel } from './labModel'
 import { OptionsView, ProtectionView } from './LensViews'
@@ -112,7 +114,12 @@ export function Lab({
   onLesson: (id: LessonId) => void
 }) {
   const analyst = settings.mode === 'analyst'
-  const [tab, setTab] = useState<Tab>('decision')
+  const [tab, setTabState] = useState<Tab>('decision')
+  const [tabSwitched, setTabSwitched] = useState(false)
+  const setTab = (next: Tab) => {
+    setTabSwitched(true)
+    setTabState(next)
+  }
   const [action, setAction] = useState<DecisionAction>(
     playedAction ?? 'continue',
   )
@@ -268,6 +275,13 @@ export function Lab({
                   onClick={() => setTab(key)}
                 >
                   <Icon size={14} /> {label}
+                  {tab === key && (
+                    <m.span
+                      className="tab-indicator"
+                      layoutId="lab-tab-indicator"
+                      transition={spring.snappy}
+                    />
+                  )}
                 </button>
               ))}
             </div>
@@ -295,53 +309,62 @@ export function Lab({
               </div>
             )}
 
-            {activeTab === 'decision' && (
-              <>
-                <EquityMeter lab={lab} guess={guess} />
-                <Verdict lab={lab} />
-                <ActionCompare
-                  lab={lab}
-                  onSelect={setAction}
-                  onFoldOverride={setFoldOverride}
-                  showOverride={analyst}
-                />
-                <OutcomeBar lab={lab} />
-                {analyst && heatmap}
-                {analyst && <QuantGrid lab={lab} />}
-                {!analyst && <RangeShift steps={lab.steps} />}
-                <NextCards lab={lab} selected={whatIf} onSelect={setWhatIf} />
-                {!analyst && (
-                  <button
-                    className="deeper"
-                    onClick={() => onSettings({ mode: 'analyst' })}
-                  >
-                    <span>
-                      <strong>Go deeper</strong>
-                      <small>
-                        Atlas&apos;s range grid, decision map, options and
-                        insurance lenses
-                      </small>
-                    </span>
-                    <ChevronDown size={16} />
-                  </button>
-                )}
-              </>
-            )}
-            {activeTab === 'range' && (
-              <RangeView spot={lab.full} model={settings.opponentModel} />
-            )}
-            {activeTab === 'options' && (
-              <>
-                {heatmap}
-                <OptionsView lab={lab} />
-              </>
-            )}
-            {activeTab === 'insurance' && (
-              <>
-                {heatmap}
-                <ProtectionView lab={lab} onCoverage={setCoverage} />
-              </>
-            )}
+            <m.div
+              key={activeTab}
+              className="lab-tab-body"
+              // Only tab switches crossfade; the first view appears as is.
+              initial={tabSwitched ? { opacity: 0, y: 8 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: duration.base, ease }}
+            >
+              {activeTab === 'decision' && (
+                <>
+                  <EquityMeter lab={lab} guess={guess} />
+                  <Verdict lab={lab} />
+                  <ActionCompare
+                    lab={lab}
+                    onSelect={setAction}
+                    onFoldOverride={setFoldOverride}
+                    showOverride={analyst}
+                  />
+                  <OutcomeBar lab={lab} />
+                  {analyst && heatmap}
+                  {analyst && <QuantGrid lab={lab} />}
+                  {!analyst && <RangeShift steps={lab.steps} />}
+                  <NextCards lab={lab} selected={whatIf} onSelect={setWhatIf} />
+                  {!analyst && (
+                    <button
+                      className="deeper"
+                      onClick={() => onSettings({ mode: 'analyst' })}
+                    >
+                      <span>
+                        <strong>Go deeper</strong>
+                        <small>
+                          Atlas&apos;s range grid, decision map, options and
+                          insurance lenses
+                        </small>
+                      </span>
+                      <ChevronDown size={16} />
+                    </button>
+                  )}
+                </>
+              )}
+              {activeTab === 'range' && (
+                <RangeView spot={lab.full} model={settings.opponentModel} />
+              )}
+              {activeTab === 'options' && (
+                <>
+                  {heatmap}
+                  <OptionsView lab={lab} />
+                </>
+              )}
+              {activeTab === 'insurance' && (
+                <>
+                  {heatmap}
+                  <ProtectionView lab={lab} onCoverage={setCoverage} />
+                </>
+              )}
+            </m.div>
 
             <button
               className="notes-toggle"

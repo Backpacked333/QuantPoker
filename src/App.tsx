@@ -59,7 +59,7 @@ import type { LearningSession } from './curriculum/core/session'
 import { spotKey, useSpots } from './state/spots'
 import { guessKey, initialTrainer, trainerReducer } from './state/trainer'
 import { useRunout } from './state/runout'
-import { useReducedMotionConfig } from 'motion/react'
+import { LazyMotion, useReducedMotionConfig } from 'motion/react'
 import type { FinishedHand } from './state/trainer'
 import { Table } from './components/table/Table'
 import { ActionBar } from './components/table/ActionBar'
@@ -205,6 +205,9 @@ const TIPS = [
   'Bigger bets make Atlas fold more often but risk more when it calls. Compare the EV on each size preset.',
   'Your reads improve fastest when you commit to a number before looking.',
 ]
+
+const loadMotionFeatures = () =>
+  import('./motionFeatures').then((module) => module.default)
 
 export default function App() {
   const [progress, setProgress] = useState<Progress>(readProgress)
@@ -760,7 +763,7 @@ export default function App() {
         : 'system'
 
   return (
-    <>
+    <LazyMotion features={loadMotionFeatures} strict>
       <CardDefs />
       <a className="skip-link" href="#main">
         Skip to content
@@ -1103,6 +1106,6 @@ export default function App() {
           onDone={() => setTour(false)}
         />
       )}
-    </>
+    </LazyMotion>
   )
 }

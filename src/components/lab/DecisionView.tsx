@@ -1,7 +1,9 @@
 import { Gauge, Layers3, Sparkles, TimerReset, Waves } from 'lucide-react'
+import { m } from 'motion/react'
 import type { DecisionAction } from '../../lib/finance'
 import type { NextScenario } from '../../lib/model'
 import type { RangeStep } from '../../lib/range'
+import { spring, stagger } from '../../motion'
 import { pct, pct0, signed } from '../format'
 import { MiniCard } from '../PlayingCard'
 import type { LabModel } from './labModel'
@@ -27,23 +29,34 @@ export function EquityMeter({ lab, guess }: { lab: LabModel; guess?: number }) {
         </div>
       </div>
       <div className="meter-track" aria-hidden>
-        <span
+        <m.span
           className={`meter-fill ${good ? 'good' : 'bad'}`}
-          style={{ width: `${equity * 100}%` }}
+          initial={{ width: '0%' }}
+          animate={{ width: `${equity * 100}%` }}
+          transition={spring.smooth}
         />
         {need > 0 && (
-          <span
+          <m.span
             className="meter-need-mark"
-            style={{ left: `${need * 100}%` }}
+            initial={false}
+            animate={{ left: `${need * 100}%` }}
+            transition={spring.smooth}
           />
         )}
         {guess !== undefined && (
-          <span className="meter-guess" style={{ left: `${guess * 100}%` }} />
+          <m.span
+            className="meter-guess"
+            initial={{ left: '0%', opacity: 0 }}
+            animate={{ left: `${guess * 100}%`, opacity: 1 }}
+            transition={spring.heavy}
+          />
         )}
         {lab.anyHand && (
-          <span
+          <m.span
             className="meter-any"
-            style={{ left: `${lab.anyHand.equity * 100}%` }}
+            initial={false}
+            animate={{ left: `${lab.anyHand.equity * 100}%` }}
+            transition={spring.smooth}
           />
         )}
       </div>
@@ -182,7 +195,13 @@ export function ActionCompare({
               <strong>
                 {row.label}
                 {lab.ready && lab.best === row.key && (
-                  <em className="best-tag">Best</em>
+                  <m.em
+                    className="best-tag"
+                    layoutId="best-tag"
+                    transition={spring.smooth}
+                  >
+                    Best
+                  </m.em>
                 )}
               </strong>
               <small>{row.sub}</small>
@@ -190,13 +209,12 @@ export function ActionCompare({
             <span className="compare-bar" aria-hidden>
               <span className="zero" />
               {lab.ready && (
-                <span
+                <m.span
                   className={`bar ${ev >= 0 ? 'pos' : 'neg'}`}
-                  style={
-                    ev >= 0
-                      ? { left: '50%', width: `${width}%` }
-                      : { right: '50%', width: `${width}%` }
-                  }
+                  style={ev >= 0 ? { left: '50%' } : { right: '50%' }}
+                  initial={{ width: '0%' }}
+                  animate={{ width: `${width}%` }}
+                  transition={spring.smooth}
                 />
               )}
             </span>
@@ -288,19 +306,24 @@ export function NextCards({
   const row = (label: string, list: NextScenario[]) => (
     <div className="next-row">
       <span>{label}</span>
-      {list.map((item) => {
+      {list.map((item, i) => {
         const on =
           selected?.card.rank === item.card.rank &&
           selected.card.suit === item.card.suit
         return (
-          <button
+          <m.button
             key={`${item.card.rank}${item.card.suit}`}
             className={on ? 'on' : ''}
             onClick={() => onSelect(on ? null : item)}
             aria-pressed={on}
+            // No opacity fade: the card text stays at full contrast throughout.
+            initial={{ y: 10, scale: 0.9 }}
+            animate={{ y: 0, scale: 1 }}
+            whileTap={{ scale: 0.94 }}
+            transition={{ ...spring.heavy, delay: i * stagger.list }}
           >
             <MiniCard card={item.card} /> <em>{pct0(item.equity)}</em>
-          </button>
+          </m.button>
         )
       })}
     </div>

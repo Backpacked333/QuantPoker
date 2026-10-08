@@ -5,3 +5,5 @@ dist/
 !.env.example
 *.tsbuildinfo
 coverage/
+test-results
+playwright-report

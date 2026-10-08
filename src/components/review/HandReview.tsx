@@ -134,6 +134,7 @@ export function HandReview({
         {accuracy !== null && (
           <div
             className="accuracy-badge"
+            role="img"
             aria-label={`Accuracy ${Math.round(accuracy)}`}
           >
             <strong>{Math.round(accuracy)}</strong>

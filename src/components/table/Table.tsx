@@ -221,7 +221,11 @@ export function Table({
               role="status"
             >
               {thinking ? (
-                <span className="thinking-dots" aria-label="Atlas is thinking">
+                <span
+                  className="thinking-dots"
+                  role="img"
+                  aria-label="Atlas is thinking"
+                >
                   <i />
                   <i />
                   <i />
@@ -235,7 +239,7 @@ export function Table({
 
         <BetChips who="atlas" amount={result ? 0 : game.bets[1]} />
 
-        <div className="pot" aria-label={`Pot ${chips(game.pot)} chips`}>
+        <div className="pot">
           <span className="chip-pile" aria-hidden>
             <i />
             <i />
@@ -247,7 +251,7 @@ export function Table({
           </strong>
         </div>
 
-        <div className="board" aria-label="Community cards">
+        <div className="board" role="group" aria-label="Community cards">
           {Array.from({ length: 5 }, (_, i) =>
             game.board[i] ? (
               <PlayingCard

@@ -250,6 +250,7 @@ export function RangeShift({ steps }: { steps: RangeStep[] }) {
           <span>{step.label}</span>
           <span
             className="shift-bar"
+            role="img"
             aria-label={`${pct0(step.buckets[0])} strong, ${pct0(step.buckets[1])} medium, ${pct0(step.buckets[2])} weak`}
           >
             <i className="s" style={{ width: `${step.buckets[0] * 100}%` }} />

@@ -28,7 +28,7 @@
   --border-strong: #c9d1c3;
   --text: #1b2d26;
   --text-2: #46564e;
-  --text-3: #66746c;
+  --text-3: #5a6860;
   --brand: #1f5a46;
   --brand-2: #2c7a5f;
   --brand-ink: #ffffff;
@@ -1023,7 +1023,7 @@ main {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgb(255 255 255 / 0.28);
+  color: rgb(255 255 255 / 0.55);
 }
 .streets .on {
   color: var(--accent);

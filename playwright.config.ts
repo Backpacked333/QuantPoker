@@ -1,0 +1,27 @@
+import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: 'e2e',
+  timeout: 90_000,
+  fullyParallel: true,
+  retries: process.env.CI ? 1 : 0,
+  reporter: process.env.CI ? 'github' : 'list',
+  use: { baseURL: 'http://localhost:4174', trace: 'retain-on-failure' },
+  projects: [
+    {
+      name: 'desktop',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 960 },
+      },
+      testIgnore: /mobile/,
+    },
+    { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /mobile/ },
+  ],
+  webServer: {
+    command: 'npm run build && npx vite preview --port 4174 --strictPort',
+    url: 'http://localhost:4174',
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+  },
+})

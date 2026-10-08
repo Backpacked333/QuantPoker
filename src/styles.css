@@ -4027,6 +4027,9 @@ button.range-cell:focus-visible {
 }
 .sheet-handle {
   position: relative;
+  flex: none;
+  touch-action: none;
+  cursor: grab;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -4052,6 +4055,8 @@ button.range-cell:focus-visible {
   gap: 8px;
 }
 .sheet-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -4060,9 +4065,6 @@ button.range-cell:focus-visible {
   box-shadow: none;
   border-radius: 0;
   padding-top: 4px;
-}
-.sheet.open .sheet-body {
-  animation: rise 0.25s ease-out;
 }
 
 /* ============================================================

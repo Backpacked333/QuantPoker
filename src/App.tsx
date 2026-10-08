@@ -11,7 +11,6 @@ import {
 import {
   BookOpen,
   ChartNoAxesCombined,
-  ChevronUp,
   CircleHelp,
   Coins,
   Diamond,
@@ -65,6 +64,7 @@ import { Table } from './components/table/Table'
 import { ActionBar } from './components/table/ActionBar'
 import type { Preset } from './components/table/ActionBar'
 import { LabSkeleton } from './components/lab/LabSkeleton'
+import { LabSheet } from './components/LabSheet'
 import { HandReview } from './components/review/HandReview'
 import { ProgressView } from './components/progress/ProgressView'
 import { LearnView } from './components/learn/LearnView'
@@ -971,22 +971,15 @@ export default function App() {
               )}
             </section>
             {compact ? (
-              <div className={`sheet ${sheetOpen ? 'open' : ''}`} ref={labRef}>
-                <button
-                  className="sheet-handle"
-                  aria-expanded={sheetOpen}
-                  aria-controls="sheet-body"
-                  data-tour="lab"
-                  onClick={() => setSheetOpen(!sheetOpen)}
-                >
-                  <span className="grabber" />
-                  {sheetSummary}
-                  <ChevronUp size={16} className={sheetOpen ? 'rotated' : ''} />
-                </button>
-                <div id="sheet-body" className="sheet-body" hidden={!sheetOpen}>
-                  {lab}
-                </div>
-              </div>
+              <LabSheet
+                open={sheetOpen}
+                onOpenChange={setSheetOpen}
+                summary={sheetSummary}
+                haptics={settings.sound}
+                sheetRef={labRef}
+              >
+                {lab}
+              </LabSheet>
             ) : (
               <div className="lab-column" ref={labRef}>
                 {lab}

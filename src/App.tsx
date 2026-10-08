@@ -64,7 +64,7 @@ import type { FinishedHand } from './state/trainer'
 import { Table } from './components/table/Table'
 import { ActionBar } from './components/table/ActionBar'
 import type { Preset } from './components/table/ActionBar'
-import { Lab } from './components/lab/Lab'
+import { LabSkeleton } from './components/lab/LabSkeleton'
 import { HandReview } from './components/review/HandReview'
 import { ProgressView } from './components/progress/ProgressView'
 import { LearnView } from './components/learn/LearnView'
@@ -82,6 +82,9 @@ type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
 const Gallery = lazy(() => import('./dev/Gallery'))
+// The lab is the heaviest view; it loads in parallel with the first paint.
+const labModule = import('./components/lab/Lab')
+const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /** Hash routes: #table (default), #progress, #learn/... and #learn/quick[/id]. */
 function parseRoute(hash: string): Route {
@@ -721,32 +724,34 @@ export default function App() {
   )
 
   const lab = (
-    <Lab
-      game={labGame}
-      spot={labSpot}
-      style={style}
-      settings={settings}
-      raiseTo={labRaise}
-      playedAction={
-        reviewDecision ? toDecisionAction(reviewDecision.action) : undefined
-      }
-      locked={labLocked}
-      guess={labGuess}
-      reviewing={reviewing}
-      review={review}
-      themeKey={themeKey}
-      resetKey={
-        reviewDecision
-          ? `review-${game.id}-${reviewIndex}`
-          : `live-${decisionId}`
-      }
-      onSettings={updateSettings}
-      onReveal={() => dispatch({ type: 'guess', value: null })}
-      onLesson={(id) => {
-        setSheetOpen(false)
-        go(`learn/quick/${id}`)
-      }}
-    />
+    <Suspense fallback={<LabSkeleton />}>
+      <Lab
+        game={labGame}
+        spot={labSpot}
+        style={style}
+        settings={settings}
+        raiseTo={labRaise}
+        playedAction={
+          reviewDecision ? toDecisionAction(reviewDecision.action) : undefined
+        }
+        locked={labLocked}
+        guess={labGuess}
+        reviewing={reviewing}
+        review={review}
+        themeKey={themeKey}
+        resetKey={
+          reviewDecision
+            ? `review-${game.id}-${reviewIndex}`
+            : `live-${decisionId}`
+        }
+        onSettings={updateSettings}
+        onReveal={() => dispatch({ type: 'guess', value: null })}
+        onLesson={(id) => {
+          setSheetOpen(false)
+          go(`learn/quick/${id}`)
+        }}
+      />
+    </Suspense>
   )
 
   const ThemeIcon =

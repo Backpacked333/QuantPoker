@@ -4502,3 +4502,42 @@ button.range-cell:focus-visible {
     animation: none !important;
   }
 }
+
+/* ---- Skeletons ----------------------------------------------------------- */
+.lab-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm, 10px);
+  background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.35),
+      transparent
+    )
+    var(--surface-2);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-title {
+  width: 55%;
+  height: 22px;
+}
+.skeleton-meter {
+  height: 92px;
+}
+.skeleton-row {
+  height: 56px;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}

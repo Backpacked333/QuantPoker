@@ -57,7 +57,7 @@ describe('table and curriculum integration', () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(
-      screen.getByRole('button', { name: 'Reveal without guessing' }),
+      await screen.findByRole('button', { name: 'Reveal without guessing' }),
     )
     const table = screen.getByRole('region', { name: 'Poker table' })
     const hand = table.textContent
@@ -164,7 +164,7 @@ describe('table and curriculum integration', () => {
     ).toEqual([])
     navigate('#table')
     await user.click(
-      screen.getByRole('button', { name: 'Reveal without guessing' }),
+      await screen.findByRole('button', { name: 'Reveal without guessing' }),
     )
     await user.click(
       screen.getByRole('button', { name: /Learn the idea behind this view/ }),
@@ -201,7 +201,7 @@ describe('table and curriculum integration', () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(
-      screen.getByRole('button', { name: 'Reveal without guessing' }),
+      await screen.findByRole('button', { name: 'Reveal without guessing' }),
     )
     await user.click(screen.getByRole('button', { name: 'Analyst' }))
     const expected = [

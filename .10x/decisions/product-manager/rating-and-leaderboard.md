@@ -50,13 +50,13 @@ Players want a number to climb; recruiters want a number to trust. Those are dif
 
 ## Success criteria
 
-| Metric | Target at launch + 90 days |
-| --- | --- |
-| Players with non-provisional HU rating | ≥ 100 |
-| Rating predictive validity: higher-rated player wins the match | ≥ 60% when rating gap ≥ 150 |
-| Spearman correlation between rating and accuracy across non-provisional players | > 0.4 (if it is ~0, the accuracy model is wrong or people are gaming it) |
-| Rating stability: median absolute rating change per match for non-provisional players | < 15 points |
-| Public profile views from outside the app | ≥ 100; ≥ 10 players report sharing it |
+| Metric                                                                                | Target at launch + 90 days                                               |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Players with non-provisional HU rating                                                | ≥ 100                                                                    |
+| Rating predictive validity: higher-rated player wins the match                        | ≥ 60% when rating gap ≥ 150                                              |
+| Spearman correlation between rating and accuracy across non-provisional players       | > 0.4 (if it is ~0, the accuracy model is wrong or people are gaming it) |
+| Rating stability: median absolute rating change per match for non-provisional players | < 15 points                                                              |
+| Public profile views from outside the app                                             | ≥ 100; ≥ 10 players report sharing it                                    |
 
 ## Out of scope
 
@@ -67,6 +67,6 @@ Players want a number to climb; recruiters want a number to trust. Those are dif
 
 ## Risks
 
-- **Accuracy is gameable** (play like the model): mitigated by the rating being results-based and by keeping the opponent model simple and *not* exposing it during play. If accuracy correlates with rating, it's measuring something real.
+- **Accuracy is gameable** (play like the model): mitigated by the rating being results-based and by keeping the opponent model simple and _not_ exposing it during play. If accuracy correlates with rating, it's measuring something real.
 - **Small samples make ladders volatile:** the RD band and eligibility gates are the mitigation; resist pressure to drop the 20-match floor.
 - **Model opponent ≠ real opponent:** accuracy vs a population model can mark correct exploitative plays as mistakes. Label it, keep thresholds forgiving (existing ≤3% of pot = Best), and revisit once we have data.

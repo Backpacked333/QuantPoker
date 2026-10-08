@@ -64,25 +64,25 @@ Play-money poker on PokerStars/GGPoker (no skill signal, noisy, ads for real mon
 
 ## Success criteria (leading indicators, measured from day 1)
 
-| Metric | Target at launch + 90 days |
-| --- | --- |
-| Registered players | ≥ 300 |
-| Week-4 retention (played ≥1 rated match in week 4 after signup) | ≥ 20% |
-| Median HU matchmaking wait at peak (defined weekly windows) | < 60 s |
-| Match completion rate (both players finish) | ≥ 90% |
-| Action latency p95 (server ack → render) | < 150 ms |
-| Server-side invariant failures (chip conservation, illegal action accepted) | 0 |
-| Profile link views from outside the app | tracked; ≥ 100 |
+| Metric                                                                      | Target at launch + 90 days |
+| --------------------------------------------------------------------------- | -------------------------- |
+| Registered players                                                          | ≥ 300                      |
+| Week-4 retention (played ≥1 rated match in week 4 after signup)             | ≥ 20%                      |
+| Median HU matchmaking wait at peak (defined weekly windows)                 | < 60 s                     |
+| Match completion rate (both players finish)                                 | ≥ 90%                      |
+| Action latency p95 (server ack → render)                                    | < 150 ms                   |
+| Server-side invariant failures (chip conservation, illegal action accepted) | 0                          |
+| Profile link views from outside the app                                     | tracked; ≥ 100             |
 
 ## Risks and early signals
 
-| Risk | Early signal | Mitigation |
-| --- | --- | --- |
-| Cold start: nobody online | wait > 3 min; empty lobby | Scheduled arenas, "notify me when someone queues", Atlas fallback for casual, seed with a launch cohort (Discord, uni quant clubs) |
-| N-player engine regressions | Vitest invariant tests fail; chip leaks | Port existing engine tests; property-test chip conservation and side pots over 10k random hands before any UI |
-| Realtime complexity eats the solo builder | Phase 0 slips past 3 weeks | Use a room framework (e.g. Colyseus) or plain `ws` with a tiny protocol; no custom infra; one region |
-| Hosting cost / ops | first bill | One small VM/Fly machine + Supabase free/pro tier; no Kubernetes |
-| Legal perception as gambling | user/app-store questions | Play money only, no prizes, clear ToS and 18+ language; no "cash" wording anywhere |
+| Risk                                      | Early signal                            | Mitigation                                                                                                                         |
+| ----------------------------------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Cold start: nobody online                 | wait > 3 min; empty lobby               | Scheduled arenas, "notify me when someone queues", Atlas fallback for casual, seed with a launch cohort (Discord, uni quant clubs) |
+| N-player engine regressions               | Vitest invariant tests fail; chip leaks | Port existing engine tests; property-test chip conservation and side pots over 10k random hands before any UI                      |
+| Realtime complexity eats the solo builder | Phase 0 slips past 3 weeks              | Use a room framework (e.g. Colyseus) or plain `ws` with a tiny protocol; no custom infra; one region                               |
+| Hosting cost / ops                        | first bill                              | One small VM/Fly machine + Supabase free/pro tier; no Kubernetes                                                                   |
+| Legal perception as gambling              | user/app-store questions                | Play money only, no prizes, clear ToS and 18+ language; no "cash" wording anywhere                                                 |
 
 ## Dependencies
 

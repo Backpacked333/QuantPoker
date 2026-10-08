@@ -55,13 +55,13 @@ Deferred (was a gate, now growth-triggered; see `integrity-and-trust`): collusio
 
 ## Success criteria (90 days after casual 6-max launch)
 
-| Metric | Target |
-| --- | --- |
+| Metric                                           | Target                            |
+| ------------------------------------------------ | --------------------------------- |
 | Human seats at casual tables during peak windows | ≥ 60% of seated players are human |
-| Arena pilot attendance | ≥ 10 humans per window |
-| 6-max hands per weekly active player | ≥ 50 |
-| Engine invariant failures in production | 0 |
-| Player-reported "wrong payout/side pot" tickets | 0 confirmed |
+| Arena pilot attendance                           | ≥ 10 humans per window            |
+| 6-max hands per weekly active player             | ≥ 50                              |
+| Engine invariant failures in production          | 0                                 |
+| Player-reported "wrong payout/side pot" tickets  | 0 confirmed                       |
 
 ## Out of scope
 

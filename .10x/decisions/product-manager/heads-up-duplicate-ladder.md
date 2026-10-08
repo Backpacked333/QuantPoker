@@ -43,13 +43,13 @@ Poker results over a few hundred hands are mostly luck, so a ladder built on raw
 
 ## Success criteria
 
-| Metric | Target |
-| --- | --- |
-| Rated HU matches per weekly active player | ≥ 3 |
-| Match completion (no forfeit/abandon) | ≥ 90% |
-| Rematch rate | ≥ 25% |
-| Post-match review opened | ≥ 50% of matches |
-| Draw share within noise band | 5–15% (sanity check on band width) |
+| Metric                                    | Target                             |
+| ----------------------------------------- | ---------------------------------- |
+| Rated HU matches per weekly active player | ≥ 3                                |
+| Match completion (no forfeit/abandon)     | ≥ 90%                              |
+| Rematch rate                              | ≥ 25%                              |
+| Post-match review opened                  | ≥ 50% of matches                   |
+| Draw share within noise band              | 5–15% (sanity check on band width) |
 
 ## Out of scope
 
@@ -59,6 +59,6 @@ Poker results over a few hundred hands are mostly luck, so a ladder built on raw
 
 ## Risks
 
-- **Boring repetition in segment 2?** Players already know the decks? No: a player sees segment-2 hands as new cards; they only know their *opponent* saw them from the other side. Duplicate is standard in competitive bridge for this reason. Watch for complaints and add a "shuffled seat order" variant later.
+- **Boring repetition in segment 2?** Players already know the decks? No: a player sees segment-2 hands as new cards; they only know their _opponent_ saw them from the other side. Duplicate is standard in competitive bridge for this reason. Watch for complaints and add a "shuffled seat order" variant later.
 - **Decision accuracy leakage:** if any EV/equity signal reaches the client mid-hand it is RTA. The server must not send analysis data until the hand is done.
 - **Noise band tuning:** ±2 bb over 40 hands is a guess; collect data and revisit after 500 matches.

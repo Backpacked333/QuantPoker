@@ -4,11 +4,11 @@ Last updated: 2026-10-08
 
 ## Active features
 
-| Slug | Description | Status |
-| --- | --- | --- |
-| `multiplayer-platform` | Phase 0: N-player engine (`src/engine/`), Cloudflare Workers + two Durable Objects (`TableDO`, `LobbyDO`), Supabase auth/archive, lazy `src/net/` client chunk reusing `Table`/`ActionBar`, per-slot deck commitment | **Decided** 2026-10-08; 5 open questions for the user (none change the shape) |
-| `heads-up-duplicate-ladder` | Phase 1: `DuplicateController` on the `TableController` seam; grading in the Queue consumer; Glicko-2 | Not started; seams reserved in Phase 0 (see `multiplayer-platform.md` §Durable Objects, §Grading) |
-| `six-max-tables` | Phase 2: same `TableDO`, `n` and `players` already generic; N-seat `Table` component; dead-button rule; `ArenaDO` as a `TableController` | Not started; rule choice recorded: forward-moving button, dead small blind |
+| Slug                        | Description                                                                                                                                                                                                          | Status                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform`      | Phase 0: N-player engine (`src/engine/`), Cloudflare Workers + two Durable Objects (`TableDO`, `LobbyDO`), Supabase auth/archive, lazy `src/net/` client chunk reusing `Table`/`ActionBar`, per-slot deck commitment | **Decided** 2026-10-08; 5 open questions for the user (none change the shape)                     |
+| `heads-up-duplicate-ladder` | Phase 1: `DuplicateController` on the `TableController` seam; grading in the Queue consumer; Glicko-2                                                                                                                | Not started; seams reserved in Phase 0 (see `multiplayer-platform.md` §Durable Objects, §Grading) |
+| `six-max-tables`            | Phase 2: same `TableDO`, `n` and `players` already generic; N-seat `Table` component; dead-button rule; `ArenaDO` as a `TableController`                                                                             | Not started; rule choice recorded: forward-moving button, dead small blind                        |
 
 ## How the Phase 0 design was produced
 

@@ -108,44 +108,71 @@ Decision (handoff Q1): new engine, same style as `poker.ts`. The old `Game` shap
 
 ```ts
 // src/engine/types.ts
-export type SeatId = number                                   // absolute seat 0..5
+export type SeatId = number // absolute seat 0..5
 export type Street = 'preflop' | 'flop' | 'turn' | 'river' | 'showdown'
-export type PlayerAction = { type: 'fold' } | { type: 'check' } | { type: 'call' } | { type: 'raise'; to: number }
+export type PlayerAction =
+  | { type: 'fold' }
+  | { type: 'check' }
+  | { type: 'call' }
+  | { type: 'raise'; to: number }
 export type HandConfig = {
   handNo: number
-  seats: { seat: SeatId; stack: number }[]                    // seated players, ascending seat
+  seats: { seat: SeatId; stack: number }[] // seated players, ascending seat
   button: SeatId
   blinds: { sb: number; bb: number }
 }
 export type SeatState = {
-  seat: SeatId; stack: number; bet: number; invested: number
-  folded: boolean; allIn: boolean; actedSeq: number           // -1 = not acted this street
-  cards: [number, number] | null                              // null only in a redacted view
+  seat: SeatId
+  stack: number
+  bet: number
+  invested: number
+  folded: boolean
+  allIn: boolean
+  actedSeq: number // -1 = not acted this street
+  cards: [number, number] | null // null only in a redacted view
   shown: boolean
 }
 export type HandAction = {
-  seat: SeatId; action: PlayerAction; street: Exclude<Street, 'showdown'>; boardCount: number
-  amount: number; toCall: number; pot: number; canRaise: boolean   // same fields as poker.ts HistoryEntry
+  seat: SeatId
+  action: PlayerAction
+  street: Exclude<Street, 'showdown'>
+  boardCount: number
+  amount: number
+  toCall: number
+  pot: number
+  canRaise: boolean // same fields as poker.ts HistoryEntry
 }
 export type Pot = { amount: number; eligible: SeatId[] }
 export type Award = { pot: number; seat: SeatId; amount: number; score: number }
-export type LegalActions = { seat: SeatId; toCall: number; canCheck: boolean; canRaise: boolean; minRaiseTo: number; maxRaiseTo: number }
+export type LegalActions = {
+  seat: SeatId
+  toCall: number
+  canCheck: boolean
+  canRaise: boolean
+  minRaiseTo: number
+  maxRaiseTo: number
+}
 export type HandState = {
   config: HandConfig
   street: Street
   board: number[]
-  deck: number[]            // all 52 slots; dealt by index, never popped; -1 marks an unknown slot in a review replay
+  deck: number[] // all 52 slots; dealt by index, never popped; -1 marks an unknown slot in a review replay
   players: SeatState[]
   toAct: SeatId | null
-  lastRaise: number         // size of the last full raise this street; bb at street start
-  raiseSeq: number          // incremented by every full raise; a seat may raise iff actedSeq < raiseSeq
+  lastRaise: number // size of the last full raise this street; bb at street start
+  raiseSeq: number // incremented by every full raise; a seat may raise iff actedSeq < raiseSeq
   actions: HandAction[]
-  pots: Pot[]               // rebuilt at every round close
-  result?: { awards: Award[]; netBySeat: Record<SeatId, number>; showdown: boolean }
+  pots: Pot[] // rebuilt at every round close
+  result?: {
+    awards: Award[]
+    netBySeat: Record<SeatId, number>
+    showdown: boolean
+  }
 }
 ```
 
 API (`src/engine/hand.ts`), all pure, `act` clones with `structuredClone` exactly like `poker.ts:296`:
+
 - `startHand(config, deck): HandState`. Deal slots are fixed (`dealSlots(config)` in `deck.ts`): hole cards round-robin, one card per pass, starting at the first seat clockwise from the button (so slot 0 is that seat's first card, slot N is its second), then the board at slots `2N..2N+4`, no burn. Blinds are posted `min(blind, stack)` as `contribute` does today. If posting leaves at most one player not all-in, the hand runs out immediately (mirrors `newHand`'s runout check).
 - `legalActions(state): LegalActions` for `state.toAct`. `toCall = min(currentBet - bet, stack)`; `canCheck = toCall === 0`; `maxRaiseTo = min(bet + stack, max over other non-folded seats of (bet + stack))` (the largest opponent total; raising beyond it is pointless and online rooms cap there; at N=2 this is exactly `poker.ts`'s effective-stack cap, which is why the oracle below asserts full equality of `legalActions`); `canRaise = street !== 'showdown' && maxRaiseTo > currentBet && (actedSeq < raiseSeq)`; `minRaiseTo = min(maxRaiseTo, currentBet + lastRaise)`.
 - `act(state, seat, action): HandState` throws `EngineError` on wrong seat, on anything outside `legalActions`, or on a non-integer raise, leaving the input untouched. Records a `HandAction` with the decision context (`toCall`, `pot`, `canRaise`, `boardCount`) as `poker.ts` does, so Phase 1 grading needs no stored snapshots.
@@ -157,6 +184,7 @@ Positions and blinds (`positions.ts`). N=2: button posts SB, acts first preflop 
 Side pots (`pots.ts`). `buildPots(players)`: levels = ascending distinct `invested` among non-folded seats; for each level, every seat (folded included) contributes `min(invested, level) - min(invested, prevLevel)`; eligibility = non-folded seats with `invested >= level`. `pots[0]` is the main pot. `referencePots` is a chip-by-chip allocator used only as a test oracle. Showdown: `score([...cards, ...board], 7)` per eligible seat per pot; ties split evenly; odd chips go one each to tied winners clockwise starting from the first seat after the button (at N=2 that is the BB, exactly `settle()`'s `game.pot % 2` to `other(game.dealer)`). Award order emitted in `result.awards`: last side pot first, main pot last (dealer procedure; the client animates in that order). Fold-win: no cards revealed. `result.netBySeat[seat] = payout - invested`.
 
 Invariant test plan (`src/engine/engine.test.ts`, seeded with `lcg` from `sim.ts`, same random policy as `poker.test.ts` 'conserves chips and terminates over 500 randomized games': 12% fold, 38% random-size raise when allowed, else check/call; 10k hands per N in CI, 100k with `ENGINE_SOAK=1`; stacks 1..4000 chips so forced short blinds occur):
+
 1. Chip conservation after every `act`: `Σ stack + Σ bet + Σ pots.amount === Σ starting stacks`; after settlement `Σ stack === Σ starting`.
 2. 52 distinct ids across `players[*].cards ∪ board ∪ undealt`; stacks non-negative integers.
 3. Legality: every action the walk takes comes from `legalActions`; additionally a 10% stream of deliberately illegal messages (raise below min/above max, check facing a bet, call with no bet, wrong seat, non-integer) must throw and leave the input `toEqual` its pre-call clone.
@@ -206,11 +234,19 @@ Lifecycle: `POST /init` from the Worker (`{ matchId, config, players: [{ seat, u
 Controller seam (`worker/src/controller.ts`), the Phase 1/2 hook; `TableDO` holds exactly one implementor chosen by `match.kind`:
 
 ```ts
-export type HandPlan = { config: HandConfig; deck: number[]; secret: Uint8Array; revealAt: 'hand' | 'match' }
+export type HandPlan = {
+  config: HandConfig
+  deck: number[]
+  secret: Uint8Array
+  revealAt: 'hand' | 'match'
+}
 export interface TableController {
-  nextHandPlan(handNo: number): Promise<HandPlan | null>      // null = match over
+  nextHandPlan(handNo: number): Promise<HandPlan | null> // null = match over
   onHandEnd(record: HandRecordV1): Promise<void>
-  onSeatEvent(e: { kind: 'disconnect' | 'reconnect' | 'timeout' | 'forfeit'; seat: SeatId }): Promise<void>
+  onSeatEvent(e: {
+    kind: 'disconnect' | 'reconnect' | 'timeout' | 'forfeit'
+    seat: SeatId
+  }): Promise<void>
 }
 ```
 
@@ -227,34 +263,97 @@ JSON text frames, one socket per table (`wss://<api>/ws/table/<matchId>`) and on
 ```ts
 export const PROTOCOL = 'qp.v1'
 export type ClientMsg =
-  | { t: 'act'; reqId: string; handNo: number; actionIndex: number; action: PlayerAction }
+  | {
+      t: 'act'
+      reqId: string
+      handNo: number
+      actionIndex: number
+      action: PlayerAction
+    }
   | { t: 'resync' }
-  | { t: 'queue'; kind: 'hu-casual' } | { t: 'dequeue' }                      // lobby socket
-export type ErrorCode = 'not_your_turn' | 'illegal' | 'stale' | 'rate_limited' | 'replaced' | 'halted' | 'unauthorized'
+  | { t: 'queue'; kind: 'hu-casual' }
+  | { t: 'dequeue' } // lobby socket
+export type ErrorCode =
+  | 'not_your_turn'
+  | 'illegal'
+  | 'stale'
+  | 'rate_limited'
+  | 'replaced'
+  | 'halted'
+  | 'unauthorized'
 export type ServerMsg = { seq: number; matchId: string } & (
-  | { t: 'welcome'; seat: SeatId; view: SeatView; serverNow: number }         // on every (re)connect; also the resync reply
-  | { t: 'state'; view: SeatView; serverNow: number }                         // after every change
-  | { t: 'hand_start'; handNo: number; commitment: string; button: SeatId; blinds: { sb: number; bb: number }; stacks: number[] }
-  | { t: 'hand_end'; handNo: number; record: HandRecordV1 }                   // after settlement only; no deck
-  | { t: 'reveal'; handNo: number; leaves: string; slots: { slot: number; card: number; salt: string }[] }
-  | { t: 'match_end'; result: { netBySeat: Record<SeatId, number>; reason: 'complete' | 'forfeit' | 'no_show' | 'engine_fault'; forfeit?: SeatId } }
-  | { t: 'error'; code: ErrorCode; reqId?: string; message: string })
+  | { t: 'welcome'; seat: SeatId; view: SeatView; serverNow: number } // on every (re)connect; also the resync reply
+  | { t: 'state'; view: SeatView; serverNow: number } // after every change
+  | {
+      t: 'hand_start'
+      handNo: number
+      commitment: string
+      button: SeatId
+      blinds: { sb: number; bb: number }
+      stacks: number[]
+    }
+  | { t: 'hand_end'; handNo: number; record: HandRecordV1 } // after settlement only; no deck
+  | {
+      t: 'reveal'
+      handNo: number
+      leaves: string
+      slots: { slot: number; card: number; salt: string }[]
+    }
+  | {
+      t: 'match_end'
+      result: {
+        netBySeat: Record<SeatId, number>
+        reason: 'complete' | 'forfeit' | 'no_show' | 'engine_fault'
+        forfeit?: SeatId
+      }
+    }
+  | { t: 'error'; code: ErrorCode; reqId?: string; message: string }
+)
 export type LobbyMsg = { seq: number } & (
-  | { t: 'queued'; position: number; since: number } | { t: 'matched'; matchId: string } | { t: 'presence'; online: number; queued: number })
+  | { t: 'queued'; position: number; since: number }
+  | { t: 'matched'; matchId: string }
+  | { t: 'presence'; online: number; queued: number }
+)
 
 export type SeatView = {
-  matchId: string; handNo: number; you: SeatId; button: SeatId; street: Street; board: number[]
-  commitment: string | null                                                    // current hand's deck commitment; null between hands (so a reconnect that only sees `welcome` can still verify the reveal)
-  match: { kind: 'hu-casual'; status: 'waiting' | 'playing' | 'finished'; handsTotal: number
-           players: { seat: SeatId; username: string; connected: boolean; consecutiveTimeouts: number }[] }
+  matchId: string
+  handNo: number
+  you: SeatId
+  button: SeatId
+  street: Street
+  board: number[]
+  commitment: string | null // current hand's deck commitment; null between hands (so a reconnect that only sees `welcome` can still verify the reveal)
+  match: {
+    kind: 'hu-casual'
+    status: 'waiting' | 'playing' | 'finished'
+    handsTotal: number
+    players: {
+      seat: SeatId
+      username: string
+      connected: boolean
+      consecutiveTimeouts: number
+    }[]
+  }
   pot: { total: number; layers: Pot[] }
   toAct: SeatId | null
-  legal: LegalActions | null                                                   // only when toAct === you
-  clock: { deadline: number; bankMs: number } | null                           // server epoch ms
-  players: { seat: SeatId; stack: number; bet: number; invested: number; folded: boolean; allIn: boolean
-             cards: [number, number] | null; shown: boolean }[]
+  legal: LegalActions | null // only when toAct === you
+  clock: { deadline: number; bankMs: number } | null // server epoch ms
+  players: {
+    seat: SeatId
+    stack: number
+    bet: number
+    invested: number
+    folded: boolean
+    allIn: boolean
+    cards: [number, number] | null
+    shown: boolean
+  }[]
   lastReqId: string | null
-  result?: { awards: Award[]; netBySeat: Record<SeatId, number>; showdown: boolean }
+  result?: {
+    awards: Award[]
+    netBySeat: Record<SeatId, number>
+    showdown: boolean
+  }
 }
 ```
 
@@ -271,11 +370,20 @@ Client (`src/net/supabase.ts`, inside the lazy chunk): `createClient(import.meta
 Worker (`worker/src/auth.ts`):
 
 ```ts
-const JWKS = createRemoteJWKSet(new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`))  // module scope: fetches lazily, allowed
-export async function verifySupabaseJwt(token: string, env: Env): Promise<{ userId: string }> {
-  if (env.DEV_AUTH_SECRET && token.startsWith('dev:')) { /* dev:<userId>:<secret> */ }
+const JWKS = createRemoteJWKSet(
+  new URL(`${SUPABASE_URL}/auth/v1/.well-known/jwks.json`),
+) // module scope: fetches lazily, allowed
+export async function verifySupabaseJwt(
+  token: string,
+  env: Env,
+): Promise<{ userId: string }> {
+  if (env.DEV_AUTH_SECRET && token.startsWith('dev:')) {
+    /* dev:<userId>:<secret> */
+  }
   const { payload } = await jwtVerify(token, JWKS, {
-    issuer: `${env.SUPABASE_URL}/auth/v1`, audience: 'authenticated', algorithms: ['ES256'],
+    issuer: `${env.SUPABASE_URL}/auth/v1`,
+    audience: 'authenticated',
+    algorithms: ['ES256'],
   })
   return { userId: payload.sub! }
 }
@@ -354,12 +462,13 @@ Hand record (`HandRecordV1`, public): `{ v: 1, matchId, handNo, segment, config:
 Shuffle (`worker/src/shuffle.ts`): `randomInt(n)` draws a `Uint32` from `crypto.getRandomValues`, rejects values `>= 2**32 - (2**32 % n)`, returns `x % n`; `shuffleWith(randomInt)` in `src/engine/deck.ts` is Fisher–Yates over the 52 ids. The engine never shuffles and never calls an RNG; tests build decks with `shuffleWith(lcgInt(seed))`. `Math.random` is lint-banned under `worker/` and `src/engine/`.
 
 Commitment (`src/engine/deck.ts`, Web Crypto only, so the same code verifies in the browser and in the queue consumer):
+
 - `handSecret` = 32 random bytes per hand (`crypto.getRandomValues`), stored in `deck:<handNo>` and later `hands_private.secret`.
 - `salt_i = HMAC-SHA256(handSecret, uint8(i))[0..16]` (`crypto.subtle.importKey('raw', …, { name: 'HMAC', hash: 'SHA-256' })` + `sign`); HMAC is a PRF, so revealing some salts says nothing about the others.
 - `leaf_i = sha256(salt_i ‖ uint8(card_i))`, `commitment = hex(sha256(leaf_0 ‖ … ‖ leaf_51))`.
 - `hand_start` carries `commitment` before any `state` frame carries a card. After settlement, `reveal` carries `leaves` (base64, 1,664 bytes) and `slots: [{ slot, card, salt }]` for the board slots and the hole slots of seats with `shown = true`. `verifyReveal(commitment, leaves, slots)` recomputes `sha256(leaves) === commitment` and `sha256(salt ‖ card) === leaves[slot]` per revealed slot; `dealSlots(config)` says which slot each visible card must have come from, so the review view shows "Deck verified" when the dealt cards match the committed slots.
 - Why per-slot instead of one hash over the whole deck: a whole-deck reveal with a documented deal order publishes every folded seat's hole cards, which breaks the PM rule "review only reveals cards shown at showdown; never ship unshown cards to any client" (all three candidate designs had this flaw). Per-slot keeps the fairness proof (a re-deal after commitment is detectable) without the leak, and the Fair Play page will say what it does not prove (a biased shuffle). Undealt slots are never revealed.
-- Duplicate (Phase 1): segment 2 reuses `deck:<n>` with the button swapped but a **new** `handSecret`; with the same secret the identical commitment would let a player map segment-2 hand *i* to segment-1 hand *i* before seeing a card. The remaining memory effect (a shown hand's board recurs) is inherent to the format and recorded in the Phase 1 hand-off. `HandPlan.revealAt: 'match'` is kept as the switch for batching segment-1 reveals to match end if the PM wants it; the default is `'hand'`.
+- Duplicate (Phase 1): segment 2 reuses `deck:<n>` with the button swapped but a **new** `handSecret`; with the same secret the identical commitment would let a player map segment-2 hand _i_ to segment-1 hand _i_ before seeing a card. The remaining memory effect (a shown hand's board recurs) is inherent to the format and recorded in the Phase 1 hand-off. `HandPlan.revealAt: 'match'` is kept as the switch for batching segment-1 reveals to match end if the PM wants it; the default is `'hand'`.
 
 Trainer determinism is untouched: `src/lib/random.ts` (`seedRandom`, `lcg`) and `src/env.ts` (`?seed=`) still drive `newHand`/`atlasDecision`; `e2e/motion.spec.ts` (`/?seed=3`) and `e2e/visual.spec.ts` keep passing because the live chunk never deals. `?seed` has no effect on networked tables by construction; `?motion=off` only affects the `motionOff` render flag.
 
@@ -391,21 +500,21 @@ Invite by link (`POST /api/matches` → `{ matchId }`; the creator is seat 0, th
 
 ## Failure modes (table)
 
-| Failure | Detection | Handling |
-| --- | --- | --- |
-| Client socket drops mid-hand (Wi-Fi, mobile background tab) | `webSocketClose`/`webSocketError` in `TableDO`; `onclose` on the client | Seat is bound to the `userId` for the match; the turn clock keeps running (bank first, then auto-check/fold through `applyAction(…, 'timeout')`); client reconnects with backoff and a fresh token and receives `welcome` with the full view; 3 consecutive timeouts → `match_end { reason: 'forfeit' }` + `abandonments.timeout_x3` |
-| `TableDO` evicted, hibernated or redeployed mid-hand | Constructor runs; `blockConcurrencyWhile(load)` finds `hand` in storage | `match`, `hand` (with deck), `seq`, `deadlines`, `lastAck`, `timing` were written atomically after every action; hibernated sockets reattach with their `{ userId, seat }` attachment; the pending alarm persists; if a deploy closed the sockets, clients reconnect and resync. `worker/test/restore.test.ts` evicts and recreates the DO between two actions and asserts identical per-seat views |
-| Duplicate, stale or racing `act` (double click, two tabs, retry after reconnect) | `reqId === lastAck[seat].reqId`, or `actionIndex !== hand.actions.length`, or `seat !== toAct` | Known `reqId` → re-send the acknowledging `state`; stale index → `error stale` + snapshot; wrong seat → `error not_your_turn`; a second socket per `userId` replaces the first (`4001`), so two tabs cannot act twice |
-| Malformed or illegal frame from a tampered client | `parseClientMsg` returns null, or `act()` throws `EngineError` | `error illegal` to that socket only, no state change, counter++; >5 per hand → close `4400`, seat keeps reconnect rights; logged with `userId` for integrity v2 |
-| Engine invariant violation at runtime | `assertInvariants` throws after `act`, before the write | Transition not persisted; `halt()` voids the hand, resets stacks to hand start, sends `match_end { reason: 'engine_fault' }`, writes an `incidents` row with the full state through the outbox; loud, never a wrong payout (the PM's 0-failure metric stays honest) |
-| Alarm fires late, twice, or for a turn that already ended | `alarm()` compares each `Deadline` with current `handNo`/`actionIndex`/`toAct` and `now` | Stale entries dropped, due entries applied through the idempotent path, alarm re-armed to the next minimum; handler never throws so the platform retry budget is not consumed |
-| Supabase unreachable or `record_hand` fails | Non-2xx/throw in `worker/src/supabase.ts`; `outbox:<n>.attempts` grows | Row stays in the outbox and is retried from the `outbox` deadline with backoff; play continues; `record_hand` is idempotent on `hands.id`; a Workers Logs alert on `outbox depth > 20` and `hands.verified` staying false make it visible |
-| JWT rejected at upgrade (expired, skew, key rotation) | `jwtVerify` throws in the Worker → 401 JSON | Client calls `supabase.auth.refreshSession()` once and retries, then shows sign-in; jose refetches the JWKS on unknown `kid`; open sockets are unaffected |
-| Protocol version skew after a deploy | Upgrade without `qp.v1` → HTTP 426 | Client shows "new version, reload" and hard-reloads; the Worker keeps accepting the previous version for one release; seats keep their reconnect rights so a reload does not forfeit a hand |
-| Clock skew between server deadline and client render | `serverNow` in every frame vs `Date.now()` | Client keeps `clockOffsetMs` and renders with it; the server is the only authority; the UI shows 0 one second before the real deadline |
-| Opponent never shows up / both disconnected / orphaned table | `start` deadline (30 s) with a missing socket; `idle` (10 min) with no sockets | `start`: void the unstarted table, `abandonments.no_show`, lobby re-queues the present player at the head; `idle`: finish recording, `LOBBY./release`, `deleteAll()` once the outbox is empty |
-| `LobbyDO` evicted while players wait | Constructor runs with attached sockets | `queue:<uid>` rows are persisted; on wake rows without a socket are dropped and the rest keep their `since` order; `/api/matches` and open tables never depend on the lobby |
-| Hole-card leak regression in a refactor | `redact.test.ts` allowlist + permutation; `worker/test/leak.test.ts` over two sockets | CI fails; redaction lives in one function every broadcast passes through |
+| Failure                                                                          | Detection                                                                                      | Handling                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client socket drops mid-hand (Wi-Fi, mobile background tab)                      | `webSocketClose`/`webSocketError` in `TableDO`; `onclose` on the client                        | Seat is bound to the `userId` for the match; the turn clock keeps running (bank first, then auto-check/fold through `applyAction(…, 'timeout')`); client reconnects with backoff and a fresh token and receives `welcome` with the full view; 3 consecutive timeouts → `match_end { reason: 'forfeit' }` + `abandonments.timeout_x3`                                                                |
+| `TableDO` evicted, hibernated or redeployed mid-hand                             | Constructor runs; `blockConcurrencyWhile(load)` finds `hand` in storage                        | `match`, `hand` (with deck), `seq`, `deadlines`, `lastAck`, `timing` were written atomically after every action; hibernated sockets reattach with their `{ userId, seat }` attachment; the pending alarm persists; if a deploy closed the sockets, clients reconnect and resync. `worker/test/restore.test.ts` evicts and recreates the DO between two actions and asserts identical per-seat views |
+| Duplicate, stale or racing `act` (double click, two tabs, retry after reconnect) | `reqId === lastAck[seat].reqId`, or `actionIndex !== hand.actions.length`, or `seat !== toAct` | Known `reqId` → re-send the acknowledging `state`; stale index → `error stale` + snapshot; wrong seat → `error not_your_turn`; a second socket per `userId` replaces the first (`4001`), so two tabs cannot act twice                                                                                                                                                                               |
+| Malformed or illegal frame from a tampered client                                | `parseClientMsg` returns null, or `act()` throws `EngineError`                                 | `error illegal` to that socket only, no state change, counter++; >5 per hand → close `4400`, seat keeps reconnect rights; logged with `userId` for integrity v2                                                                                                                                                                                                                                     |
+| Engine invariant violation at runtime                                            | `assertInvariants` throws after `act`, before the write                                        | Transition not persisted; `halt()` voids the hand, resets stacks to hand start, sends `match_end { reason: 'engine_fault' }`, writes an `incidents` row with the full state through the outbox; loud, never a wrong payout (the PM's 0-failure metric stays honest)                                                                                                                                 |
+| Alarm fires late, twice, or for a turn that already ended                        | `alarm()` compares each `Deadline` with current `handNo`/`actionIndex`/`toAct` and `now`       | Stale entries dropped, due entries applied through the idempotent path, alarm re-armed to the next minimum; handler never throws so the platform retry budget is not consumed                                                                                                                                                                                                                       |
+| Supabase unreachable or `record_hand` fails                                      | Non-2xx/throw in `worker/src/supabase.ts`; `outbox:<n>.attempts` grows                         | Row stays in the outbox and is retried from the `outbox` deadline with backoff; play continues; `record_hand` is idempotent on `hands.id`; a Workers Logs alert on `outbox depth > 20` and `hands.verified` staying false make it visible                                                                                                                                                           |
+| JWT rejected at upgrade (expired, skew, key rotation)                            | `jwtVerify` throws in the Worker → 401 JSON                                                    | Client calls `supabase.auth.refreshSession()` once and retries, then shows sign-in; jose refetches the JWKS on unknown `kid`; open sockets are unaffected                                                                                                                                                                                                                                           |
+| Protocol version skew after a deploy                                             | Upgrade without `qp.v1` → HTTP 426                                                             | Client shows "new version, reload" and hard-reloads; the Worker keeps accepting the previous version for one release; seats keep their reconnect rights so a reload does not forfeit a hand                                                                                                                                                                                                         |
+| Clock skew between server deadline and client render                             | `serverNow` in every frame vs `Date.now()`                                                     | Client keeps `clockOffsetMs` and renders with it; the server is the only authority; the UI shows 0 one second before the real deadline                                                                                                                                                                                                                                                              |
+| Opponent never shows up / both disconnected / orphaned table                     | `start` deadline (30 s) with a missing socket; `idle` (10 min) with no sockets                 | `start`: void the unstarted table, `abandonments.no_show`, lobby re-queues the present player at the head; `idle`: finish recording, `LOBBY./release`, `deleteAll()` once the outbox is empty                                                                                                                                                                                                       |
+| `LobbyDO` evicted while players wait                                             | Constructor runs with attached sockets                                                         | `queue:<uid>` rows are persisted; on wake rows without a socket are dropped and the rest keep their `since` order; `/api/matches` and open tables never depend on the lobby                                                                                                                                                                                                                         |
+| Hole-card leak regression in a refactor                                          | `redact.test.ts` allowlist + permutation; `worker/test/leak.test.ts` over two sockets          | CI fails; redaction lives in one function every broadcast passes through                                                                                                                                                                                                                                                                                                                            |
 
 ## Local development, testing and CI (wrangler, vitest-pool-workers/miniflare, Playwright with two clients, GitHub Actions changes, deploy steps for Workers/Vercel/Supabase)
 
@@ -417,7 +526,13 @@ Tests. Engine, shared and `src/net` unit tests run in the existing root Vitest (
 import { defineConfig } from 'vitest/config'
 import { cloudflareTest } from '@cloudflare/vitest-plugin'
 export default defineConfig({
-  plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' }, miniflare: { bindings: { DEV_AUTH_SECRET: 'test', SUPABASE_URL: '' } }, isolatedStorage: false })],
+  plugins: [
+    cloudflareTest({
+      wrangler: { configPath: './wrangler.jsonc' },
+      miniflare: { bindings: { DEV_AUTH_SECRET: 'test', SUPABASE_URL: '' } },
+      isolatedStorage: false,
+    }),
+  ],
   test: { include: ['test/**/*.test.ts'], maxWorkers: 1 },
 })
 ```
@@ -430,37 +545,38 @@ CI (`.github/workflows/ci.yml`): `check` adds `npm run typecheck:worker` and `np
 
 ## Migration path (ordered, each step shippable, with a rough day count totalling 2-3 weeks)
 
-| Step | Days | Deliverable (shippable at the end of the step) |
-| --- | --- | --- |
-| 1 Engine | 1–4 | `src/engine/` complete with `engine.test.ts`, `differential.test.ts`, `redact.test.ts`, `project.ts` + grading-equality test; `src/shared/protocol.ts` with the fuzzed validator; `src/lib/presets.ts` extracted. User-invisible; `npm test` grows. |
-| 2 Accounts | 5 | `0001`–`0003` migrations pushed; Google/GitHub OAuth and magic link enabled with redirect URLs; `src/net/supabase.ts`, `AuthGate`, `#lobby` route (sign-in + username) as a lazy chunk; `check-bundle.mjs` guard; Vercel env vars; deployed. Verify the access-token `alg` is ES256. |
-| 3 Table service | 6–8 | `worker/` skeleton: `wrangler.jsonc`, `auth.ts`, `TableDO` with `/init`, hibernating sockets, `welcome`/`state`, `act` through the engine, atomic persistence, `LocalController`, `POST /api/matches`; `hand.test.ts`, `leak.test.ts`, `restore.test.ts`; `wrangler deploy` to workers.dev. |
-| 4 Live table | 9–10 | `client.ts`, `store.ts`, `LiveTable.tsx`, `TurnClock.tsx`, the four additive props, `#play/<id>` with the share link. **Milestone (day 10): two browsers play a full 20-hand HU match through the deployed Worker and the Vercel build.** |
-| 5 Clocks, commitment, records | 11–12 | `deadlines.ts`, turn clock + bank + auto-action + forfeit; CSPRNG shuffle, `commitDeck`, `hand_start`/`reveal`; outbox + `record_hand`; `ReviewLive.tsx` with `replayHand` and "Deck verified"; `alarm.test.ts`, `outbox.test.ts`. |
-| 6 Lobby | 13–14 | `LobbyDO` (persisted queue, pairing, limiter, active map, presence, release, no-show), lobby UI with the three cards and the wait/bail-out flow; `lobby.test.ts`; `/api/me`. |
-| 7 Hardening, CI, launch | 15 | `HAND_QUEUE` + verify consumer + DLQ consumer; `bench.test.ts`; `e2e/live.spec.ts` with the second webServer; `typecheck:worker`, `worker:test`, `deploy-worker.yml`, `engine-soak.yml`; Origin allowlist; Workers Logs on; 20-client `scripts/smoke-ws.mjs` (Node `ws`, 500 hands against production, prints ack p95); Fair Play stub, "play money only" ToS copy, README section, Phase 1 hand-off notes. |
-| Reserve | 16–18 | Unplanned platform friction (the day-5 key check, the vitest plugin, DO semantics). Not scheduled work. |
+| Step                          | Days  | Deliverable (shippable at the end of the step)                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 Engine                      | 1–4   | `src/engine/` complete with `engine.test.ts`, `differential.test.ts`, `redact.test.ts`, `project.ts` + grading-equality test; `src/shared/protocol.ts` with the fuzzed validator; `src/lib/presets.ts` extracted. User-invisible; `npm test` grows.                                                                                                                                                         |
+| 2 Accounts                    | 5     | `0001`–`0003` migrations pushed; Google/GitHub OAuth and magic link enabled with redirect URLs; `src/net/supabase.ts`, `AuthGate`, `#lobby` route (sign-in + username) as a lazy chunk; `check-bundle.mjs` guard; Vercel env vars; deployed. Verify the access-token `alg` is ES256.                                                                                                                        |
+| 3 Table service               | 6–8   | `worker/` skeleton: `wrangler.jsonc`, `auth.ts`, `TableDO` with `/init`, hibernating sockets, `welcome`/`state`, `act` through the engine, atomic persistence, `LocalController`, `POST /api/matches`; `hand.test.ts`, `leak.test.ts`, `restore.test.ts`; `wrangler deploy` to workers.dev.                                                                                                                 |
+| 4 Live table                  | 9–10  | `client.ts`, `store.ts`, `LiveTable.tsx`, `TurnClock.tsx`, the four additive props, `#play/<id>` with the share link. **Milestone (day 10): two browsers play a full 20-hand HU match through the deployed Worker and the Vercel build.**                                                                                                                                                                   |
+| 5 Clocks, commitment, records | 11–12 | `deadlines.ts`, turn clock + bank + auto-action + forfeit; CSPRNG shuffle, `commitDeck`, `hand_start`/`reveal`; outbox + `record_hand`; `ReviewLive.tsx` with `replayHand` and "Deck verified"; `alarm.test.ts`, `outbox.test.ts`.                                                                                                                                                                          |
+| 6 Lobby                       | 13–14 | `LobbyDO` (persisted queue, pairing, limiter, active map, presence, release, no-show), lobby UI with the three cards and the wait/bail-out flow; `lobby.test.ts`; `/api/me`.                                                                                                                                                                                                                                |
+| 7 Hardening, CI, launch       | 15    | `HAND_QUEUE` + verify consumer + DLQ consumer; `bench.test.ts`; `e2e/live.spec.ts` with the second webServer; `typecheck:worker`, `worker:test`, `deploy-worker.yml`, `engine-soak.yml`; Origin allowlist; Workers Logs on; 20-client `scripts/smoke-ws.mjs` (Node `ws`, 500 hands against production, prints ack p95); Fair Play stub, "play money only" ToS copy, README section, Phase 1 hand-off notes. |
+| Reserve                       | 16–18 | Unplanned platform friction (the day-5 key check, the vitest plugin, DO semantics). Not scheduled work.                                                                                                                                                                                                                                                                                                     |
 
 Total: 15 working days of planned work (3 weeks), 3 days of reserve. The two-browser milestone lands before the lobby, the clock or the commitment so a slip in those does not move it.
 
 ## Verified assumptions and corrections (list each claim, verdict, and what changed in the design because of it)
 
-| # | Claim (winner design) | Verdict | Design change |
-| --- | --- | --- | --- |
-| 1 | SQLite DOs, hibernation API, alarms available on Workers Paid; hibernated sockets not billed | **Stands.** Also true on Free (SQLite-only there); Paid buys limits and the 30 s CPU budget. Limits: 10 tags/socket, 16 KB attachment, 2 KB auto-response strings, 2 MB KV key+value, 128 keys per `put`, `blockConcurrencyWhile` 30 s, alarm retry only on throw (max 6), alarms can be a minute late. | Plan: Workers Paid. `alarm()` never throws; deadline checks tolerate late delivery; attachment holds identity only; one multi-key `put` per action (≤ 128 keys). "Hibernated = free" holds between hands, not during a hand with a live clock, so cost is pinned to hands/day, not concurrency. |
-| 2 | Queues included on Paid; 30 s CPU per invocation; `cpu_ms` raisable | **Stands** with precision: the CPU limit is per invocation = per batch; ops are billed per message (~3 each); `limits.cpu_ms` is Worker-wide; a DLQ with no consumer discards after 4 days. | `max_batch_size: 1` for `quantpoker-hands`; a DLQ consumer that writes `incidents`; `cpu_ms` left at default. |
-| 3 | `sim/range/grading/model/atlas` and `src/engine` run under workerd with `nodejs_compat` | **Stands**; measured under real workerd in a Worker and a DO with `compatibilityFlags: []`. `nodejs_compat` is not what makes them run; `poker.ts:296` is the only `structuredClone`; `sim.ts` scratch buffers are safe only because `score()` never awaits. | No `compatibility_flags`; `compatibility_date` 2026-09-01; `src/engine` written to the same no-globals discipline and lint-banned from `Math.random`/timers; never `await` inside the evaluator hot path. |
-| 4 | Supabase signs with HS256 secret or exposes JWKS for ES256/RS256; jose runs in workerd | **Stands via the JWKS branch only.** Live JWKS has one ES256 key; Supabase discourages HS256 verification; jose v6 verified under workerd without `nodejs_compat`. The two lenses disagreed on keeping an HS256 fallback; I re-fetched the JWKS (one ES256 key, `kid 146bb67a…`) and side with dropping it: the residual uncertainty is only whether that key is current or standby, and the remedy is rotation on the Supabase side, not a shared secret in the Worker. | ES256-only `jwtVerify` with `algorithms: ['ES256']`, `issuer`, `audience`; no `SUPABASE_JWT_SECRET`; day-5 checklist: decode a real token's header and rotate on the dashboard if it is HS256. |
-| 5 | `analyzeSpot` < 500 ms CPU per decision; one hand per queue invocation; "5× worse → per-decision messages" | **Stands** on the number (max observed ≈ 200 ms); the surrounding budget was wrong: the limit is per batch, and `performance.now()` is frozen in deployed Workers. | `max_batch_size: 1` is the knob, not per-decision messages; `bench.test.ts` runs in Node with `process.cpuUsage()` on cold boards and records the one-time preflop table cost. |
-| 6 | `@cloudflare/vitest-pool-workers` works with Vitest 4; fallback ≈ 1 day | **Refuted as written.** The package is deprecated and its `./config` export is gone; `@cloudflare/vitest-plugin` works with vitest 4.1.11 (verified end-to-end). A fresh `npm install` of vitest 4.1.11 in a second package crashes npm's arborist. | Use `@cloudflare/vitest-plugin` with `cloudflareTest`; `isolatedStorage: false` for socket tests; no dynamic `import()` in DO handlers; `worker/` has no `package.json` (root install only); no Vitest 5. |
-| 7 | Wrangler bundles `../../src/engine`; root `tsc -b` ignores `worker/`; bundle budget unaffected | **Stands** (dry-run bundle contained the engine; root build and `check-bundle` unchanged at 140.9 kB). Adjacent facts: root Vitest collects `worker/**/*.test.ts`; `eslint .` lints `worker/` including emitted JS; a worker tsconfig with `lib: ["ES2022"]` and no runtime types fails on `structuredClone`. | `test.exclude: ['worker/**']`; eslint `ignores` for `worker/.wrangler`, `worker/dist*`; `worker/tsconfig.json` uses `types: ["./worker-configuration.d.ts"]` from `wrangler types` and a CI `typecheck:worker` step. |
-| 8 | < $15/month at 300 players; Supabase free for 90 days; Pro only beyond ~100k rows | **Stands at 1k hands/day**, but the load profile was inconsistent (dozens concurrent for hours is 2–4k hands/day) and `LobbyDO` as designed would either lose its queue or stay awake 24/7. ~1.9 KB record measured; 500 MB ≈ 110k rows at ~4 KB with leaves. | Queue persisted in storage, no idle alarm, so the lobby hibernates; hand rows carry no deck (it lives in `hands_private`, same size budget); instrument hands/day from day one; expect Supabase Pro around day 100 at 1k hands/day, earlier if volume is higher; Vercel Hobby is non-commercial-use only. |
+| #   | Claim (winner design)                                                                                      | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Design change                                                                                                                                                                                                                                                                                             |
+| --- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | SQLite DOs, hibernation API, alarms available on Workers Paid; hibernated sockets not billed               | **Stands.** Also true on Free (SQLite-only there); Paid buys limits and the 30 s CPU budget. Limits: 10 tags/socket, 16 KB attachment, 2 KB auto-response strings, 2 MB KV key+value, 128 keys per `put`, `blockConcurrencyWhile` 30 s, alarm retry only on throw (max 6), alarms can be a minute late.                                                                                                                                                                  | Plan: Workers Paid. `alarm()` never throws; deadline checks tolerate late delivery; attachment holds identity only; one multi-key `put` per action (≤ 128 keys). "Hibernated = free" holds between hands, not during a hand with a live clock, so cost is pinned to hands/day, not concurrency.           |
+| 2   | Queues included on Paid; 30 s CPU per invocation; `cpu_ms` raisable                                        | **Stands** with precision: the CPU limit is per invocation = per batch; ops are billed per message (~3 each); `limits.cpu_ms` is Worker-wide; a DLQ with no consumer discards after 4 days.                                                                                                                                                                                                                                                                              | `max_batch_size: 1` for `quantpoker-hands`; a DLQ consumer that writes `incidents`; `cpu_ms` left at default.                                                                                                                                                                                             |
+| 3   | `sim/range/grading/model/atlas` and `src/engine` run under workerd with `nodejs_compat`                    | **Stands**; measured under real workerd in a Worker and a DO with `compatibilityFlags: []`. `nodejs_compat` is not what makes them run; `poker.ts:296` is the only `structuredClone`; `sim.ts` scratch buffers are safe only because `score()` never awaits.                                                                                                                                                                                                             | No `compatibility_flags`; `compatibility_date` 2026-09-01; `src/engine` written to the same no-globals discipline and lint-banned from `Math.random`/timers; never `await` inside the evaluator hot path.                                                                                                 |
+| 4   | Supabase signs with HS256 secret or exposes JWKS for ES256/RS256; jose runs in workerd                     | **Stands via the JWKS branch only.** Live JWKS has one ES256 key; Supabase discourages HS256 verification; jose v6 verified under workerd without `nodejs_compat`. The two lenses disagreed on keeping an HS256 fallback; I re-fetched the JWKS (one ES256 key, `kid 146bb67a…`) and side with dropping it: the residual uncertainty is only whether that key is current or standby, and the remedy is rotation on the Supabase side, not a shared secret in the Worker. | ES256-only `jwtVerify` with `algorithms: ['ES256']`, `issuer`, `audience`; no `SUPABASE_JWT_SECRET`; day-5 checklist: decode a real token's header and rotate on the dashboard if it is HS256.                                                                                                            |
+| 5   | `analyzeSpot` < 500 ms CPU per decision; one hand per queue invocation; "5× worse → per-decision messages" | **Stands** on the number (max observed ≈ 200 ms); the surrounding budget was wrong: the limit is per batch, and `performance.now()` is frozen in deployed Workers.                                                                                                                                                                                                                                                                                                       | `max_batch_size: 1` is the knob, not per-decision messages; `bench.test.ts` runs in Node with `process.cpuUsage()` on cold boards and records the one-time preflop table cost.                                                                                                                            |
+| 6   | `@cloudflare/vitest-pool-workers` works with Vitest 4; fallback ≈ 1 day                                    | **Refuted as written.** The package is deprecated and its `./config` export is gone; `@cloudflare/vitest-plugin` works with vitest 4.1.11 (verified end-to-end). A fresh `npm install` of vitest 4.1.11 in a second package crashes npm's arborist.                                                                                                                                                                                                                      | Use `@cloudflare/vitest-plugin` with `cloudflareTest`; `isolatedStorage: false` for socket tests; no dynamic `import()` in DO handlers; `worker/` has no `package.json` (root install only); no Vitest 5.                                                                                                 |
+| 7   | Wrangler bundles `../../src/engine`; root `tsc -b` ignores `worker/`; bundle budget unaffected             | **Stands** (dry-run bundle contained the engine; root build and `check-bundle` unchanged at 140.9 kB). Adjacent facts: root Vitest collects `worker/**/*.test.ts`; `eslint .` lints `worker/` including emitted JS; a worker tsconfig with `lib: ["ES2022"]` and no runtime types fails on `structuredClone`.                                                                                                                                                            | `test.exclude: ['worker/**']`; eslint `ignores` for `worker/.wrangler`, `worker/dist*`; `worker/tsconfig.json` uses `types: ["./worker-configuration.d.ts"]` from `wrangler types` and a CI `typecheck:worker` step.                                                                                      |
+| 8   | < $15/month at 300 players; Supabase free for 90 days; Pro only beyond ~100k rows                          | **Stands at 1k hands/day**, but the load profile was inconsistent (dozens concurrent for hours is 2–4k hands/day) and `LobbyDO` as designed would either lose its queue or stay awake 24/7. ~1.9 KB record measured; 500 MB ≈ 110k rows at ~4 KB with leaves.                                                                                                                                                                                                            | Queue persisted in storage, no idle alarm, so the lobby hibernates; hand rows carry no deck (it lives in `hands_private`, same size budget); instrument hands/day from day one; expect Supabase Pro around day 100 at 1k hands/day, earlier if volume is higher; Vercel Hobby is non-commercial-use only. |
 
 ## Risks and open questions (only ones the user must answer; everything else decide)
 
 Risks owned by the design: engine correctness is the critical path (mitigated by the invariant suite before any UI, the N=2 oracle and the runtime halt); `toHeroGame` is a deliberate crutch that Phase 2 must retire with an N-seat `Table` (about a week, deferred not removed), and until then a human opponent is rendered with Atlas's drawn avatar and thinking ring (`AtlasAvatar.tsx`) under their own name — accepted Phase 0 cosmetic debt, to be replaced by a generic seat plate in step 4 only if it costs under half a day; players outside US-East see higher latency (one region is the PM's scope); DO hibernation/alarm semantics are new to the builder (the restore and alarm tests are the spike, scheduled on days 6–8); a corporate proxy that blocks WebSockets blocks play (no fallback transport); lobby polish is the most likely slip (it is three cards and ships after the milestone).
 
 Questions for the user:
+
 1. **Commitment scheme confirmation.** Per-slot commitment with partial reveal is chosen because full-deck reveal exposes every folded hand (contradicting `integrity-and-trust.md`'s "never ship unshown cards"). If you prefer the simpler full-deck reveal, say so and the PM must amend that rule; the code change is small either way, but it changes what `reveal` and `hands` carry, so it must be settled before day 11.
 2. **Invite-by-link visibility.** It ships as the test harness regardless; should the lobby show "Play a friend by link" to users (my default: yes, secondary action) or hide it until the PM decides on private tables?
 3. **Domain.** `api.<domain>` and the Vercel custom domain need the domain name; until then the Worker runs at `quantpoker-api.<account>.workers.dev` and `ALLOWED_ORIGINS` lists `quantpoker.vercel.app`. Also confirms the public-profile URL for Phase 1.

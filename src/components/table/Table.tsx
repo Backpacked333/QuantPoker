@@ -13,6 +13,7 @@ import { AnimatedNumber } from '../AnimatedNumber'
 import { ChipPile } from './ChipPile'
 import { PlayingCard } from '../PlayingCard'
 import type { Bubble } from '../../state/trainer'
+import { AtlasAvatar } from './AtlasAvatar'
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 
@@ -220,6 +221,12 @@ export function Table({
       <div className={`stage ${result ? 'stage-done' : ''}`}>
         <div className="felt" aria-hidden>
           <div className="felt-ring" />
+          {result && result.winner !== 'tie' && (
+            <div
+              key={`spot-${game.id}`}
+              className={`spotlight spot-${result.winner === 0 ? 'hero' : 'atlas'}`}
+            />
+          )}
           <span className="felt-mark">
             <Spade size={12} fill="currentColor" /> QUANTPOKER
           </span>
@@ -246,7 +253,7 @@ export function Table({
             ))}
           </div>
           <div className="seat-plate">
-            <span className="avatar avatar-atlas">A</span>
+            <AtlasAvatar thinking={thinking} />
             <span className="seat-text">
               <strong>
                 Atlas <em className="seat-badge">{STYLES[style].label}</em>
@@ -275,7 +282,12 @@ export function Table({
                   <i />
                 </span>
               ) : (
-                bubble!.text
+                <>
+                  <span className="bubble-full">{bubble!.text}</span>
+                  <span className="bubble-short" aria-hidden>
+                    {bubble!.text.replace(/^Atlas /, '').replace(/\.$/, '')}
+                  </span>
+                </>
               )}
             </div>
           )}

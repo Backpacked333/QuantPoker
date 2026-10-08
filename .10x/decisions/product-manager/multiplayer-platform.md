@@ -1,6 +1,6 @@
 # multiplayer-platform
 
-Status: Scoped, awaiting user alignment · Priority: **P0** · Owner: PM → Architect
+Status: Aligned with user 2026-10-08 · Priority: **P0** · Owner: PM → Architect
 
 ## Problem statement
 
@@ -36,6 +36,7 @@ Play-money poker on PokerStars/GGPoker (no skill signal, noisy, ads for real mon
 7. **Hand histories** — every hand persisted server-side (actions, cards at showdown, timestamps). Replayable in the existing Hand Review with the lab unlocked **after** the hand.
 8. **Persistence** — Postgres (Supabase). Existing local progress keeps working for Atlas practice; cloud profile is the source of truth for rated play. Use the `SyncAdapter` seam only for Atlas practice sync (P2).
 9. **Basics of fair play** — rate limits, one active table per account at launch, action timers, auto-fold on timeout, abandonment penalties (see `integrity-and-trust`).
+10. **Review → lesson loop** — the post-match review's worst-graded decisions link to the matching curriculum unit (pot odds, fold equity, variance, ranges, etc., already in `src/curriculum/`), and each unit ends with "Play a rated match". This is the growth and retention mechanism the user is betting on; it must ship with the HU ladder, not later.
 
 ### P1
 

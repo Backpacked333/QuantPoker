@@ -1,6 +1,6 @@
 # heads-up-duplicate-ladder
 
-Status: Scoped, awaiting user alignment · Priority: **P0** · First live product
+Status: Aligned with user 2026-10-08 · Priority: **P0** · First live product
 
 ## Problem statement
 

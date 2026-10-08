@@ -2,7 +2,7 @@
 
 ## Current handoff: Product Manager → Principal Architect
 
-Date: 2026-10-08 · Status: **pending user alignment** on the PM recommendation (see chat); treat as draft until confirmed.
+Date: 2026-10-08 · Status: **aligned with user.** Revision after feedback: rated 6-max ships with casual 6-max (Phase 2); collusion/RTA detection deferred to a growth-triggered v2; the review→curriculum lesson loop is P0 in Phase 1 because learning-through-play is the growth bet.
 
 ### Read these first
 
@@ -16,9 +16,9 @@ Date: 2026-10-08 · Status: **pending user alignment** on the PM recommendation 
 ### Priority order
 
 1. `multiplayer-platform` (P0) — N-player server-authoritative engine, auth, transport, lobby, HU casual play
-2. `heads-up-duplicate-ladder` (P0) + `rating-and-leaderboard` v1 (P0) + `integrity-and-trust` v1 (P0)
-3. `six-max-tables` casual (P1)
-4. `six-max-tables` rated + `integrity-and-trust` v2 + 6-max rating (P1, gated)
+2. `heads-up-duplicate-ladder` (P0) + `rating-and-leaderboard` v1 (P0) + `integrity-and-trust` v1 (P0, near-free items only) + review→lesson loop (P0)
+3. `six-max-tables` casual **and** rated arenas together (P1), 6-max provisional rating
+4. `integrity-and-trust` v2 (P2) — only when a growth trigger fires; design the data model now (public hand histories, per-action timings, seat co-occurrence is derivable) so it can be applied retroactively
 
 ### Decisions the Architect must make (PM has an opinion, Architect decides)
 

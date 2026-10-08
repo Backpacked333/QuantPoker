@@ -1,6 +1,8 @@
 # integrity-and-trust
 
-Status: Scoped, awaiting user alignment · Priority: **P0** for anything rated (v1 ships with the HU ladder; v2 gates rated 6-max)
+Status: Aligned with user 2026-10-08 · Priority: **v1 is P0** (cheap, ships with the HU ladder); **v2 is P2, growth-triggered**
+
+> **Revision 2026-10-08 (user feedback):** the first months bring curious learners, not cheaters, and recruiters are months away. v1 keeps only the near-free protections that also make the game *correct* (server owns the cards, lab off mid-hand, deck commitment, abandonment penalties). v2 (collusion, chip-dump, account-linkage, RTA statistics, verified badges) is built when any trigger fires: ≥ 1,000 registered players, first inbound from a firm/recruiter, first credible cheating report, or a prize/sponsored event. Rated hand histories are public from day one so v2 can be applied retroactively.
 
 ## Problem statement
 
@@ -8,14 +10,14 @@ The moment a rating can go on a résumé, someone will cheat for it. Poker has t
 
 ## Threats and responses
 
-| Threat | What it looks like | v1 (with HU ladder) | v2 (before rated 6-max) |
+| Threat | What it looks like | v1 (with HU ladder; near-free) | v2 (growth-triggered, P2) |
 | --- | --- | --- | --- |
 | **Our own lab as RTA** | Player opens the lab/3D/EV during a live rated hand | Server does not send analysis data until the hand ends; lab UI hidden; equity ring and EV labels off; the `?seed` and `?motion` debug params ignored on rated tables | Same |
-| **External RTA** (solver in another window) | Superhuman accuracy, uniform decision times | Decision-time telemetry per action; flag accuracy > 97th percentile with timing anomalies for review (no auto-ban) | Statistical RTA screen: accuracy distribution vs. population by stakes of decision; manual review queue |
-| **Collusion** (6-max) | Two accounts always at the same table, soft-play, chip dumping | n/a (HU: nothing to collude with except win-trading, see below) | Seat co-occurrence score, hand-level soft-play detection (checked-down pots between linked accounts), chip-dump detection (large all-in losses with weak holdings to the same account); arena seating randomised within band |
-| **Win-trading / sandbagging** (HU) | Two accounts queue at the same time and trade wins; or deliberately tank to farm weaker opponents | Matchmaking refuses pairing the same two accounts more than 2× per day; rating gains vs. the same opponent decay; abandon = loss | Graph analysis of match pairs |
-| **Multi-accounting** | Fresh account to play low-rated opponents | Email verification + OAuth; device/IP fingerprint soft-linking; one active table per account | Phone verification required to appear on the ladder |
-| **Bots playing rated** | 24/7 play, no timing variance | Rated tables are human-only; bots only fill casual; timing-variance check | Challenge (captcha-like) on anomaly, not routinely |
+| **External RTA** (solver in another window) | Superhuman accuracy, uniform decision times | Log per-action decision times (cheap; needed for v2 later). No detection logic. | Statistical RTA screen: accuracy distribution vs. population by stakes of decision; manual review queue |
+| **Collusion** (6-max) | Two accounts always at the same table, soft-play, chip dumping | Nothing beyond randomised arena seating within a rating band. Accepted risk (user call). | Seat co-occurrence score, hand-level soft-play detection (checked-down pots between linked accounts), chip-dump detection (large all-in losses with weak holdings to the same account) |
+| **Win-trading / sandbagging** (HU) | Two accounts queue at the same time and trade wins; or deliberately tank to farm weaker opponents | Matchmaking won't pair the same two accounts more than 2× per day (one line of code); abandon = loss | Graph analysis of match pairs; decayed gains vs. the same opponent |
+| **Multi-accounting** | Fresh account to play low-rated opponents | Email verification + OAuth; one active table per account | Device/IP soft-linking; phone verification to appear on the ladder |
+| **Bots playing rated** | 24/7 play, no timing variance | Rated tables are human-only; bots only fill casual | Timing-variance check; challenge on anomaly |
 | **Client tampering** | Modified client sends illegal actions, reads memory | Server-authoritative; client only has its own cards; all legality server-checked; signed hand-history ids | Same |
 | **Data leakage via review** | Opponent's unshown hole cards visible in a replay | Review only reveals cards shown at showdown; never ship unshown cards to any client | Same |
 

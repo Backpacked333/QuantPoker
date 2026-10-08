@@ -1,6 +1,6 @@
 # rating-and-leaderboard
 
-Status: Scoped, awaiting user alignment · Priority: **P0** (ships with the HU ladder)
+Status: Aligned with user 2026-10-08 · Priority: **P0** (ships with the HU ladder)
 
 ## Problem statement
 

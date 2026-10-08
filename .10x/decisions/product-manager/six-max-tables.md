@@ -1,6 +1,8 @@
 # six-max-tables
 
-Status: Scoped, awaiting user alignment · Priority: **P1** for tables; the N-player engine it needs is **P0** inside `multiplayer-platform`
+Status: Aligned with user 2026-10-08 · Priority: **P1** for tables; the N-player engine it needs is **P0** inside `multiplayer-platform`
+
+> **Revision 2026-10-08 (user feedback):** early players will be curious learners, not colluders, and firms are months away. Rated 6-max therefore ships **with** casual 6-max (same phase), via scheduled arenas, and does not wait for collusion detection. Collusion controls become a growth-triggered item in `integrity-and-trust`. The engine-correctness gate stays; the liquidity gate becomes a soft target.
 
 ## Problem statement
 
@@ -38,14 +40,18 @@ Two tiers, same table, same quality bar:
 - As a player, I want my 6-max stats (VPIP/PFR/aggression, bb/100 adjusted) on my profile so that I can see how I play.
 - As a recruiter, I want to see a 6-max rating only when it is backed by enough human hands so that I'm not misled.
 
-## Gates for turning on rated 6-max
+## Gates for turning on rated 6-max (revised)
 
-All must hold:
+Hard gate (engine correctness, non-negotiable):
 
-1. Casual 6-max has run ≥ 10,000 human hands with 0 invariant failures and ≥ 95% hands completing without a server-side timeout bug.
-2. Arena pilot fills ≥ 2 tables (≥ 10 humans) in ≥ 3 consecutive scheduled windows.
-3. Collusion controls from `integrity-and-trust` v2 are live (seat co-occurrence, chip-dump detection, account linkage).
-4. Luck-adjusted 6-max rating has been computed offline on the casual data and looks stable (median per-session change < 20 points after 10 sessions).
+1. 0 invariant failures over ≥ 100k simulated random 6-max hands and over the first 1,000 human casual hands (chip conservation, side pots, award order).
+
+Soft targets (ship rated arenas anyway; show "provisional" until met):
+
+2. Arenas fill ≥ 1 full table (6 humans) in a scheduled window. Until then, a rated arena with fewer than 4 humans is played but not rated.
+3. The 6-max rating is marked provisional until a player has ≥ 500 rated hands; the ladder shows provisional players separately.
+
+Deferred (was a gate, now growth-triggered; see `integrity-and-trust`): collusion detection, chip-dump detection, account linkage.
 
 ## Success criteria (90 days after casual 6-max launch)
 
@@ -67,6 +73,6 @@ All must hold:
 ## Risks
 
 - **Empty tables kill 6-max faster than bugs do.** Bots-as-fill for casual and arenas for rated are the answer; don't launch 24/7 rated tables.
-- **Collusion once rating exists.** Rated 6-max is gated; see `integrity-and-trust`.
+- **Collusion once rating exists.** Accepted risk for the first months (user call, 2026-10-08): the audience is curious learners and the ladder has no external stakes yet. Rated hand histories are public, so retroactive review is possible. Trigger for building controls is in `integrity-and-trust`.
 - **Engine rewrite.** Generalising `poker.ts` to N players is the riskiest technical change in the plan. Do it first, test it hardest, and make HU run on it so it gets exercised from day one.
 - **Scope pressure to ship rated 6-max early.** The gates above are the agreed line; if numbers say we're not there, we aren't.

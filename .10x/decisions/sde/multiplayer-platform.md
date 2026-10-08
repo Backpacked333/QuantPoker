@@ -86,8 +86,8 @@ ADR: §Durable Objects, §Wire protocol, §Auth, and the 2026-10-08 hosting amen
 
 ### User actions (no code)
 
-1. **Cloudflare → Workers & Pages → quantpoker → Settings → Build:** set the production branch to **`main`** (it is the Devin branch `devin/1791351254-quantpoker-learning-table` today). Build command `npm run build`, deploy command `npx wrangler deploy`. Preview builds of other branches may fail on the new Durable Object migration until the first production deploy applies it; that is expected.
-2. **Supabase → Integrations → GitHub:** set the production branch to **`main`** (also the Devin branch today).
+1. **Cloudflare → Workers & Pages → quantpoker → Settings → Build:** leave the production branch as the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct). Build command `npm run build`, deploy command `npx wrangler deploy`. Preview builds of other branches may fail on the new Durable Object migration until the first production deploy applies it; that is expected.
+2. **Supabase → Integrations → GitHub:** leave the production branch as the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct).
 3. **Supabase → Authentication → URL Configuration:** Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`. (Replaces the Vercel URLs in Step 2.)
 4. Vercel env vars from Step 2 are no longer needed.
 

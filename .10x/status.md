@@ -36,7 +36,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 1 — `src/engine/` + invariant, differential, redaction, commitment tests; `src/shared/protocol.ts`; `src/lib/presets.ts` (`.10x/decisions/sde/multiplayer-platform.md`). All gates green.
 - [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
 - [x] User: Cloudflare Workers Paid + Git-connected Worker; Supabase Pro org
-- [ ] User: set production branch to `main` in Cloudflare (Worker build) and Supabase (GitHub integration); set Supabase Auth Site URL / redirect URLs to the workers.dev address (values in the SDE log §Step 3); optionally enable Google/GitHub
+- [ ] User: production branches in Cloudflare and Supabase are already the repo's default branch (no `main` exists) — nothing to change; set Supabase Auth Site URL / redirect URLs to the workers.dev address (values in the SDE log §Step 3); optionally enable Google/GitHub
 - [ ] SDE: first real sign-in on the deployed site, then decode the access token header and confirm `alg: ES256` (ADR day-5 check)
 - [x] SDE: Step 3 — `worker/` + root `wrangler.jsonc`: `TableDO`, ES256 auth, invite-by-link matches, runtime `/api/config`; 9 Workers-runtime tests + a real two-client smoke run. All gates green.
 - [x] SDE: Step 4 — live table in the browser (`src/net/client.ts`, `LiveTable`, `#play/<id>`, Play a friend by link); two-browser e2e against `wrangler dev`; full 20-hand match verified. All gates green.

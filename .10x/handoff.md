@@ -2,7 +2,7 @@
 
 ## Current handoff: SDE → QA Engineer + Security Engineer (+ user actions)
 
-Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser milestone is reached locally.** It goes live when PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged and the Cloudflare Worker builds from `main`.
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser milestone is reached locally.** It goes live when PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged (it merges into the default branch, which Cloudflare deploys).
 
 ### Read first
 
@@ -10,8 +10,8 @@ Date: 2026-10-08 · Status: **Phase 0 Steps 1–4 done — the two-browser miles
 
 ### User actions (unchanged from Step 3, still pending)
 
-1. Cloudflare Worker `quantpoker` → Settings → Build: production branch `main`; build `npm run build`; deploy `npx wrangler deploy`.
-2. Supabase → Integrations → GitHub: production branch `main`.
+1. Cloudflare Worker `quantpoker` → Settings → Build: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct); build `npm run build`; deploy `npx wrangler deploy`.
+2. Supabase → Integrations → GitHub: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct).
 3. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`.
 
 ### What to test (QA)
@@ -36,7 +36,7 @@ Step 5 — Clocks, commitment, records (ADR days 11–12): `worker/src/deadlines
 
 ### 2026-10-08 — SDE → QA + Security (Step 3)
 
-Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs on Cloudflare's runtime locally and in tests; it deploys to production once the Worker's production branch is `main` and PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged.
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs on Cloudflare's runtime locally and in tests; it deploys to production once PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged.
 
 #### Read first
 
@@ -45,8 +45,8 @@ Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs 
 
 #### User actions
 
-1. Cloudflare Worker `quantpoker` → Settings → Build: production branch `main`; build `npm run build`; deploy `npx wrangler deploy`.
-2. Supabase → Integrations → GitHub: production branch `main`.
+1. Cloudflare Worker `quantpoker` → Settings → Build: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct); build `npm run build`; deploy `npx wrangler deploy`.
+2. Supabase → Integrations → GitHub: production branch = the repo's default branch `devin/1791351254-quantpoker-learning-table` (there is no `main`; PR #8 merges into it, so it is already correct).
 3. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`.
 
 #### What to test (QA)

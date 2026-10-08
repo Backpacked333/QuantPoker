@@ -8,6 +8,17 @@ Phase 0 delivers: an N-player hold'em engine (2..6 seats) that heads-up runs on 
 
 Not Phase 0 (designed for, not built): duplicate segments and rating (Phase 1), 6-max tables and arenas (Phase 2). Everything below that mentions Phase 1/2 says where the seam is and why Phase 0 does not block it.
 
+## Amendment 2026-10-08 (user decision): one Worker hosts everything
+
+The user created a Git-connected Cloudflare Worker named `quantpoker` (Workers Paid) that already serves the built site, and chose Cloudflare over Vercel for the client. Supersedes every Vercel/`quantpoker-api` reference below:
+
+- **One Worker, `quantpoker`**, configured by `wrangler.jsonc` at the repo root (not `worker/wrangler.jsonc`). `assets.directory: ./dist` serves the Vite build; `run_worker_first: ["/api/*", "/ws/*"]` sends only API and socket traffic to `worker/src/index.ts`. Same origin for page, API and sockets: no CORS, no Origin allowlist (auth is a bearer token, never a cookie, so there is no cross-site socket risk).
+- **Deploys come from Cloudflare's Git integration** (`npm run build` then `npx wrangler deploy`), not from a GitHub Actions `deploy-worker.yml`. No Cloudflare API token is needed in GitHub.
+- **Client configuration is served at runtime** by `GET /api/config` (the Supabase URL and publishable key from `wrangler.jsonc` `vars`). The build needs no environment variables. `VITE_SUPABASE_*` still overrides for local Vite development.
+- **Dev tokens are `dev.<userId>.<secret>`** (the original `dev:` form contains `:`, which browsers reject in a WebSocket subprotocol).
+- **Supabase** moved to the user's Pro org "Quant Poker" with the same project ref, keys and data.
+- Vercel is retired for this app.
+
 ## Context and constraints (brief; reference the PM files rather than repeating them)
 
 - Requirements: `.10x/decisions/product-manager/multiplayer-platform.md` (P0 list, metrics), `heads-up-duplicate-ladder.md` (format Phase 0 must not block), `six-max-tables.md` (N-player engine required now), `integrity-and-trust.md` (v1 protections), `_index.md` (principles; `[DISCOVERED]` state of the code).

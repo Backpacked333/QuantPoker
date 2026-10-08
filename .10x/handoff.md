@@ -2,37 +2,67 @@
 
 ## Current handoff: SDE → QA Engineer + Security Engineer (+ user actions)
 
-Date: 2026-10-08 · Status: **Phase 0 Steps 1–2 done.** Step 2 code is merged into the branch and the database is migrated; production sign-in waits on two user actions. PR: https://github.com/Backpacked333/QuantPoker/pull/8
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–3 done.** The table server runs on Cloudflare's runtime locally and in tests; it deploys to production once the Worker's production branch is `main` and PR https://github.com/Backpacked333/QuantPoker/pull/8 is merged.
 
 ### Read first
+
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 3 (built, verified, deviations, user actions)
+- `.10x/decisions/architect/multiplayer-platform.md` §Amendment 2026-10-08 (one Worker hosts everything)
+
+### User actions
+
+1. Cloudflare Worker `quantpoker` → Settings → Build: production branch `main`; build `npm run build`; deploy `npx wrangler deploy`.
+2. Supabase → Integrations → GitHub: production branch `main`.
+3. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.bbcroysalman.workers.dev`; redirect URLs `https://quantpoker.bbcroysalman.workers.dev/**`, `http://localhost:8787/**`, `http://localhost:5173/**`.
+
+### What to test (QA)
+
+- `npm run worker:dev` (builds, then serves site + API on :8787 with Cloudflare's local runtime). Pass `--var DEV_AUTH_SECRET:<s>` to enable `dev.<user>.<s>` tokens for scripted clients.
+- Edge cases not yet covered: a player who never acts (no clock until Step 5), both players disconnecting mid-hand for a long time, many tables at once.
+
+### What to review (Security)
+
+- `worker/src/auth.ts`: ES256-pinned verification; dev tokens only when `DEV_AUTH_SECRET` is set (never in `wrangler.jsonc`); token only in the subprotocol, never a URL.
+- `worker/src/table.ts`: every frame from `seatView`; write-then-send; `reqId`/`actionIndex` idempotency; invite-link seat assignment (anyone with the link and an account can take seat 1 while the table waits — intended for Phase 0).
+- `/api/config` returns only the URL and publishable key (test asserts no secret-like fields).
+
+### Next implementation step (SDE)
+
+Step 4 — Live table (ADR days 9–10): `src/net/client.ts` (socket, backoff, `seq`), `store.ts`, `LiveTable.tsx` reusing `Table`/`ActionBar` via `toHeroGame`, the four additive props, `#play/<id>` route, "Play a friend by link" in the lobby; Playwright two-context e2e against `wrangler dev`. Milestone: two browsers play a full match.
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE → QA + Security (Step 2)
+
+Date: 2026-10-08 · Status: **Phase 0 Steps 1–2 done.** Step 2 code is merged into the branch and the database is migrated; production sign-in waits on two user actions. PR: https://github.com/Backpacked333/QuantPoker/pull/8
+
+#### Read first
 
 - `.10x/decisions/sde/multiplayer-platform.md` §Step 2: what was built, live verification, six deviations, tech debt, the exact user actions
 - The Step 1 items below (history) are still open for QA and Security
 
-### User actions (blocking production sign-in)
+#### User actions (blocking production sign-in)
 
 1. Vercel project `quantpoker` → Settings → Environment Variables (Production, Preview, Development): `VITE_SUPABASE_URL=https://dbkfuxczfkawxqmaieii.supabase.co`, `VITE_SUPABASE_ANON_KEY=sb_publishable_DKfxJ0I2bbnrMHMyxiK4eg_tqsrKoI7`; redeploy.
 2. Supabase → Authentication → URL Configuration: Site URL `https://quantpoker.vercel.app`; redirect URLs `https://quantpoker.vercel.app/**`, `https://*-backpacked333s-projects.vercel.app/**`, `http://localhost:5173/**`. Optional: enable Google/GitHub providers.
 
-### What to test (QA)
+#### What to test (QA)
 
 - With env set locally (`.env.local`): email magic link round trip (request → open link in the same browser → lands on `#lobby` → choose a name → lobby). Taken name, reserved name, bad characters. Sign out and back in skips the name step.
 - Without env: `#lobby` says online play is not set up; the trainer is untouched (e2e covers both).
 - Phone header at 320–600 px (swept in this step) and on a real device, especially iOS Safari.
 
-### What to review (Security)
+#### What to review (Security)
 
 - `supabase/migrations/202610081*`: grants and RLS (players public-read, own-row column updates; `hands_private`/`incidents` service-role only; `record_hand` service-role only, `security definer`, `search_path=''`). Live PostgREST probes as anon are recorded in the SDE log.
 - `src/lib/authReturn.ts`: restores only a `#[\w/-]+` target from sessionStorage, one-shot.
 - `src/net/auth.ts`: PKCE; redirect is the bare origin + path; no tokens in URLs or logs.
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 3 — Table service (ADR §Migration path, days 6–8): `worker/` with `wrangler.jsonc`, `auth.ts` (ES256 JWKS), `TableDO` (hibernating sockets, `welcome`/`state`, `act` through `src/engine`, atomic persistence, `LocalController`), `POST /api/matches`, worker tests with `@cloudflare/vitest-plugin`. Needs from the user: a Cloudflare account on Workers Paid and an API token for deploys (ADR open question 5).
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE → QA + Security (Step 1; open items carried forward)
 

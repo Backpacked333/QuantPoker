@@ -4,9 +4,9 @@ Last updated: 2026-10-08
 
 ## Active features
 
-| Slug                   | Description                              | Status                                                                                                                               |
-| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–4 **done** (engine, accounts, table server, live table — two-browser milestone); Steps 5–7 next; 3 dashboard actions pending |
+| Slug                   | Description                              | Status                                                                                                                                                              |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–5 **done** (engine, accounts, table server, live table, clocks/commitment/records); Steps 6–7 next; dashboard actions pending (incl. `SUPABASE_SECRET_KEY`) |
 
 ## Cross-cutting notes
 
@@ -19,3 +19,6 @@ Last updated: 2026-10-08
 - **Prove fresh state in restart tests.** A restart test passed while nothing restarted; assert a new instance (a marker on the object) before trusting it.
 - **Real clients find what harnesses miss.** The Workers test harness accepted `:` in a subprotocol; Node and browsers reject it. Run a real two-client smoke against `wrangler dev` for every protocol change.
 - **Phones zoom out instead of scrolling.** An overflow check must compare against the device width (`page.viewportSize()`), not `innerWidth`.
+- **Freeze the table clock in time tests.** Real milliseconds pass between test steps; `freezeClock` + `elapse` make "1 ms before the deadline" exact.
+- **Check where the awaits are before claiming a race.** A lock added for a click/clock race turned out to guard "frames before the write" instead; the mutation check showed the race test passed without it, so the comment says what it really does.
+- **Dry-run SQL against production inside a transaction that raises.** It proves the real schema accepts the real payloads and leaves nothing behind.

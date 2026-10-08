@@ -4543,3 +4543,60 @@ button.range-cell:focus-visible {
     background-position: -50% 0;
   }
 }
+
+/* ---- Glossary terms ------------------------------------------------------ */
+.term {
+  position: relative;
+  display: inline;
+}
+.term-word {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  cursor: help;
+}
+.term-tip {
+  position: absolute;
+  left: -6px;
+  bottom: calc(100% + 8px);
+  z-index: 60;
+  width: max-content;
+  max-width: min(260px, 70vw);
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  translate: 0 4px;
+  transition:
+    opacity 0.15s ease,
+    translate 0.15s ease,
+    visibility 0s 0.15s;
+}
+.term:hover .term-tip,
+.term-word:focus-visible + .term-tip,
+.term.pinned .term-tip {
+  opacity: 1;
+  visibility: visible;
+  translate: 0 0;
+  transition:
+    opacity 0.15s ease,
+    translate 0.15s ease;
+}

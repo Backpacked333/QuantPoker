@@ -5,6 +5,7 @@ import type { OpponentModel } from '../../lib/model'
 import type { FullSpot } from '../../lib/range'
 import { pct } from '../format'
 import { RangeShift } from './DecisionView'
+import { Term } from '../Term'
 
 export function RangeView({
   spot,
@@ -24,9 +25,15 @@ export function RangeView({
   return (
     <div className="range-view">
       <p className="lab-copy">
-        {model === 'range'
-          ? 'Each cell is a starting hand. Darker cells are hands Atlas is more likely to hold, given everything it has done this hand and its published strategy. Its actual cards are never used.'
-          : 'Under the “any hand” model, every unseen starting hand is equally likely. Switch to Atlas’s range to see how its actions reshape this.'}
+        {model === 'range' ? (
+          'Each cell is a starting hand. Darker cells are hands Atlas is more likely to hold, given everything it has done this hand and its published strategy. Its actual cards are never used.'
+        ) : (
+          <>
+            Under the “any hand” model, every unseen starting hand is equally
+            likely. Switch to Atlas’s <Term k="range">range</Term> to see how
+            its actions reshape this.
+          </>
+        )}
       </p>
       <div
         className="range-grid"

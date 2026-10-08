@@ -6,6 +6,7 @@ import type { RangeStep } from '../../lib/range'
 import { spring, stagger } from '../../motion'
 import { pct, pct0, signed } from '../format'
 import { MiniCard } from '../PlayingCard'
+import { Term } from '../Term'
 import type { LabModel } from './labModel'
 
 export function EquityMeter({ lab, guess }: { lab: LabModel; guess?: number }) {
@@ -16,7 +17,9 @@ export function EquityMeter({ lab, guess }: { lab: LabModel; guess?: number }) {
     <div className="meter">
       <div className="meter-head">
         <div>
-          <span className="label">Your equity</span>
+          <span className="label">
+            Your <Term k="equity">equity</Term>
+          </span>
           <strong className={good ? 'positive' : 'negative'}>
             {lab.ready ? pct(equity) : '…'}
           </strong>
@@ -63,7 +66,7 @@ export function EquityMeter({ lab, guess }: { lab: LabModel; guess?: number }) {
       <div className="meter-keys">
         {need > 0 && (
           <span>
-            <i className="key-need" /> break-even
+            <i className="key-need" /> <Term k="breakEven">break-even</Term>
           </span>
         )}
         {guess !== undefined && (
@@ -127,12 +130,13 @@ export function Verdict({ lab }: { lab: LabModel }) {
           <b className={lab.selectedEV >= 0 ? 'positive' : 'negative'}>
             {signed(lab.selectedEV)} chips
           </b>{' '}
-          on average.
+          <Term k="ev">on average</Term>.
         </>
       ) : (
         <>
           <b>{label(best)[0].toUpperCase() + label(best).slice(1)}</b> beats{' '}
-          {label(selected)} by <b>{gap.toFixed(1)} chips</b> on average.
+          {label(selected)} by <b>{gap.toFixed(1)} chips</b>{' '}
+          <Term k="ev">on average</Term>.
         </>
       )}
     </p>

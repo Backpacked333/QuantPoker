@@ -51,6 +51,7 @@ test('two browsers play a hand against each other', async ({ browser }) => {
   await bob.page.goto(link)
   for (const { page } of [alice, bob]) {
     await expect(page.getByText('Hand 1 of 20')).toBeVisible()
+    await expect(page.getByRole('timer')).toBeVisible()
     await expect(
       page.getByRole('region', { name: 'Poker table' }),
     ).toContainText('Live table')
@@ -79,6 +80,13 @@ test('two browsers play a hand against each other', async ({ browser }) => {
     await alice.page.waitForTimeout(100)
   }
   for (const { page } of [alice, bob]) await expect(done(page)).toBeVisible()
+
+  // Each browser checks the deal against the commitment it got before the
+  // first card, with its own Web Crypto.
+  for (const { page } of [alice, bob]) {
+    await page.getByRole('button', { name: 'Review hand 1' }).click()
+    await expect(page.getByText('Deck verified')).toBeVisible()
+  }
 
   // The server deals the next hand by itself.
   for (const { page } of [alice, bob])

@@ -105,7 +105,9 @@ describe('migrations', () => {
       '20261008134201_matches_hands.sql',
       '20261008134322_record_hand.sql',
       '20261008134345_abandonments_match_index.sql',
+      MIGRATIONS.at(-1),
     ])
+    expect(MIGRATIONS.at(-1)).toMatch(/^\d{14}_record_match\.sql$/)
   })
 })
 
@@ -263,5 +265,85 @@ describe('hand records', () => {
         `select public.record_hand('${JSON.stringify(bad)}'::jsonb)`,
       ),
     ).rejects.toThrow(/check constraint/)
+  })
+})
+
+describe('match records', () => {
+  const GAME = '44444444-4444-4444-8444-444444444444'
+  const start = {
+    id: GAME,
+    kind: 'hu-casual',
+    config: { handsTotal: 20 },
+    players: [
+      { seat: 0, userId: ALICE },
+      { seat: 1, userId: BOB },
+    ],
+  }
+  const end = {
+    ...start,
+    handNo: 7,
+    timeouts: { 1: 3 },
+    result: { netBySeat: { 0: 120, 1: -120 }, reason: 'forfeit', forfeit: 1 },
+  }
+  const call = (p: object) =>
+    `select public.record_match('${JSON.stringify(p)}'::jsonb)`
+
+  it('are written only by the service role', async () => {
+    await denied(as('authenticated', call(start), ALICE))
+    await denied(as('anon', call(start)))
+  })
+
+  it('create the match and seats once, then finish it once', async () => {
+    await as('service_role', call(start))
+    await as('service_role', call(start))
+    const seats = await as<{ user_id: string }>(
+      'anon',
+      `select user_id from public.match_players where match_id = '${GAME}' order by seat`,
+    )
+    expect(seats.map((r) => r.user_id)).toEqual([ALICE, BOB])
+    // A hand can now be recorded against it.
+    await as(
+      'service_role',
+      `select public.record_hand('${JSON.stringify({ ...handPayload(`${GAME}:1`), matchId: GAME })}'::jsonb)`,
+    )
+
+    await as('service_role', call(end))
+    await as('service_role', call(end)) // an outbox retry
+    const [match] = await as<{ status: string; result: { reason: string } }>(
+      'anon',
+      `select status, result from public.matches where id = '${GAME}'`,
+    )
+    expect(match.status).toBe('finished')
+    expect(match.result.reason).toBe('forfeit')
+    const players = await as<{ timeouts: number; abandoned: boolean }>(
+      'anon',
+      `select timeouts, abandoned from public.match_players where match_id = '${GAME}' order by seat`,
+    )
+    expect(players).toEqual([
+      { timeouts: 0, abandoned: false },
+      { timeouts: 3, abandoned: true },
+    ])
+    const left = await as<{ user_id: string; kind: string; hand_no: number }>(
+      'anon',
+      `select user_id, kind, hand_no from public.abandonments where match_id = '${GAME}'`,
+    )
+    expect(left).toEqual([{ user_id: BOB, kind: 'timeout_x3', hand_no: 7 }])
+  })
+
+  it('can be finished by a call that also creates it', async () => {
+    const other = '55555555-5555-4555-8555-555555555555'
+    await as(
+      'service_role',
+      call({
+        ...end,
+        id: other,
+        result: { netBySeat: {}, reason: 'complete' },
+      }),
+    )
+    const [row] = await as<{ status: string }>(
+      'anon',
+      `select status from public.matches where id = '${other}'`,
+    )
+    expect(row.status).toBe('finished')
   })
 })

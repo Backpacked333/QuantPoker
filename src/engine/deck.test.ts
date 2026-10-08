@@ -7,6 +7,8 @@ import {
   fromBase64,
   fromHex,
   isValidDeck,
+  publicSlots,
+  verifyDeal,
   orderedDeck,
   revealSlots,
   toBase64,
@@ -131,5 +133,54 @@ describe('replay from a public record', () => {
     const final = replayed[replayed.length - 1]
     expect(final.result).toEqual(state.result)
     expect(final.players.find((p) => p.seat === 1)!.cards).toEqual([-1, -1])
+  })
+})
+
+describe('verifyDeal', () => {
+  async function finished(fold: boolean) {
+    const cfg = config([2000, 2000], 0)
+    const deck = seededDeck(11)
+    let state = startHand(cfg, deck)
+    state = fold
+      ? act(state, 0, { type: 'fold' })
+      : (() => {
+          let s = act(state, 0, { type: 'call' })
+          while (!isOver(s)) s = act(s, s.toAct!, { type: 'check' })
+          return s
+        })()
+    const deal = {
+      config: cfg,
+      board: state.board,
+      shown: state.players
+        .filter((p) => p.shown)
+        .map((p) => ({ seat: p.seat, cards: p.cards! })),
+    }
+    const { commitment, leaves } = await commitDeck(deck, secret(9))
+    const slots = await revealSlots(deck, secret(9), publicSlots(deal))
+    return { deck, deal, commitment, leaves, slots }
+  }
+
+  it('accepts the board and shown hands from their dealt slots', async () => {
+    const { deal, commitment, leaves, slots } = await finished(false)
+    expect(deal.board).toHaveLength(5)
+    expect(slots).toHaveLength(9)
+    expect(await verifyDeal(commitment, leaves, slots, deal)).toBe(true)
+  })
+
+  it('opens nothing but the board and shown hands', async () => {
+    const { deal, slots } = await finished(true)
+    // A fold before the flop: no board, nobody shows.
+    expect(deal.board).toEqual([])
+    expect(slots).toEqual([])
+  })
+
+  it('rejects a swapped card, an extra slot, or a re-deal', async () => {
+    const { deck, deal, commitment, leaves, slots } = await finished(false)
+    const swapped = { ...deal, board: [...deal.board].reverse() }
+    expect(await verifyDeal(commitment, leaves, slots, swapped)).toBe(false)
+    const extra = await revealSlots(deck, secret(9), [...publicSlots(deal), 30])
+    expect(await verifyDeal(commitment, leaves, extra, deal)).toBe(false)
+    const other = await commitDeck(seededDeck(12), secret(9))
+    expect(await verifyDeal(other.commitment, leaves, slots, deal)).toBe(false)
   })
 })

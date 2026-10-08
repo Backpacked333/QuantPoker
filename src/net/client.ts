@@ -4,8 +4,10 @@ import type { PlayerAction, SeatId } from '../engine/types'
 import { PROTOCOL } from '../shared/protocol'
 import type {
   ErrorCode,
+  HandRecordV1,
   MatchEndReason,
   MatchInfo,
+  Reveal,
   SeatView,
   ServerMsg,
 } from '../shared/protocol'
@@ -19,6 +21,17 @@ export type ConnectionStatus =
   /** Gave up: no token, or the server kept refusing. */
   | 'failed'
 
+/** What this client saw of one hand, for the review and the deck check. */
+export type HandSeen = {
+  /** The commitment as first received: before any card of the hand. */
+  commitment?: string
+  /** True when the commitment arrived after this hand's cards (late join). */
+  late?: boolean
+  mine?: [number, number]
+  record?: HandRecordV1
+  reveal?: Reveal
+}
+
 export type TableState = {
   status: ConnectionStatus
   seat: SeatId | null
@@ -27,7 +40,14 @@ export type TableState = {
   /** The move sent and not yet acknowledged. */
   pending: string | null
   error: { code: ErrorCode; message: string } | null
-  ended: { netBySeat: Record<SeatId, number>; reason: MatchEndReason } | null
+  ended: {
+    netBySeat: Record<SeatId, number>
+    reason: MatchEndReason
+    forfeit?: SeatId
+  } | null
+  /** Server time minus this device's time, from the latest snapshot. */
+  clockOffset: number
+  hands: Record<number, HandSeen>
 }
 
 export const INITIAL_STATE: TableState = {
@@ -38,6 +58,8 @@ export const INITIAL_STATE: TableState = {
   pending: null,
   error: null,
   ended: null,
+  clockOffset: 0,
+  hands: {},
 }
 
 type Options = {
@@ -196,6 +218,21 @@ export class TableConnection {
       this.set({ ended: msg.result })
       return
     }
+    if (msg.t === 'hand_start') {
+      this.seen(msg.handNo, (h) =>
+        h.commitment ? h : { ...h, commitment: msg.commitment },
+      )
+      return
+    }
+    if (msg.t === 'hand_end') {
+      this.seen(msg.handNo, (h) => ({ ...h, record: msg.record }))
+      return
+    }
+    if (msg.t === 'reveal') {
+      const { handNo, leaves, slots } = msg
+      this.seen(handNo, (h) => ({ ...h, reveal: { handNo, leaves, slots } }))
+      return
+    }
     if (msg.t !== 'welcome' && msg.t !== 'state') return
     // Snapshots can repeat a seq (presence changes) but never go back,
     // except a welcome, which is always the server's current truth.
@@ -211,6 +248,37 @@ export class TableConnection {
         : { pending }),
       table: msg.table,
       view: msg.view,
+      clockOffset: msg.serverNow - Date.now(),
+      hands: msg.view ? this.withView(msg.view) : this.state.hands,
     })
+  }
+
+  /** Keeps our own cards, and a commitment we missed the start frame for. */
+  private withView(view: SeatView) {
+    const h = this.state.hands[view.handNo] ?? {}
+    const mine = view.players.find((p) => p.seat === view.you)?.cards
+    const next: HandSeen = {
+      ...h,
+      ...(mine && !h.mine ? { mine } : {}),
+      ...(!h.commitment && view.commitment
+        ? { commitment: view.commitment, late: true }
+        : {}),
+    }
+    return next === h
+      ? this.state.hands
+      : { ...this.state.hands, [view.handNo]: next }
+  }
+
+  private seen(handNo: number, update: (h: HandSeen) => HandSeen) {
+    const hands = {
+      ...this.state.hands,
+      [handNo]: update(this.state.hands[handNo] ?? {}),
+    }
+    // A match is at most 100 hands; keep the latest 100 regardless.
+    const keys = Object.keys(hands)
+      .map(Number)
+      .sort((a, b) => a - b)
+    for (const old of keys.slice(0, -100)) delete hands[old]
+    this.set({ hands })
   }
 }

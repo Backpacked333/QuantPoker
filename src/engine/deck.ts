@@ -173,3 +173,47 @@ export async function verifyReveal(
   }
   return true
 }
+
+// ---- What a finished hand opens -------------------------------------------------
+
+type PublicDeal = {
+  config: HandConfig
+  board: number[]
+  shown: { seat: SeatId; cards: [number, number] }[]
+}
+
+/** Slot → card for everything a finished hand made public. */
+function publicCards({ config, board, shown }: PublicDeal) {
+  const slots = dealSlots(config)
+  const cards = new Map<number, number>()
+  board.forEach((card, i) => cards.set(slots.board[i], card))
+  for (const { seat, cards: hole } of shown) {
+    const [a, b] = slots.holes[seat]
+    cards.set(a, hole[0])
+    cards.set(b, hole[1])
+  }
+  return cards
+}
+
+/** The slots to reveal after a hand: the dealt board and shown hands only. */
+export const publicSlots = (deal: PublicDeal) =>
+  [...publicCards(deal).keys()].sort((a, b) => a - b)
+
+/**
+ * True when the reveal opens exactly the board and shown hands of `deal`,
+ * from the slots the dealing order puts them in, under `commitment`. A
+ * re-deal after the commitment, a swapped card or an extra opened slot
+ * (someone's folded hand) all fail.
+ */
+export async function verifyDeal(
+  commitment: string,
+  leaves: Uint8Array,
+  slots: RevealedSlot[],
+  deal: PublicDeal,
+) {
+  const expected = publicCards(deal)
+  if (slots.length !== expected.size) return false
+  for (const { slot, card } of slots)
+    if (expected.get(slot) !== card) return false
+  return verifyReveal(commitment, leaves, slots)
+}

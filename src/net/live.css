@@ -118,3 +118,76 @@
   gap: 6px;
   align-items: center;
 }
+.live-clock {
+  font-variant-numeric: tabular-nums;
+}
+.live-good {
+  color: var(--positive);
+}
+.live-reviews {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.live-review-nav {
+  flex-wrap: wrap;
+}
+.live-review {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.live-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.live-review-head h3 {
+  margin: 0;
+}
+.live-deck {
+  padding: 2px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+.live-deck-ok {
+  border-color: var(--positive);
+  color: var(--positive);
+}
+.live-deck-bad {
+  border-color: var(--negative);
+  color: var(--negative);
+}
+.live-review-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+}
+.live-review-cards dt {
+  color: var(--text-2);
+  font-size: 0.85rem;
+}
+.live-review-cards dd {
+  display: flex;
+  gap: 4px;
+  margin: 2px 0 0;
+}
+.live-review-streets {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.live-review-streets ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.live-review-streets small {
+  color: var(--text-2);
+}

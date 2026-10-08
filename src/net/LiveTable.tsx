@@ -14,6 +14,8 @@ import { useRunout } from '../state/runout'
 import { inviteLink } from './api'
 import type { Identity } from './api'
 import type { TableState } from './client'
+import { ReviewLive } from './ReviewLive'
+import { TurnClock } from './TurnClock'
 import { useTable } from './useTable'
 
 const noop = () => {}
@@ -95,6 +97,17 @@ function MatchBar({
           vs <b>{opponent.username}</b>
           {!opponent.connected && ' · disconnected'}
         </span>
+      )}
+      {view?.clock && !view.result && view.toAct !== null && (
+        <TurnClock
+          clock={view.clock}
+          offset={state.clockOffset}
+          who={
+            view.toAct === seat
+              ? 'Your clock'
+              : (opponent?.username ?? 'Opponent')
+          }
+        />
       )}
       {state.status === 'reconnecting' && (
         <span className="live-warn">Reconnecting…</span>
@@ -255,14 +268,67 @@ function LiveHand({
       />
       {ended && (
         <div className="live-ended" role="status">
-          <strong>Match over.</strong> <a href="#lobby">Back to the lobby</a>
+          <strong>
+            {ended.reason === 'forfeit'
+              ? ended.forfeit === view.you
+                ? 'Match over: you ran out of time three times in a row.'
+                : `Match over: ${opponent} ran out of time three times in a row.`
+              : 'Match over.'}
+          </strong>{' '}
+          <a href="#lobby">Back to the lobby</a>
         </div>
       )}
+      <HandReviews state={state} you={view.you} />
       {flash && (
         <p className="live-error" role="alert">
           {flash}
         </p>
       )}
     </>
+  )
+}
+
+/** Finished hands of this match, newest first, one open at a time. */
+function HandReviews({ state, you }: { state: TableState; you: SeatId }) {
+  const done = Object.keys(state.hands)
+    .map(Number)
+    .filter((n) => state.hands[n].record)
+    .sort((a, b) => b - a)
+  const [open, setOpen] = useState<number | null>(null)
+  if (!done.length) return null
+  const latest = done[0]
+  const at = open !== null && state.hands[open]?.record ? open : null
+  const index = at === null ? -1 : done.indexOf(at)
+  return (
+    <div className="live-reviews">
+      {at === null ? (
+        <button className="btn btn-outline" onClick={() => setOpen(latest)}>
+          Review hand {latest}
+        </button>
+      ) : (
+        <>
+          <div className="live-row live-review-nav">
+            <button
+              className="btn btn-outline"
+              disabled={index >= done.length - 1}
+              onClick={() => setOpen(done[index + 1])}
+            >
+              Earlier hand
+            </button>
+            <button
+              className="btn btn-outline"
+              disabled={index <= 0}
+              onClick={() => setOpen(done[index - 1])}
+            >
+              Later hand
+            </button>
+            <button className="btn" onClick={() => setOpen(null)}>
+              Close review
+            </button>
+          </div>
+          <ReviewLive seen={state.hands[at]} you={you} />
+        </>
+      )}
+    </div>
   )
 }

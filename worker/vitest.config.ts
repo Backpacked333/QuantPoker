@@ -12,7 +12,12 @@ export default defineConfig({
           new URL('../wrangler.jsonc', import.meta.url),
         ),
       },
-      miniflare: { bindings: { DEV_AUTH_SECRET: 'test' } },
+      miniflare: {
+        bindings: {
+          DEV_AUTH_SECRET: 'test',
+          SUPABASE_SECRET_KEY: 'sb_secret_test',
+        },
+      },
     }),
   ],
   test: {

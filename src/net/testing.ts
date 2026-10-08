@@ -1,10 +1,16 @@
 // Test-only: a WebSocket stand-in the tests drive by hand, and server frames
 // built from real engine states.
-import { startHand } from '../engine/hand'
+import { commitDeck, publicSlots, revealSlots, toBase64 } from '../engine/deck'
+import { act, isOver, startHand } from '../engine/hand'
 import { seatView } from '../engine/redact'
 import { config, deckWith } from '../engine/testing'
 import type { HandState, SeatId } from '../engine/types'
-import type { MatchInfo, ServerMsg } from '../shared/protocol'
+import type {
+  HandRecordV1,
+  MatchInfo,
+  Reveal,
+  ServerMsg,
+} from '../shared/protocol'
 
 export class FakeSocket {
   static all: FakeSocket[] = []
@@ -88,4 +94,69 @@ export function frame(
   return kind === 'welcome'
     ? { ...base, t: 'welcome', seat }
     : { ...base, t: 'state' }
+}
+
+/**
+ * Hand 1 played to showdown with a real commitment and reveal, as the
+ * server would send it: the frames for each seat and what a seat should see.
+ */
+export async function finishedHand() {
+  const cfg = config([2000, 2000], 0)
+  const deck = deckWith(cfg, { 0: 'As Kd', 1: '7c 2h' }, '2c 7d 9h Tc 3s')
+  const secret = new Uint8Array(32).fill(5)
+  let hand = startHand(cfg, deck)
+  hand = act(hand, 0, { type: 'call' })
+  while (!isOver(hand)) hand = act(hand, hand.toAct!, { type: 'check' })
+  const { commitment, leaves } = await commitDeck(deck, secret)
+  const shown = hand.players
+    .filter((p) => p.shown)
+    .map((p) => ({ seat: p.seat, cards: p.cards! }))
+  const record: HandRecordV1 = {
+    v: 1,
+    matchId: MATCH,
+    handNo: 1,
+    segment: 1,
+    config: cfg,
+    seats: [
+      { seat: 0, userId: 'alice', username: 'alice' },
+      { seat: 1, userId: 'bob', username: 'bob' },
+    ],
+    commitment,
+    actions: hand.actions.map((a) => ({
+      ...a,
+      atMs: 0,
+      decisionMs: 1500,
+      source: 'client' as const,
+    })),
+    board: hand.board,
+    shown,
+    awards: hand.result!.awards,
+    netBySeat: hand.result!.netBySeat,
+    showdown: true,
+  }
+  const reveal: Reveal = {
+    handNo: 1,
+    leaves: toBase64(leaves),
+    slots: await revealSlots(
+      deck,
+      secret,
+      publicSlots({ config: cfg, board: hand.board, shown }),
+    ),
+  }
+  const base = { seq: 9, matchId: MATCH }
+  const frames = {
+    start: {
+      ...base,
+      seq: 1,
+      t: 'hand_start',
+      handNo: 1,
+      commitment,
+      button: 0,
+      blinds: cfg.blinds,
+      stacks: [1990, 1980],
+    } as ServerMsg,
+    end: { ...base, t: 'hand_end', handNo: 1, record } as ServerMsg,
+    reveal: { ...base, t: 'reveal', ...reveal } as ServerMsg,
+  }
+  return { hand, record, reveal, commitment, frames }
 }

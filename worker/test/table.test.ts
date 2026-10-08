@@ -1,7 +1,6 @@
 import {
   abortAllDurableObjects,
   env,
-  runDurableObjectAlarm,
   runInDurableObject,
   SELF,
 } from 'cloudflare:test'
@@ -12,6 +11,7 @@ import type { ServerMsg } from '../../src/shared/protocol'
 import {
   connect,
   createTable,
+  elapse,
   isState,
   ORIGIN,
   peek,
@@ -19,6 +19,7 @@ import {
   token,
 } from './helpers'
 import type { Client } from './helpers'
+import { NEXT_HAND_MS } from '../src/table'
 
 const views = (frames: ServerMsg[]) =>
   frames.flatMap((f) =>
@@ -226,7 +227,7 @@ describe('a heads-up table', () => {
     await playOut(matchId, clients)
     const first = await peek(matchId)
     expect(first.hand!.config.button).toBe(0)
-    expect(await runDurableObjectAlarm(stub(matchId))).toBe(true)
+    expect(await elapse(matchId, NEXT_HAND_MS)).toBe(true)
     await alice.next(isState(2))
     const second = await peek(matchId)
     expect(second.hand!.config.button).toBe(1)
@@ -238,7 +239,7 @@ describe('a heads-up table', () => {
     const total = {
       0: net[0] + (await peek(matchId)).hand!.result!.netBySeat[0],
     }
-    expect(await runDurableObjectAlarm(stub(matchId))).toBe(true)
+    expect(await elapse(matchId, NEXT_HAND_MS)).toBe(true)
     const end = await alice.next((f) => f.t === 'match_end')
     expect(end).toMatchObject({ result: { reason: 'complete' } })
     if (end.t === 'match_end') expect(end.result.netBySeat[0]).toBe(total[0])

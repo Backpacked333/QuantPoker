@@ -85,3 +85,23 @@ export const isState = (handNo: number, actions?: number) => (f: ServerMsg) =>
   (f.t === 'state' || f.t === 'welcome') &&
   f.view?.handNo === handNo &&
   (actions === undefined || f.view.actions.length === actions)
+
+/** Moves the table's clock `ms` forward, then fires its alarm. */
+export async function elapse(matchId: string, ms: number) {
+  const { runInDurableObject, runDurableObjectAlarm } = await import(
+    'cloudflare:test'
+  )
+  await runInDurableObject(stub(matchId), (instance: TableDO) => {
+    const base = instance.clock
+    instance.clock = () => base() + ms
+  })
+  return runDurableObjectAlarm(stub(matchId))
+}
+
+/** Stops the table's clock, so only `elapse` moves it. */
+export async function freezeClock(matchId: string, at = 1_800_000_000_000) {
+  const { runInDurableObject } = await import('cloudflare:test')
+  await runInDurableObject(stub(matchId), (instance: TableDO) => {
+    instance.clock = () => at
+  })
+}

@@ -3534,3 +3534,73 @@ input:disabled {
     align-self: start;
   }
 }
+
+.curriculum-loading {
+  padding: 64px 6%;
+  min-height: 60vh;
+}
+.learning-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+@media (max-width: 480px) {
+  .site-header.learning-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    padding-inline: 10px;
+    gap: 8px;
+  }
+  .learning-header .brand {
+    min-width: 0;
+    font-size: 18px;
+    gap: 6px;
+  }
+  .learning-header .brand-icon {
+    width: 26px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+  .site-header.learning-header nav {
+    margin: 0;
+    gap: 6px;
+  }
+  .learning-header .header-right {
+    margin: 0;
+  }
+  .learning-header .practice-pill {
+    display: none;
+  }
+}
+.curriculum-connections {
+  margin: 0 0 22px;
+  padding: 16px;
+  background: #f2f5ed;
+  border: 1px solid #e0e8d9;
+  border-radius: 10px;
+}
+.curriculum-connections > strong {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.curriculum-connections a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  color: #2b5942;
+  font-size: 12px;
+  border-bottom: 1px solid #dce4d6;
+}
+.curriculum-connections a:hover {
+  text-decoration: underline;
+}
+.curriculum-connections small {
+  display: block;
+  margin-top: 12px;
+  font-size: 10px;
+  color: #5c6e60;
+  line-height: 1.6;
+}

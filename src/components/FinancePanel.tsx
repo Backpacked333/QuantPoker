@@ -19,10 +19,12 @@ import {
   Waves,
 } from 'lucide-react'
 import {
+  allInCashout,
   decisionBreakEven,
   decisionEV,
   decisionOutcomes,
   fairPremium,
+  kellyFraction,
   payoffStatistics,
 } from '../lib/finance'
 import type {
@@ -134,6 +136,13 @@ export function FinancePanel({
   const hedgedVolatility = payoffStatistics(
     decisionOutcomes(model, probabilities, coverage),
   ).deviation
+  const allIn =
+    exposure > 0
+      ? allInCashout(equity, exposure, pot + model.opponentCall, 0.01)
+      : null
+  const fullKelly = allIn
+    ? kellyFraction(equity, exposure, pot + model.opponentCall)
+    : 0
   const scenario: SurfaceScenario = {
     ...model,
     equity,
@@ -675,18 +684,48 @@ export function FinancePanel({
                 <small>down from {unhedgedVolatility.toFixed(1)} chips</small>
               </div>
             </div>
+            {allIn && (
+              <div className="finance-metrics compact">
+                <div>
+                  <span>Illustrative all-in cashout</span>
+                  <strong>
+                    {allIn.cashoutPayout.toFixed(1)} <em>chips paid</em>
+                  </strong>
+                  <small>
+                    1% fee · net EV {format(allIn.cashoutEV)} vs{' '}
+                    {format(allIn.showdownEV)} at showdown
+                  </small>
+                </div>
+                <div>
+                  <span>Run-twice dispersion</span>
+                  <strong>{allIn.runTwiceDeviation.toFixed(1)}</strong>
+                  <small>
+                    down from {allIn.runOnceDeviation.toFixed(1)} · same EV
+                  </small>
+                </div>
+                <div>
+                  <span>Full Kelly ceiling</span>
+                  <strong>{percent(fullKelly)}</strong>
+                  <small>
+                    known, repeatable edge assumption · not a shove target
+                  </small>
+                </div>
+              </div>
+            )}
             <div className="insight-card">
               <div className="insight-icon">
                 <ShieldCheck size={18} />
               </div>
               <div>
-                <h4>Fair protection changes the shape, not the average.</h4>
+                <h4>Cashout protection resembles insurance—not a CDS price.</h4>
                 <p>
                   The hypothetical policy transfers {coverage.toFixed(0)} chips
                   in the losing state and charges its expected payout up front.
-                  Expected wealth stays the same before fees, while outcome
-                  dispersion falls. Real insurance adds expenses, exclusions,
-                  capital costs, and correlated-loss risk.
+                  That contingent-payment shape also appears in credit default
+                  swaps. Cashing out instead sells the whole pot claim,
+                  including its upside. A real CDS adds a reference entity,
+                  default timing, recovery, discounting, collateral, and
+                  counterparty risk; none is modeled here.
                 </p>
               </div>
             </div>
@@ -722,6 +761,14 @@ export function FinancePanel({
               prices, tradable products, measured asset correlations, or
               financial advice.
             </p>
+            <p>
+              The all-in preview treats the selected exposure as terminal,
+              compresses ties into showdown equity, assumes a 1% cashout fee,
+              and treats two half-pot runouts as independent. Its Kelly ceiling
+              assumes the same known edge and payoff repeat indefinitely. Real
+              poker offers, shared-deck boards, estimation error, and changing
+              opponents violate those assumptions.
+            </p>
           </div>
         )}
         <button className="lesson-link" onClick={() => onLesson(lens)}>
@@ -730,6 +777,53 @@ export function FinancePanel({
           </span>
           <ArrowRight size={17} />
         </button>
+        <div
+          className="curriculum-connections"
+          aria-label="Related curriculum modules"
+        >
+          <strong>Take this hand further</strong>
+          {lens === 'equity' ? (
+            <>
+              <a href="#learn/module/odds/learn">
+                Pot odds → expected payoff <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/outs/learn">
+                Outs → possible future states <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/equity/learn">
+                Equity → probability weights <ArrowRight size={14} />
+              </a>
+            </>
+          ) : lens === 'options' ? (
+            <>
+              <a href="#learn/module/fold/learn">
+                Fold equity → response trees <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/pricing/learn">
+                Expected value → risk-neutral pricing <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/replication/learn">
+                Replication → delta & parity <ArrowRight size={14} />
+              </a>
+            </>
+          ) : (
+            <>
+              <a href="#learn/module/variance/learn">
+                Variance → implied volatility <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/replication/learn">
+                Hedging → payoff replication <ArrowRight size={14} />
+              </a>
+              <a href="#learn/module/risk/learn">
+                All-in risk → cashout, Kelly & CDS <ArrowRight size={14} />
+              </a>
+            </>
+          )}
+          <small>
+            Your hand pauses while you learn. These are teaching connections,
+            not pricing equivalences.
+          </small>
+        </div>
         <div className="panel-footnote">
           <ArrowDownRight size={12} /> One hand. Three professional ways to
           frame uncertainty.

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  allInCashout,
+  bankrollRisk,
+  kellyFraction,
   breakEvenEquity,
   callEV,
   decisionBreakEven,
@@ -39,6 +42,129 @@ describe('finance models', () => {
       0.2 * insuranceProfit(200, 200, premium) +
         0.8 * insuranceProfit(0, 200, premium),
     ).toBe(-40)
+  })
+  it('compares fair all-in cashouts with one and two independent runouts', () => {
+    const model = allInCashout(0.55, 100, 100, 0.01)
+    expect(model.fairPayout).toBeCloseTo(110)
+    expect(model.showdownEV).toBeCloseTo(10)
+    expect(model.cashoutPayout).toBeCloseTo(108.9)
+    expect(model.cashoutEV).toBeCloseTo(8.9)
+    expect(model.showdownEV - model.cashoutEV).toBeCloseTo(model.fee)
+    expect(model.runTwiceDeviation).toBeCloseTo(
+      model.runOnceDeviation / Math.sqrt(2),
+    )
+    expect(
+      model.runTwiceOutcomes.reduce(
+        (sum, outcome) => sum + outcome.probability * outcome.payoff,
+        0,
+      ),
+    ).toBeCloseTo(model.showdownEV)
+  })
+  it('calculates full Kelly and finite-horizon drawdown risk', () => {
+    expect(kellyFraction(0.55, 100, 100)).toBeCloseTo(0.1)
+    expect(kellyFraction(0.45, 100, 100)).toBe(0)
+    const halfKelly = bankrollRisk({
+      bankroll: 1000,
+      equity: 0.55,
+      amountAtRisk: 100,
+      profitOnWin: 100,
+      kellyScale: 0.5,
+      horizon: 100,
+      ruinFloor: 0.25,
+    })
+    expect(halfKelly.fullKelly).toBeCloseTo(0.1)
+    expect(halfKelly.fraction).toBeCloseTo(0.05)
+    expect(halfKelly.stake).toBeCloseTo(50)
+    expect(halfKelly.logGrowth).toBeGreaterThan(0)
+    expect(halfKelly.ruinProbability).toBeGreaterThanOrEqual(0)
+    expect(halfKelly.ruinProbability).toBeLessThanOrEqual(1)
+    expect(halfKelly.fifthPercentile).toBeLessThan(halfKelly.median)
+    expect(halfKelly.median).toBeLessThan(halfKelly.ninetyFifthPercentile)
+  })
+  it('keeps a zero-edge Kelly bankroll unchanged and validates domains', () => {
+    const flat = bankrollRisk({
+      bankroll: 1000,
+      equity: 0.5,
+      amountAtRisk: 100,
+      profitOnWin: 100,
+      kellyScale: 1,
+      horizon: 100,
+      ruinFloor: 0.25,
+    })
+    expect(flat.fraction).toBe(0)
+    expect(flat.expectedBankroll).toBe(1000)
+    expect(flat.finalDeviation).toBe(0)
+    expect(flat.ruinProbability).toBe(0)
+    expect(() => allInCashout(1.1, 100, 100, 0)).toThrow(RangeError)
+    expect(() =>
+      bankrollRisk({
+        bankroll: 1000,
+        equity: 0.55,
+        amountAtRisk: 100,
+        profitOnWin: 100,
+        kellyScale: 0.5,
+        horizon: 0,
+        ruinFloor: 0.25,
+      }),
+    ).toThrow(RangeError)
+  })
+
+  it('counts first-passage ruin even when later wins could recover the bankroll', () => {
+    const model = bankrollRisk({
+      bankroll: 1000,
+      equity: 0.75,
+      amountAtRisk: 100,
+      profitOnWin: 100,
+      kellyScale: 1,
+      horizon: 3,
+      ruinFloor: 0.5,
+    })
+    expect(model.fraction).toBe(0.5)
+    expect(model.ruinProbability).toBeCloseTo(0.25 + 0.75 * 0.25 ** 2)
+    expect(model.expectedBankroll).toBeCloseTo(1000 * 1.25 ** 3)
+    const certain = bankrollRisk({
+      bankroll: 1000,
+      equity: 1,
+      amountAtRisk: 100,
+      profitOnWin: 100,
+      kellyScale: 1,
+      horizon: 3,
+      ruinFloor: 0.5,
+    })
+    expect(certain.logGrowth).toBeCloseTo(Math.log(2))
+    expect(certain.ruinProbability).toBe(0)
+    expect(certain.finalDeviation).toBe(0)
+  })
+
+  it('keeps extreme bankroll quantiles finite without overflowing intermediate powers', () => {
+    const model = bankrollRisk({
+      bankroll: 1000,
+      equity: 0.55,
+      amountAtRisk: 10,
+      profitOnWin: 1000,
+      kellyScale: 1,
+      horizon: 300,
+      ruinFloor: 0.25,
+    })
+    expect(Math.log(model.fifthPercentile)).toBeCloseTo(
+      Math.log(2.6293161013587498e215),
+    )
+    expect(Math.log(model.median)).toBeCloseTo(Math.log(4.364608167401557e244))
+    expect(Math.log(model.ninetyFifthPercentile)).toBeCloseTo(
+      Math.log(7.245155668085713e273),
+    )
+    expect(Number.isFinite(model.ruinProbability)).toBe(true)
+    expect(
+      bankrollRisk({
+        bankroll: 1000,
+        equity: 0.55,
+        amountAtRisk: 100,
+        profitOnWin: 100,
+        kellyScale: 0,
+        horizon: 10,
+        ruinFloor: 1,
+      }).ruinProbability,
+    ).toBe(1)
   })
   it('models folds, calls, and raises from the current decision forward', () => {
     expect(

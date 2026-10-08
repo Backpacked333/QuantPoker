@@ -1,0 +1,49 @@
+.curriculum-workspace .qp-calibration-lab {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.curriculum-workspace .qp-calibration-kicker {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+.curriculum-workspace .qp-calibration-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 1rem;
+}
+.curriculum-workspace .qp-calibration-lab fieldset {
+  min-width: 0;
+  border: 1px solid #dce2dc;
+  border-radius: 8px;
+  padding: 1rem;
+}
+.curriculum-workspace .qp-calibration-lab textarea {
+  display: block;
+  width: 100%;
+  max-width: 700px;
+  min-height: 120px;
+  padding: 10px;
+  border: 1px solid #82948a;
+  border-radius: 6px;
+  background: #fff;
+  color: #192c22;
+  font: inherit;
+}
+.curriculum-workspace .qp-calibration-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.curriculum-workspace .qp-calibration-results {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.curriculum-workspace .qp-calibration-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 1rem;
+  min-width: 0;
+}

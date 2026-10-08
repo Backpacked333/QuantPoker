@@ -21,8 +21,9 @@ No API keys, database, account or environment variables are needed; `.env.exampl
 npm run typecheck    # strict TypeScript, including e2e specs
 npm run lint         # ESLint and React hooks rules
 npm test             # unit and component tests (Vitest, jsdom)
-npm run e2e          # Playwright end-to-end, accessibility and mobile checks
-npm run build        # type-check + production assets in dist/
+npm run e2e          # Playwright end-to-end, accessibility, mobile and frame-time checks
+npm run e2e:visual   # opt-in screenshot comparisons (baselines stay local)
+npm run build        # type-check, production assets in dist/, entry-bundle budget
 npm run preview      # serve the production build locally
 ```
 
@@ -41,6 +42,16 @@ The build is static: host `dist/` anywhere. There are no server routes or client
 New visitors get a welcome screen, a short spotlight tour, three **guided hands** (a big draw, a price-sensitive straight draw, a river bluff-catch) and then shuffled practice. **Learn** opens the full curriculum (below). Six short **quick lessons** with interactive widgets and quizzes (expected value, outs and pot odds, variance, ranges, options and insurance) sit inside it at `#learn/quick`.
 
 The app has light, dark and system themes, and a bottom-sheet lab on phones. It respects reduced-motion preferences and is keyboard-operable, with automated axe checks in both themes.
+
+### Table feel and motion
+
+- **Cards and felt:** original vector card faces and court cards with a paper grain, a lit felt with a stitched leather rail, and chips that stack by denomination (1, 5, 25, 100, 500).
+- **Choreography (Motion):** cards fly from the deck to their seats and lift as they turn over, and folded hands slide into the middle. When a hand ends all-in, both hands turn face up and the board is revealed one street at a time, with a pause before the river and equity bars that update after each card. Stacks, payouts and the review wait until the river lands.
+- **Atlas:** a drawn face that breathes and blinks, glances while it thinks, and has a sweeping ring around it. On phones its actions pop out as compact tags. The winner's side of the felt lights up.
+- **Lab:** meters, markers and EV bars move on springs, the Best tag glides between actions, tabs crossfade, and jargon (equity, break-even, EV, range) carries a definition on hover, focus or tap.
+- **Phones:** the lab sheet can be dragged between peek, half and full, follows a flick, and gives a short vibration on snap when sound is on.
+
+Every animation stops or snaps under reduced motion. `?motion=off` forces that, and `?seed=<n>` makes deals and Atlas reproducible; both exist for tests and screenshots.
 
 ## Integrated curriculum
 
@@ -195,6 +206,7 @@ These are **conceptual connections**, not measured correlations with financial a
 | Area              | Implementation                                                                                                                           |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Interface         | React 19 + TypeScript, Vite, hand-written CSS with light/dark design tokens, Lucide icons, bundled DM Sans and Manrope                   |
+| Motion            | `motion` with shared spring tokens (`src/motion.ts`); feature code loads lazily through `LazyMotion`, as does the lab                    |
 | Poker engine      | `src/lib/poker.ts`: immutable transitions with a public action history                                                                   |
 | Hand evaluator    | `src/lib/sim.ts`: bitmask evaluator on integer cards, checked score-for-score against the original readable evaluator                    |
 | Atlas             | `src/lib/atlas.ts`: style-dependent probabilistic policy and explanations                                                                |
@@ -215,7 +227,8 @@ All play is client-side. The app makes no analytics, AI or network requests beyo
 - **Trainer:** the guided path has unique hand ids, decision snapshots are frozen, guesses attach once per street, and finished hands queue for recording.
 - **Components:** the guess gate hides the math until a read is locked; the action bar and hand review are covered.
 - **Table and curriculum integration (Vitest + Testing Library):** lens links to curriculum modules; the paused live-hand bridge shows only visible cards; Atlas waits while you study; pause state and notebook survive round trips; deep links; returning focuses the table; hands are saved before grading finishes.
-- **End to end (Playwright):** the full guess, act and review loop by keyboard; persistence across reload; every analyst view and the 3D view opened repeatedly without GL context warnings; lessons; dark mode with reduced motion; axe accessibility in light and dark; and a phone layout with no horizontal scroll and a working lab sheet.
+- **End to end (Playwright):** the full guess, act and review loop by keyboard; persistence across reload; every analyst view and the 3D view opened repeatedly without GL context warnings; lessons; dark mode with reduced motion; axe accessibility in light and dark; a phone layout with no horizontal scroll and a lab sheet that drags between snap points; and a frame-time check through an all-in runout.
+- **Budgets and visuals:** `npm run build` fails if the entry chunk exceeds 150 kB gzip. `npm run e2e:visual` compares 24 seeded screenshots (light and dark, desktop and phone); record baselines with `-- --update-snapshots` before a UI change.
 
 These do not replace testing with real learners, screen-reader users and a range of devices.
 

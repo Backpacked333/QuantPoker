@@ -100,6 +100,9 @@ export type SeatView = {
   }
 }
 
+/** Who is at the table and how the match stands. */
+export type MatchInfo = SeatView['match']
+
 /** The permanent public record of a hand: no deck, no unshown cards. */
 export type HandRecordV1 = {
   v: 1
@@ -131,8 +134,15 @@ export type Reveal = {
 export type MatchEndReason = 'complete' | 'forfeit' | 'no_show' | 'engine_fault'
 
 export type ServerMsg = { seq: number; matchId: string } & (
-  | { t: 'welcome'; seat: SeatId; view: SeatView; serverNow: number }
-  | { t: 'state'; view: SeatView; serverNow: number }
+  | {
+      t: 'welcome'
+      seat: SeatId
+      table: MatchInfo
+      /** null until the first hand is dealt. */
+      view: SeatView | null
+      serverNow: number
+    }
+  | { t: 'state'; table: MatchInfo; view: SeatView | null; serverNow: number }
   | {
       t: 'hand_start'
       handNo: number

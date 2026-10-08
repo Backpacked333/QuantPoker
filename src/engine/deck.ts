@@ -82,7 +82,7 @@ export function deckFromRecord(
 
 // ---- Commitment --------------------------------------------------------------
 
-const subtle = () => globalThis.crypto.subtle
+const subtle = () => crypto.subtle
 const bytes = (data: Uint8Array) => data as Uint8Array<ArrayBuffer>
 
 async function sha256(data: Uint8Array) {

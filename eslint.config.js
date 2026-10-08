@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', '.wrangler', 'worker/worker-configuration.d.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -23,7 +23,8 @@ export default tseslint.config(
   {
     // The engine and the table server are deterministic: randomness and time
     // are injected (CSPRNG deck, Durable Object alarms), never ambient.
-    files: ['src/engine/**/*.ts', 'worker/**/*.ts'],
+    files: ['src/engine/**/*.ts', 'worker/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-globals': [
         'error',

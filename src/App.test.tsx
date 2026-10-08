@@ -19,11 +19,7 @@ import type { SpotRequest } from './lib/range'
 import { lcg } from './lib/sim'
 
 // Online play is configured per deployment; tests never reach the network.
-vi.mock('./net/supabase', () => ({
-  supabase: null,
-  SUPABASE_URL: '',
-  SUPABASE_KEY: '',
-}))
+vi.mock('./net/supabase', () => ({ loadOnline: async () => null }))
 
 vi.mock('./components/lab/Surface3D', () => ({
   default: () => <div data-testid="surface">Interactive terrain</div>,

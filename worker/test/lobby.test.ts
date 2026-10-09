@@ -123,12 +123,17 @@ describe('the queue', () => {
   it('refuses a lobby socket without an account or with an old protocol', async () => {
     const url = `${ORIGIN}/ws/lobby`
     const bare = await SELF.fetch(url, {
-      headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol': 'qp.v1' },
+      headers: {
+        Upgrade: 'websocket',
+        Origin: ORIGIN,
+        'Sec-WebSocket-Protocol': 'qp.v1',
+      },
     })
     expect(bare.status).toBe(401)
     const old = await SELF.fetch(url, {
       headers: {
         Upgrade: 'websocket',
+        Origin: ORIGIN,
         'Sec-WebSocket-Protocol': `qp.v0, bearer.${token('a')}`,
       },
     })

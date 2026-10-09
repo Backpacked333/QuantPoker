@@ -8,8 +8,9 @@
 //   commitment = hex(SHA-256(leaf_0 ‖ … ‖ leaf_51))
 //
 // After a hand the server reveals every leaf plus (slot, card, salt) for the
-// board and shown hole cards only. HMAC is a PRF, so revealed salts say
-// nothing about the slots that stay hidden, and folded hands stay private.
+// board and shown hole cards to everyone, and each seat's own two hole slots
+// to that seat alone. HMAC is a PRF, so revealed salts say nothing about the
+// slots that stay hidden, and a folded hand stays private to its player.
 import { clockwiseFrom } from './positions'
 import type { HandConfig, SeatId } from './types'
 
@@ -212,8 +213,37 @@ export async function verifyDeal(
   deal: PublicDeal,
 ) {
   const expected = publicCards(deal)
-  if (slots.length !== expected.size) return false
+  // Each public slot opened exactly once: a repeated opening must not stand
+  // in for a slot the server cannot open (a card changed after committing).
+  const opened = new Set(slots.map((s) => s.slot))
+  if (slots.length !== expected.size || opened.size !== expected.size)
+    return false
   for (const { slot, card } of slots)
     if (expected.get(slot) !== card) return false
   return verifyReveal(commitment, leaves, slots)
+}
+
+/**
+ * True when `own` opens exactly `seat`'s two hole slots, with the `cards`
+ * that player was dealt, under `commitment`: the cards a player held (folded
+ * or not) were the committed ones. Each seat receives only its own opening.
+ */
+export async function verifyOwn(
+  commitment: string,
+  leaves: Uint8Array,
+  own: RevealedSlot[],
+  config: HandConfig,
+  seat: SeatId,
+  cards: [number, number],
+) {
+  const slots = dealSlots(config).holes[seat]
+  if (!slots || own.length !== 2) return false
+  const opened = new Map(own.map((s) => [s.slot, s.card]))
+  if (
+    opened.size !== 2 ||
+    opened.get(slots[0]) !== cards[0] ||
+    opened.get(slots[1]) !== cards[1]
+  )
+    return false
+  return verifyReveal(commitment, leaves, own)
 }

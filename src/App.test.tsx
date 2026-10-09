@@ -50,9 +50,15 @@ class SilentWorker {
 const onboarded = () =>
   localStorage.setItem(TABLE_KEY, JSON.stringify({ onboarded: true }))
 
-// The lab is lazy-loaded; load it once so the first test isn't racing the
-// chunk on a busy machine.
-beforeAll(() => import('./components/lab/Lab'))
+// The lab and the curriculum are lazy-loaded; load them once so no test is
+// racing a chunk's first transform on a busy machine (the curriculum took
+// over findBy's 1 s in 2 of 6 parallel runs).
+beforeAll(() =>
+  Promise.all([
+    import('./components/lab/Lab'),
+    import('./curriculum/Curriculum'),
+  ]),
+)
 beforeEach(() => {
   vi.stubGlobal('Worker', AnalysisWorker)
   onboarded()

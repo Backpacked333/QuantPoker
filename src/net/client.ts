@@ -1,7 +1,14 @@
 // One live table connection. The server sends whole redacted snapshots, so
 // the client keeps the newest one and never computes game state itself.
 import type { PlayerAction, SeatId } from '../engine/types'
-import { PROTOCOL } from '../shared/protocol'
+import {
+  CLOSE_ABUSE,
+  CLOSE_ELSEWHERE,
+  CLOSE_GONE,
+  CLOSE_RATE_LIMITED,
+  CLOSE_REPLACED,
+  PROTOCOL,
+} from '../shared/protocol'
 import type {
   ErrorCode,
   HandRecordV1,
@@ -20,6 +27,8 @@ export type ConnectionStatus =
   | 'replaced'
   /** This account is playing at another table (`elsewhere`). */
   | 'elsewhere'
+  /** The table finished long ago or the invite expired; it is gone. */
+  | 'closed'
   /** Gave up: no token, or the server kept refusing. */
   | 'failed'
 
@@ -53,6 +62,11 @@ export type TableState = {
   clockOffset: number
   hands: Record<number, HandSeen>
 }
+
+const LIMITED = {
+  code: 'rate_limited',
+  message: 'Too many messages, reconnecting…',
+} as const
 
 export const INITIAL_STATE: TableState = {
   status: 'connecting',
@@ -176,7 +190,10 @@ export class TableConnection {
     socket.onopen = () => {
       this.attempts = 0
       this.everOpened = true
-      this.set({ status: 'open' })
+      this.set({
+        status: 'open',
+        ...(this.state.error?.code === 'rate_limited' ? { error: null } : {}),
+      })
     }
     socket.onmessage = (event) => {
       try {
@@ -188,9 +205,13 @@ export class TableConnection {
     socket.onclose = (event) => {
       if (this.socket !== socket || this.stopped) return
       this.socket = null
-      if (event.code === 4001) return this.set({ status: 'replaced' })
-      if (event.code === 4409)
+      if (event.code === CLOSE_REPLACED) return this.set({ status: 'replaced' })
+      if (event.code === CLOSE_ELSEWHERE)
         return this.set({ status: 'elsewhere', elsewhere: event.reason })
+      if (event.code === CLOSE_GONE) return this.set({ status: 'closed' })
+      // Sent too much: the server wants a pause of at least a second.
+      const limited =
+        event.code === CLOSE_RATE_LIMITED || event.code === CLOSE_ABUSE
       this.attempts++
       const limit = this.everOpened
         ? this.options.maxAttempts
@@ -204,8 +225,13 @@ export class TableConnection {
           },
         })
       // 0.5 s, 1 s, 2 s … capped at 8 s; a fresh token each time.
-      const delay = Math.min(8000, 500 * 2 ** (this.attempts - 1))
-      this.set({ status: 'reconnecting', pending: null })
+      const backoff = Math.min(8000, 500 * 2 ** (this.attempts - 1))
+      const delay = limited ? Math.max(1000, backoff) : backoff
+      this.set({
+        status: 'reconnecting',
+        pending: null,
+        ...(limited ? { error: LIMITED } : {}),
+      })
       this.timer = setTimeout(() => void this.open(), delay)
     }
   }
@@ -236,8 +262,11 @@ export class TableConnection {
       return
     }
     if (msg.t === 'reveal') {
-      const { handNo, leaves, slots } = msg
-      this.seen(handNo, (h) => ({ ...h, reveal: { handNo, leaves, slots } }))
+      const { handNo, leaves, slots, own } = msg
+      this.seen(handNo, (h) => ({
+        ...h,
+        reveal: { handNo, leaves, slots, ...(own ? { own } : {}) },
+      }))
       return
     }
     if (msg.t !== 'welcome' && msg.t !== 'state') return

@@ -2,6 +2,8 @@
 
 Status: Aligned with user 2026-10-08 · Priority: **P0** · Owner: PM → Architect
 
+> Note 2026-10-09 (Staff Eng / EM, doc fix only): P0-2's "one Node process" and the hosting rows under Risks (Colyseus, a VM or Fly machine) are superseded by the ADR amendment of 2026-10-08: one Cloudflare Worker with Durable Objects. The code is the truth. Requirements are unchanged.
+
 ## Problem statement
 
 People who want to prove and sharpen their poker decision-making have nowhere to play **real opponents** in a skill-first, play-money setting with chess-style feedback. QuantPoker today is a solo trainer against a bot; a leaderboard means nothing until two humans can sit at the same table.

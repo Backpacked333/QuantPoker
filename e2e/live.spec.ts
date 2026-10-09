@@ -20,7 +20,7 @@ async function player(browser: Browser, name: string) {
       JSON.stringify({ onboarded: true }),
     )
     sessionStorage.setItem('qp.devToken', token)
-  }, `dev.${name}.e2e`)
+  }, `dev.${name}.e2e-local-secret-0001`)
   const page = await context.newPage()
   page.on('pageerror', (error) => {
     throw error

@@ -105,17 +105,23 @@ describe('worker routes', () => {
     const old = await SELF.fetch(url, {
       headers: {
         Upgrade: 'websocket',
+        Origin: ORIGIN,
         'Sec-WebSocket-Protocol': `qp.v0, bearer.${token('a')}`,
       },
     })
     expect(old.status).toBe(426)
     const unsigned = await SELF.fetch(url, {
-      headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol': 'qp.v1' },
+      headers: {
+        Upgrade: 'websocket',
+        Origin: ORIGIN,
+        'Sec-WebSocket-Protocol': 'qp.v1',
+      },
     })
     expect(unsigned.status).toBe(401)
     const forged = await SELF.fetch(url, {
       headers: {
         Upgrade: 'websocket',
+        Origin: ORIGIN,
         'Sec-WebSocket-Protocol': 'qp.v1, bearer.dev.bob.nope',
       },
     })

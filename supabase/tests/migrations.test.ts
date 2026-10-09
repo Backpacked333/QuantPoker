@@ -2,40 +2,23 @@
 // Applies supabase/migrations to an in-process Postgres (PGlite) with a stub of
 // Supabase's auth schema and API roles, then checks the access rules as the
 // browser (anon / authenticated) and the table server (service_role) see them.
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { migrationFiles, MIGRATIONS_DIR, SUPABASE_STUB } from './harness'
 
-const dir = new URL('../migrations/', import.meta.url)
+const dir = MIGRATIONS_DIR
 // The learning_cloud migration (an earlier app version's tables, kept in the
-// repo so it matches the live migration history) needs more of Supabase than
-// this stub provides; the multiplayer migrations only depend on auth.users.
-const MIGRATIONS = readdirSync(dir)
-  .filter(
-    (f) => f.endsWith('.sql') && !f.startsWith('20261007192620_learning_cloud'),
-  )
-  .sort()
+// repo so it matches the live migration history) is applied and checked in
+// rls-matrix.test.ts; this suite is about the multiplayer migrations.
+const MIGRATIONS = migrationFiles().filter(
+  (f) => !f.startsWith('20261007192620_learning_cloud'),
+)
 
 const ALICE = '11111111-1111-4111-8111-111111111111'
 const BOB = '22222222-2222-4222-8222-222222222222'
 const EARLY = '00000000-0000-4000-8000-000000000000'
 const MATCH = '33333333-3333-4333-8333-333333333333'
-
-// What Supabase provides before any project migration runs.
-const SUPABASE_STUB = `
-  create role anon nologin;
-  create role authenticated nologin;
-  create role service_role nologin bypassrls;
-  create schema auth;
-  create table auth.users (id uuid primary key, email text);
-  create function auth.uid() returns uuid language sql stable as
-    $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  grant usage on schema auth to anon, authenticated, service_role;
-  grant usage on schema public to anon, authenticated, service_role;
-  -- Supabase's permissive defaults, which the migrations must narrow.
-  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-`
 
 let db: PGlite
 
@@ -109,9 +92,10 @@ describe('migrations', () => {
       '20261008134322_record_hand.sql',
       '20261008134345_abandonments_match_index.sql',
       '20261008173914_record_match.sql',
-      MIGRATIONS.at(-1),
+      '20261008181317_record_match_no_show.sql',
+      '20261009213919_verify_hand.sql',
+      '20261009213923_hands_created_index.sql',
     ])
-    expect(MIGRATIONS.at(-1)).toMatch(/^\d{14}_record_match_no_show\.sql$/)
   })
 })
 
@@ -259,6 +243,30 @@ describe('hand records', () => {
       'select count(*)::int as n from public.hands_private',
     )
     expect(audit).toEqual([{ n: 1 }])
+  })
+
+  it('are counted per UTC day from an index, not by reading every hand', async () => {
+    // The query /api/stats sends through PostgREST (worker/src/stats.ts),
+    // as the anon role it uses. Seq scans are priced out so the plan shows
+    // whether an index can answer it; on a few rows the planner would scan.
+    await db.exec('set enable_seqscan = off')
+    try {
+      for (const verified of ['', 'and verified is true']) {
+        const plan = await as<{ 'QUERY PLAN': string }>(
+          'anon',
+          `explain (costs off) select count(*) from public.hands
+           where created_at >= '2026-10-09T00:00:00Z'
+             and created_at < '2026-10-10T00:00:00Z' ${verified}`,
+        )
+        // Index-only or bitmap depends on the visibility map (vacuum), not
+        // on the schema; either reads one day's index entries.
+        const text = plan.map((r) => r['QUERY PLAN']).join('\n')
+        expect(text).toMatch(/Index (Only )?Scan (using|on) hands_created/)
+        expect(text).not.toMatch(/Seq Scan/)
+      }
+    } finally {
+      await db.exec('reset enable_seqscan')
+    }
   })
 
   it('reject malformed records', async () => {

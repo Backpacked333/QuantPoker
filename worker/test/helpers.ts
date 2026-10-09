@@ -1,10 +1,13 @@
 import { env, SELF } from 'cloudflare:test'
 import type { HandState } from '../../src/engine/types'
 import type { ClientMsg, LobbyMsg, ServerMsg } from '../../src/shared/protocol'
+import type { LobbyDO } from '../src/lobby'
 import type { InitBody, TableDO } from '../src/table'
 
 export const ORIGIN = 'https://quantpoker.test'
-export const token = (user: string) => `dev.${user}.test`
+/** The test Worker's DEV_AUTH_SECRET (worker/vitest.config.ts). */
+export const DEV_SECRET = 'worker-test-secret-0001'
+export const token = (user: string) => `dev.${user}.${DEV_SECRET}`
 
 export function stub(matchId: string) {
   return env.TABLE.get(env.TABLE.idFromName(matchId))
@@ -39,6 +42,7 @@ export async function connect(matchId: string, user: string): Promise<Client> {
   const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -119,6 +123,7 @@ export async function lobby(user: string): Promise<LobbyClient> {
   const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -154,6 +159,7 @@ export async function tryConnect(matchId: string, user: string) {
   const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -167,3 +173,57 @@ export async function tryConnect(matchId: string, user: string) {
   ws.accept()
   return { status: 101, closed }
 }
+
+/** Opens a lobby socket that the server may close straight away. */
+export async function tryLobby(user: string) {
+  const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
+    headers: {
+      Upgrade: 'websocket',
+      Origin: ORIGIN,
+      'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
+    },
+  })
+  if (response.status !== 101) return { status: response.status, closed: null }
+  const ws = response.webSocket!
+  const closed = new Promise<{ code: number; reason: string }>((resolve) =>
+    ws.addEventListener('close', (e) =>
+      resolve({ code: e.code, reason: e.reason }),
+    ),
+  )
+  ws.accept()
+  return { status: 101, ws, closed }
+}
+
+/** Sets the table's clock to `at` without firing its alarm. */
+export async function setClock(matchId: string, at: number) {
+  const { runInDurableObject } = await import('cloudflare:test')
+  await runInDurableObject(stub(matchId), (instance: TableDO) => {
+    instance.clock = () => at
+  })
+}
+
+/** Every storage key a table holds, and its alarm. */
+export async function storageOf(matchId: string) {
+  const { runInDurableObject } = await import('cloudflare:test')
+  return runInDurableObject(stub(matchId), async (_, state) => ({
+    keys: [...(await state.storage.list()).keys()],
+    alarm: await state.storage.getAlarm(),
+  }))
+}
+
+/** Freezes the lobby's clock at `at`, or gives it back the real one (null). */
+export async function setLobbyClock(at: number | null) {
+  const { runInDurableObject } = await import('cloudflare:test')
+  const { lobbyStub } = await import('../src/lobby')
+  const { now } = await import('../src/clock')
+  await runInDurableObject(lobbyStub(env), (lobby: LobbyDO) => {
+    lobby.clock = at === null ? now : () => at
+  })
+}
+
+/** POST /api/matches as `user`. */
+export const createMatch = (user: string, headers: HeadersInit = {}) =>
+  SELF.fetch(`${ORIGIN}/api/matches`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token(user)}`, ...headers },
+  })

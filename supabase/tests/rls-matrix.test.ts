@@ -1,0 +1,352 @@
+// @vitest-environment node
+// The whole access matrix: every table the migrations create, as each kind
+// of caller, for each kind of statement. Every write runs in a transaction
+// that is rolled back, so each cell starts from the same rows.
+//
+//   anon     the browser before sign-in (publishable key)
+//   self     a signed-in player, touching their own rows (alice -> alice)
+//   other    a signed-in player, touching someone else's (alice -> bob)
+//   service  the table server's secret key
+//
+// A cell is a row count (select: rows visible; update/delete: rows changed),
+// 'ok' (an insert went through), 'denied' (a grant or RLS refused it) or
+// 'allowed' (no access rule refused it; a constraint stopped it).
+import { readFileSync } from 'node:fs'
+import { PGlite } from '@electric-sql/pglite'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { migrationFiles, MIGRATIONS_DIR, SUPABASE_STUB } from './harness'
+
+const ALICE = '11111111-1111-4111-8111-111111111111'
+const BOB = '22222222-2222-4222-8222-222222222222'
+const M = '33333333-3333-4333-8333-333333333333'
+const H = `${M}:1`
+
+type Cell = number | 'ok' | 'denied' | 'allowed'
+type Who = 'anon' | 'self' | 'other' | 'service'
+const WHO: Who[] = ['anon', 'self', 'other', 'service']
+
+let db: PGlite
+
+class Rollback {
+  constructor(readonly cell: Cell) {}
+}
+
+/** Runs one statement as `who` and rolls it back. */
+async function cell(who: Who, sql: string): Promise<Cell> {
+  const role =
+    who === 'anon'
+      ? 'anon'
+      : who === 'service'
+        ? 'service_role'
+        : 'authenticated'
+  const sub = who === 'self' || who === 'other' ? ALICE : ''
+  try {
+    await db.transaction(async (tx) => {
+      await tx.query(`select set_config('request.jwt.claim.sub', $1, true)`, [
+        sub,
+      ])
+      await tx.exec(`set local role ${role}`)
+      const result = await tx.query<{ n: number }>(sql)
+      throw new Rollback(
+        /^\s*select/i.test(sql)
+          ? Number(result.rows[0].n)
+          : /^\s*insert/i.test(sql)
+            ? 'ok'
+            : (result.affectedRows ?? 0),
+      )
+    })
+  } catch (error) {
+    if (error instanceof Rollback) return error.cell
+    if (/permission denied|row-level security/.test(String(error)))
+      return 'denied'
+    return 'allowed'
+  }
+  throw new Error('unreachable')
+}
+
+/** Statements for one table; `u` is the account whose rows are targeted. */
+type Spec = {
+  select: (u: string) => string
+  insert: (u: string) => string
+  update: (u: string) => string
+  remove: (u: string) => string
+}
+const owned = (
+  table: string,
+  set: string,
+  insert: (u: string) => string,
+): Spec => ({
+  select: (u) => `select count(*) n from ${table} where user_id = '${u}'`,
+  insert,
+  update: (u) => `update ${table} set ${set} where user_id = '${u}'`,
+  remove: (u) => `delete from ${table} where user_id = '${u}'`,
+})
+const shared = (table: string, set: string, insert: string): Spec => ({
+  select: () => `select count(*) n from ${table}`,
+  insert: () => insert,
+  update: () => `update ${table} set ${set}`,
+  remove: () => `delete from ${table}`,
+})
+
+const TABLES: Record<string, Spec> = {
+  'public.players': owned(
+    'public.players',
+    'bio = bio',
+    (u) =>
+      `insert into public.players (user_id, username) values ('${u}', 'newname') on conflict do nothing`,
+  ),
+  'public.matches': shared(
+    'public.matches',
+    'config = config',
+    `insert into public.matches (id, config) values (gen_random_uuid(), '{}')`,
+  ),
+  'public.match_players': owned(
+    'public.match_players',
+    'timeouts = timeouts',
+    (u) =>
+      `insert into public.match_players (match_id, user_id, seat) values ('${M}', '${u}', 5) on conflict do nothing`,
+  ),
+  'public.hands': shared(
+    'public.hands',
+    'verified = verified',
+    `insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record)
+     values ('${M}:9', '${M}', 9, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}')`,
+  ),
+  'public.hands_private': shared(
+    'public.hands_private',
+    'holes = holes',
+    `insert into public.hands_private (hand_id, deck, secret, holes)
+     values ('${H}', array(select generate_series(0, 51))::smallint[], decode(repeat('00', 32), 'hex'), '{}')
+     on conflict do nothing`,
+  ),
+  'public.hand_holes': owned(
+    'public.hand_holes',
+    'cards = cards',
+    (u) =>
+      `insert into public.hand_holes (hand_id, user_id, cards) values ('${H}', '${u}', '{1,2}') on conflict do nothing`,
+  ),
+  'public.abandonments': owned(
+    'public.abandonments',
+    'kind = kind',
+    (u) =>
+      `insert into public.abandonments (user_id, kind) values ('${u}', 'no_show')`,
+  ),
+  'public.incidents': shared(
+    'public.incidents',
+    'kind = kind',
+    `insert into public.incidents (kind, detail) values ('x', '{}')`,
+  ),
+  'public.profiles': owned(
+    'public.profiles',
+    'display_name = display_name',
+    (u) =>
+      `insert into public.profiles (user_id) values ('${u}') on conflict do nothing`,
+  ),
+  'public.hand_results': owned(
+    'public.hand_results',
+    'net = net',
+    (u) =>
+      `insert into public.hand_results (user_id, id, hand_number, net, result, guided)
+       values ('${u}', 's:99', 1, 0, 'x', false) on conflict do nothing`,
+  ),
+  'public.lesson_progress': owned(
+    'public.lesson_progress',
+    'completed_at = completed_at',
+    (u) =>
+      `insert into public.lesson_progress (user_id, lens) values ('${u}', 'options') on conflict do nothing`,
+  ),
+  'public.practice_attempts': owned(
+    'public.practice_attempts',
+    'correct = correct',
+    (u) =>
+      `insert into public.practice_attempts (user_id, id, lens, stage, answer_id, correct, context)
+       values ('${u}', gen_random_uuid(), 'equity', 'prediction', 'a', true, '{}')`,
+  ),
+  'public.coach_messages': owned(
+    'public.coach_messages',
+    'label = label',
+    (u) =>
+      `insert into public.coach_messages (user_id, id, role, text, snapshot_id, label)
+       values ('${u}', gen_random_uuid(), 'user', 'hi', 's', 'l')`,
+  ),
+  'private.coach_usage': shared(
+    'private.coach_usage',
+    'used = used',
+    `insert into private.coach_usage (scope, window_start) values ('x', now())`,
+  ),
+}
+
+const D = 'denied' as const
+const PUBLIC_READ = {
+  anon: [1, D, D, D],
+  self: [1, D, D, D],
+  other: [1, D, D, D],
+}
+const PRIVATE = { anon: [D, D, D, D], self: [D, D, D, D], other: [D, D, D, D] }
+const OWN_ONLY = {
+  anon: [D, D, D, D],
+  self: [1, 'ok', 1, 1],
+  other: [0, D, 0, 0],
+}
+const SERVICE = { service: [1, 'ok', 1, 1] }
+
+/** Expected [select, insert, update, delete] per caller. */
+const EXPECTED: Record<string, Record<Who, Cell[]>> = {
+  // Public profiles: anyone reads; a player edits only their own name, country
+  // and bio; nobody but the server creates or deletes one (a player row is
+  // referenced by history, so even the server's delete stops at a key).
+  'public.players': {
+    anon: [1, D, D, D],
+    self: [1, D, 1, D],
+    other: [1, D, 0, D],
+    service: [1, 'ok', 1, 'allowed'],
+  },
+  'public.matches': { ...PUBLIC_READ, ...SERVICE },
+  'public.match_players': { ...PUBLIC_READ, ...SERVICE },
+  'public.hands': { ...PUBLIC_READ, ...SERVICE },
+  'public.abandonments': { ...PUBLIC_READ, ...SERVICE },
+  // The deck, the hand secret and every hole card: the server only.
+  'public.hands_private': { ...PRIVATE, ...SERVICE },
+  'public.incidents': { ...PRIVATE, ...SERVICE },
+  // Each player reads their own hole cards and nobody else's; nobody writes.
+  'public.hand_holes': {
+    anon: [D, D, D, D],
+    self: [1, D, D, D],
+    other: [0, D, D, D],
+    ...SERVICE,
+  },
+  // The earlier app's learning tables: strictly per owner.
+  'public.profiles': { ...OWN_ONLY, ...SERVICE },
+  'public.hand_results': { ...OWN_ONLY, ...SERVICE },
+  'public.lesson_progress': { ...OWN_ONLY, ...SERVICE },
+  'public.practice_attempts': { ...OWN_ONLY, ...SERVICE },
+  'public.coach_messages': { ...OWN_ONLY, ...SERVICE },
+  // Only reachable through reserve_coach_request (security definer). In this
+  // stub service_role has no usage on schema private either; on Supabase the
+  // grants may differ, which does not change what browsers can do.
+  'private.coach_usage': { ...PRIVATE, service: [D, D, D, D] },
+}
+
+beforeAll(async () => {
+  db = new PGlite()
+  await db.exec(SUPABASE_STUB)
+  for (const file of migrationFiles())
+    await db.exec(readFileSync(new URL(file, MIGRATIONS_DIR), 'utf8'))
+  await db.exec(`
+    insert into auth.users (id, email_confirmed_at) values ('${ALICE}', now()), ('${BOB}', now());
+    insert into public.matches (id, config) values ('${M}', '{}');
+    insert into public.match_players (match_id, user_id, seat) values ('${M}', '${ALICE}', 0), ('${M}', '${BOB}', 1);
+    insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record)
+      values ('${H}', '${M}', 1, 0, repeat('b', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}');
+    insert into public.hands_private (hand_id, deck, secret, holes)
+      values ('${H}', array(select generate_series(0, 51))::smallint[], decode(repeat('01', 32), 'hex'), '{}');
+    insert into public.hand_holes (hand_id, user_id, cards) values ('${H}', '${ALICE}', '{0,1}'), ('${H}', '${BOB}', '{2,3}');
+    insert into public.abandonments (user_id, match_id, kind) values ('${ALICE}', '${M}', 'no_show'), ('${BOB}', '${M}', 'no_show');
+    insert into public.incidents (kind, detail) values ('seed', '{}');
+    insert into public.profiles (user_id) values ('${ALICE}'), ('${BOB}');
+    insert into public.hand_results (user_id, id, hand_number, net, result, guided)
+      values ('${ALICE}', 's:1', 1, 0, 'x', false), ('${BOB}', 's:1', 1, 0, 'x', false);
+    insert into public.lesson_progress (user_id, lens) values ('${ALICE}', 'equity'), ('${BOB}', 'equity');
+    insert into public.practice_attempts (user_id, id, lens, stage, answer_id, correct, context)
+      values ('${ALICE}', gen_random_uuid(), 'equity', 'prediction', 'a', true, '{}'),
+             ('${BOB}', gen_random_uuid(), 'equity', 'prediction', 'a', true, '{}');
+    insert into public.coach_messages (user_id, id, role, text, snapshot_id, label)
+      values ('${ALICE}', gen_random_uuid(), 'user', 'hi', 's', 'l'),
+             ('${BOB}', gen_random_uuid(), 'user', 'hi', 's', 'l');
+    insert into private.coach_usage (scope, window_start) values ('seed', now());
+  `)
+}, 60_000)
+
+afterAll(() => db?.close())
+
+describe('the access matrix', () => {
+  it('covers every table the migrations create', async () => {
+    const { rows } = await db.query<{ t: string }>(
+      `select schemaname || '.' || tablename t from pg_tables
+       where schemaname in ('public', 'private') order by 1`,
+    )
+    expect(rows.map((r) => r.t)).toEqual(Object.keys(TABLES).sort())
+    expect(Object.keys(EXPECTED).sort()).toEqual(Object.keys(TABLES).sort())
+  })
+
+  it('has RLS on every table a browser role could reach', async () => {
+    const { rows } = await db.query<{ t: string }>(
+      `select n.nspname || '.' || c.relname t from pg_class c
+       join pg_namespace n on n.oid = c.relnamespace
+       where c.relkind = 'r' and n.nspname in ('public', 'private')
+         and not c.relrowsecurity`,
+    )
+    expect(rows).toEqual([])
+  })
+
+  for (const [table, spec] of Object.entries(TABLES))
+    it(`holds for ${table}`, async () => {
+      const seen: Record<string, Cell[]> = {}
+      for (const who of WHO) {
+        const u = who === 'other' ? BOB : ALICE
+        seen[who] = [
+          await cell(who, spec.select(u)),
+          await cell(who, spec.insert(u)),
+          await cell(who, spec.update(u)),
+          await cell(who, spec.remove(u)),
+        ]
+      }
+      expect(seen).toEqual(EXPECTED[table])
+    })
+})
+
+describe('functions', () => {
+  type Fn = {
+    name: string
+    definer: boolean
+    config: string[] | null
+    anon: boolean
+    authenticated: boolean
+  }
+  const fns = async () =>
+    (
+      await db.query<Fn>(
+        `select n.nspname || '.' || p.proname name, p.prosecdef definer,
+                p.proconfig config,
+                has_function_privilege('anon', p.oid, 'execute') anon,
+                has_function_privilege('authenticated', p.oid, 'execute') authenticated
+         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname in ('public', 'private') order by 1`,
+      )
+    ).rows
+
+  it('pin search_path and keep every security definer away from browsers', async () => {
+    const all = await fns()
+    expect(all.map((f) => f.name)).toEqual([
+      'public.audit_hand',
+      'public.clear_learning_progress',
+      'public.handle_new_player',
+      'public.record_hand',
+      'public.record_incident',
+      'public.record_match',
+      'public.reserve_coach_request',
+      'public.verify_hand',
+    ])
+    for (const f of all) {
+      expect(f.config, f.name).toContain('search_path=""')
+      if (f.definer) {
+        expect(f.anon, `${f.name} anon`).toBe(false)
+        expect(f.authenticated, `${f.name} authenticated`).toBe(false)
+      }
+    }
+  })
+
+  it('let a signed-in player clear only their own learning progress', async () => {
+    const cleared = await cell(
+      'self',
+      `select count(*) n from (select public.clear_learning_progress()) x`,
+    )
+    expect(cleared).toBe(1)
+    expect(
+      await cell(
+        'anon',
+        `select count(*) n from (select public.clear_learning_progress()) x`,
+      ),
+    ).toBe('denied')
+  })
+})

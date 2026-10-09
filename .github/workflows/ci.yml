@@ -2,14 +2,20 @@ name: Quality checks
 on:
   push:
   pull_request:
-permissions:
-  contents: read
+# Nothing by default; each job asks for what it needs. Actions are pinned to
+# the commit their v4 tag pointed at (2026-10-09), so a moved tag cannot
+# change what runs here.
+permissions: {}
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -22,17 +28,25 @@ jobs:
       - run: npm run build
   e2e:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
+      # The live project drives two browsers against wrangler dev; if that
+      # server never came up the project could vanish without failing.
+      - name: The live two-browser tests ran and passed
+        run: node scripts/check-e2e.ts playwright-report/results.json
       - if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-traces
           path: test-results

@@ -43,6 +43,19 @@ export function LiveTable({
         )}
       </div>
     )
+  if (status === 'closed')
+    return (
+      <div className="empty live-empty" role="alert">
+        <h3>This table has closed</h3>
+        <p>
+          Finished tables close after a few minutes, and unused invites after a
+          day.
+        </p>
+        <a className="btn btn-primary" href="#lobby/find">
+          Find a match
+        </a>
+      </div>
+    )
   if (status === 'failed' || status === 'replaced')
     return (
       <div className="empty live-empty" role="alert">
@@ -127,7 +140,11 @@ function MatchBar({
         />
       )}
       {state.status === 'reconnecting' && (
-        <span className="live-warn">Reconnecting…</span>
+        <span className="live-warn">
+          {state.error?.code === 'rate_limited'
+            ? state.error.message
+            : 'Reconnecting…'}
+        </span>
       )}
     </div>
   )

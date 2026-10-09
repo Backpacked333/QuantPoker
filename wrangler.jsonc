@@ -24,6 +24,39 @@
     { "tag": "v1", "new_sqlite_classes": ["TableDO"] },
     { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] },
   ],
+  // Every archived hand is re-verified off the game path: the table sends
+  // { matchId, handNo } once Postgres has the hand; this Worker consumes it
+  // (worker/src/verify.ts). One hand per batch keeps each invocation well
+  // inside the CPU limit; after 5 retries a message goes to the DLQ, whose
+  // consumer records an incident. `wrangler deploy` creates a missing queue
+  // only when a producer names it, so the DLQ is declared as a producer too
+  // (the Worker never sends to it); scripts/wrangler-config.test.ts checks.
+  "queues": {
+    "producers": [
+      { "binding": "HAND_QUEUE", "queue": "quantpoker-hands" },
+      { "binding": "HAND_DLQ", "queue": "quantpoker-hands-dlq" },
+    ],
+    "consumers": [
+      {
+        "queue": "quantpoker-hands",
+        "max_batch_size": 1,
+        "max_retries": 5,
+        "dead_letter_queue": "quantpoker-hands-dlq",
+      },
+      { "queue": "quantpoker-hands-dlq", "max_batch_size": 10 },
+    ],
+  },
+  // Signed-in requests per client address per minute (UPGRADES_PER_IP_PER_MINUTE
+  // in worker/src/limits.ts). Counted per Cloudflare location and
+  // approximate by design: a backstop against one address, not accounting.
+  // Per-account limits live in the Durable Objects.
+  "ratelimits": [
+    {
+      "name": "IP_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 300, "period": 60 },
+    },
+  ],
   // Browser-safe values the online area reads from /api/config at runtime.
   // The service-role key is never here: `wrangler secret put` only.
   "vars": {

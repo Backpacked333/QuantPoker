@@ -1,6 +1,7 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { CLOSE_GONE, CLOSE_RATE_LIMITED } from '../shared/protocol'
 import type { Identity } from './api'
 import { Lobby } from './Lobby'
 import { LobbyConnection } from './lobbyClient'
@@ -90,6 +91,26 @@ describe('LobbyConnection', () => {
       looking: false,
       matched: { matchId: MATCH, resumed: true },
     })
+  })
+
+  it('backs off at least a second after a limit close, says why, and queues again', async () => {
+    vi.useFakeTimers()
+    const connection = connect()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last().open()
+    connection.find()
+    FakeSocket.last().drop(CLOSE_RATE_LIMITED, 'Too many messages')
+    expect(connection.getState()).toMatchObject({
+      status: 'reconnecting',
+      error: 'Too many messages, reconnecting…',
+    })
+    await vi.advanceTimersByTimeAsync(999)
+    expect(FakeSocket.all).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    const again = FakeSocket.last()
+    again.open()
+    expect(connection.getState().error).toBeNull()
+    expect(sent(again)).toEqual([{ t: 'queue', kind: 'hu-casual' }])
   })
 
   it('stops for good when another tab opens the lobby', async () => {
@@ -225,6 +246,23 @@ describe('LiveTable and the lobby', () => {
     expect(
       screen.getByRole('link', { name: 'Go to your table' }),
     ).toHaveAttribute('href', `#play/${other}`)
+  })
+
+  it('says the table has closed when the server has cleaned it up', async () => {
+    const socket = await table()
+    act(() => socket.drop(CLOSE_GONE, 'closed'))
+    expect(screen.getByRole('alert')).toHaveTextContent('This table has closed')
+    expect(screen.getByRole('link', { name: 'Find a match' })).toHaveAttribute(
+      'href',
+      '#lobby/find',
+    )
+  })
+
+  it('tells a flooding client why it is reconnecting', async () => {
+    const socket = await table()
+    act(() => socket.emit(welcome()))
+    act(() => socket.drop(CLOSE_RATE_LIMITED, 'Too many messages'))
+    expect(screen.getByText('Too many messages, reconnecting…')).toBeVisible()
   })
 })
 

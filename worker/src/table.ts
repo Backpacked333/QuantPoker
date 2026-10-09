@@ -12,9 +12,17 @@ import {
 } from '../../src/engine/deck'
 import { act, assertInvariants, isOver, startHand } from '../../src/engine/hand'
 import { seatView } from '../../src/engine/redact'
+import type { RevealedSlot } from '../../src/engine/deck'
 import { EngineError } from '../../src/engine/types'
 import type { HandState, SeatId } from '../../src/engine/types'
-import { parseClientMsg, PROTOCOL } from '../../src/shared/protocol'
+import {
+  CLOSE_ABUSE,
+  CLOSE_GONE,
+  CLOSE_RATE_LIMITED,
+  MAX_FRAME,
+  parseClientMsg,
+  PROTOCOL,
+} from '../../src/shared/protocol'
 import type {
   ErrorCode,
   HandRecordV1,
@@ -31,6 +39,8 @@ import {
   bankAfter,
   earliest,
   FORFEIT_TIMEOUTS,
+  IDLE_MS,
+  INVITE_TTL_MS,
   isCurrentTurn,
   outboxBackoff,
   timeoutAction,
@@ -38,9 +48,12 @@ import {
 } from './deadlines'
 import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
+import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
+import { describeError, logEvent } from './log'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
+import type { HandMessage } from './verify'
 
 export const DEFAULT_CONFIG: MatchConfig = {
   kind: 'hu-casual',
@@ -85,11 +98,26 @@ type Current = {
   turnStartedAt: number
   timing: { atMs: number; decisionMs: number; source: 'client' | 'timeout' }[]
 }
-/** The last finished hand, re-sent to anyone who (re)joins before the next. */
-type Ended = { record: HandRecordV1; reveal: Reveal }
+/**
+ * The last finished hand, re-sent to anyone who (re)joins before the next.
+ * `own` holds each seat's opening of its own hole slots; a seat only ever
+ * receives its own.
+ */
+type Ended = {
+  record: HandRecordV1
+  reveal: Reveal
+  own?: Record<SeatId, RevealedSlot[]>
+}
 type Attachment = { userId: string; seat: SeatId }
 type Ack = { reqId: string; seq: number }
-export type Outbox = ArchiveCall & { attempts: number }
+/**
+ * A queued call: an archive function, or a hand for the verify queue. Hands
+ * and the match must reach Postgres in order, so an archive failure stops the
+ * flush; a verify send or an incident report never holds up what follows.
+ */
+export type Outbox = (ArchiveCall | { send: HandMessage }) & {
+  attempts: number
+}
 export type InitBody = {
   matchId: string
   creator: { userId: string; username: string }
@@ -125,6 +153,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
   controller: TableController = new LocalController()
   /** The table's clock; tests move it instead of waiting. */
   clock: () => number = now
+  /** Frames and connects that do not move the game, per account. */
+  private budget = new FrameBudget(() => this.clock())
+  /** Illegal frames per seat in the current hand. */
+  private illegalCount = new Map<SeatId, { handNo: number; n: number }>()
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env)
@@ -187,10 +219,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
     }
     this.match.players.push(this.newPlayer(0, body.creator))
     if (body.opponent) this.match.players.push(this.newPlayer(1, body.opponent))
-    if (body.startWithinMs)
-      this.deadlines = [
-        { kind: 'start', at: this.clock() + body.startWithinMs },
-      ]
+    // A paired table must start soon; an invite waits for its friend, but
+    // not forever.
+    this.deadlines = [
+      body.startWithinMs
+        ? { kind: 'start', at: this.clock() + body.startWithinMs }
+        : { kind: 'idle', at: this.clock() + INVITE_TTL_MS },
+    ]
     await this.ctx.storage.put({
       match: this.match,
       seq: this.seq,
@@ -217,25 +252,39 @@ export class TableDO extends DurableObject<WorkerEnv> {
 
   private async join(userId: string, username: string) {
     const match = this.match
-    if (!match) return json({ error: 'no such table' }, 404)
+    // Cleaned up (or never existed): say so, and store nothing.
+    if (!match) return this.refuse(CLOSE_GONE, 'closed')
+    // A connect costs a frame, so reconnecting does not refill a budget.
+    if (!this.budget.spend(userId)) {
+      logEvent('limit_hit', {
+        matchId: match.id,
+        userId,
+        code: CLOSE_RATE_LIMITED,
+        reason: 'connects',
+      })
+      return this.refuse(CLOSE_RATE_LIMITED, 'Too many connections')
+    }
     let player = match.players.find((p) => p.userId === userId)
     if (!player) {
       // Invite link: the first other account to open it takes the empty seat.
       if (match.status !== 'waiting' || match.players.length >= 2)
         return json({ error: 'table full' }, 403)
-      if (match.status !== 'waiting' || match.players.length >= 2)
-        return json({ error: 'table full' }, 403)
       // One table per account: someone playing elsewhere is sent back there.
       const elsewhere = await lobbyStub(this.env).claim(userId, match.id)
       if (elsewhere) return this.refuse(4409, elsewhere)
-      // The claim awaited: another account may have taken the seat meanwhile.
-      if (match.players.length >= 2) {
-        await lobbyStub(this.env).release([userId], match.id)
-        return json({ error: 'table full' }, 403)
+      // The claim awaited, so another join may have run meanwhile. If it
+      // seated this same account (a second tab), join as that seat: releasing
+      // here would free an account that is now playing at this table.
+      player = match.players.find((p) => p.userId === userId)
+      if (!player) {
+        if (match.players.length >= 2) {
+          await lobbyStub(this.env).release([userId], match.id)
+          return json({ error: 'table full' }, 403)
+        }
+        player = this.newPlayer(1, { userId, username })
+        match.players.push(player)
+        await this.ctx.storage.put('match', match)
       }
-      player = this.newPlayer(1, { userId, username })
-      match.players.push(player)
-      await this.ctx.storage.put('match', match)
     }
     // One socket per account: a second tab replaces the first.
     for (const old of this.ctx.getWebSockets(userId))
@@ -278,15 +327,28 @@ export class TableDO extends DurableObject<WorkerEnv> {
   // ---- Socket events (hibernation API) ------------------------------------
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
-    const { seat } = ws.deserializeAttachment() as Attachment
+    // Frames still in flight from a socket we already closed do nothing.
+    if (ws.readyState !== OPEN || !this.match) return
+    const { seat, userId } = ws.deserializeAttachment() as Attachment
+    if (!this.budget.spend(userId))
+      return this.cutOff(
+        ws,
+        CLOSE_RATE_LIMITED,
+        'rate_limited',
+        'Too many messages',
+      )
+    const size =
+      typeof message === 'string' ? message.length : message.byteLength
+    // Refused unread: parsing is the cost an oversized frame imposes.
+    if (size > MAX_FRAME)
+      return this.cutOff(ws, CLOSE_ABUSE, 'too_large', 'Message too large')
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
-    if (!msg) return this.reject(ws, 'illegal', 'Malformed message')
+    if (!msg) return this.illegal(ws, seat, 'Malformed message')
     if (msg.t === 'resync') {
       this.send(ws, this.frame('welcome', seat))
       return this.sendEnded(ws)
     }
-    if (msg.t !== 'act')
-      return this.reject(ws, 'illegal', 'Not a table message')
+    if (msg.t !== 'act') return this.illegal(ws, seat, 'Not a table message')
 
     // A retry of the action we already applied: acknowledge it again.
     if (this.lastAck[seat]?.reqId === msg.reqId)
@@ -309,10 +371,54 @@ export class TableDO extends DurableObject<WorkerEnv> {
       next = act(hand, seat, msg.action)
     } catch (error) {
       if (error instanceof EngineError)
-        return this.reject(ws, 'illegal', error.message, msg.reqId)
+        return this.illegal(ws, seat, error.message, msg.reqId)
       throw error
     }
     await this.applyAction(seat, next, 'client', msg.reqId)
+    // A move the table applied is play, not noise: it costs nothing. Moves
+    // are paced by the opponent, so they cannot flood.
+    this.budget.refund(userId)
+  }
+
+  /** Tells the socket why, then closes it; the seat may reconnect. */
+  private cutOff(
+    ws: WebSocket,
+    code: number,
+    error: ErrorCode,
+    message: string,
+  ) {
+    this.reject(ws, error, message)
+    ws.close(code, message)
+    this.limitHit(ws, code, error)
+    this.broadcast('state', { gone: ws })
+  }
+
+  private limitHit(ws: WebSocket, code: number, reason: string) {
+    const { userId } = ws.deserializeAttachment() as Attachment
+    logEvent('limit_hit', { matchId: this.match?.id, userId, code, reason })
+  }
+
+  /**
+   * A frame an honest client never sends: answered with `illegal`, and
+   * counted. More than ILLEGAL_PER_HAND in one hand closes the socket.
+   * Wrong-turn and stale moves are not counted: lag produces those.
+   */
+  private illegal(
+    ws: WebSocket,
+    seat: SeatId,
+    message: string,
+    reqId?: string,
+  ) {
+    this.reject(ws, 'illegal', message, reqId)
+    const handNo = this.hand?.config.handNo ?? 0
+    const seen = this.illegalCount.get(seat)
+    const n = seen?.handNo === handNo ? seen.n + 1 : 1
+    this.illegalCount.set(seat, { handNo, n })
+    if (n > ILLEGAL_PER_HAND) {
+      ws.close(CLOSE_ABUSE, 'Too many illegal messages')
+      this.limitHit(ws, CLOSE_ABUSE, 'illegal')
+      this.broadcast('state', { gone: ws })
+    }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string) {
@@ -348,6 +454,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
           if (this.match?.status === 'waiting') await this.noShow()
           continue
         }
+        if (d.kind === 'idle') {
+          // Deleted: nothing is left to arm.
+          if (await this.idle()) return
+          continue
+        }
         if (this.match?.status !== 'playing') continue
         const hand = this.hand
         if (d.kind === 'turn' && isCurrentTurn(d, hand))
@@ -366,7 +477,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
       }
       await this.armAlarm()
     } catch (error) {
-      console.error('alarm failed', error)
+      logEvent('error', {
+        matchId: this.match?.id,
+        reason: 'alarm',
+        detail: describeError(error),
+      })
     }
   }
 
@@ -425,6 +540,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (isOver(next)) {
       for (const [s, net] of Object.entries(next.result!.netBySeat))
         match.net[Number(s)] += net
+      this.logHandEnd(next, t - current.startedAt)
       this.ended = await this.endOfHand(next, current, writes)
       writes.ended = this.ended
       this.setGameDeadline(
@@ -454,7 +570,18 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match!
     const plan = this.controller.nextHandPlan(match.handNo + 1, match.config)
     if (!plan) return this.finish('complete')
-    const hand = startHand(plan.config, plan.deck)
+    let hand: HandState
+    try {
+      hand = startHand(plan.config, plan.deck)
+    } catch (error) {
+      // A plan the engine refuses (a bad stored deck, in Phase 1): halt the
+      // match like any engine fault rather than break the object.
+      return this.engineFault(error, plan.config.handNo, {
+        config: plan.config,
+        deck: plan.deck,
+        secret: toBase64(plan.secret),
+      })
+    }
     if (!this.invariantsHold(hand)) return
     const { commitment } = await commitDeck(plan.deck, plan.secret)
     const t = this.clock()
@@ -501,6 +628,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
         stacks: hand.players.map((p) => p.stack),
       })
     this.broadcast('state')
+    if (match.handNo === 1)
+      logEvent('match_start', {
+        matchId: match.id,
+        userIds: match.players.map((p) => p.userId),
+      })
     // A hand that is over at the deal (blinds all in) still needs its end.
     if (isOver(hand)) await this.applyEndAtDeal(hand)
     else if (match.handNo === 1) void this.flushOutbox()
@@ -511,6 +643,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match!
     for (const [s, net] of Object.entries(hand.result!.netBySeat))
       match.net[Number(s)] += net
+    this.logHandEnd(hand, 0)
     const writes: Record<string, unknown> = { match }
     this.ended = await this.endOfHand(hand, this.current!, writes)
     writes.ended = this.ended
@@ -525,6 +658,15 @@ export class TableDO extends DurableObject<WorkerEnv> {
     await this.armAlarm()
     for (const ws of this.openSockets()) this.sendEnded(ws)
     void this.flushOutbox()
+  }
+
+  private logHandEnd(hand: HandState, ms: number) {
+    logEvent('hand_end', {
+      matchId: this.match!.id,
+      handNo: hand.config.handNo,
+      reason: hand.result!.showdown ? 'showdown' : 'fold',
+      ms,
+    })
   }
 
   /** The public record and reveal of a finished hand; queues the archive. */
@@ -572,10 +714,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
       leaves: toBase64(leaves),
       slots,
     }
+    const holeSlots = dealSlots(hand.config).holes
+    const own: Record<SeatId, RevealedSlot[]> = {}
+    for (const p of hand.players)
+      own[p.seat] = await revealSlots(stored.deck, secret, holeSlots[p.seat])
     if (this.recordable()) {
       const userOf = (seat: SeatId) =>
         match.players.find((p) => p.seat === seat)!.userId
-      const holeSlots = dealSlots(hand.config).holes
       const holes = Object.fromEntries(
         hand.players.map((p) => [
           p.seat,
@@ -610,8 +755,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
           ),
         },
       } satisfies Outbox
+      // Sorts after this hand's archive call, so it is sent only once
+      // Postgres has the hand: the consumer never races the archive.
+      writes[outboxKey(match.handNo, 'verify')] = {
+        send: { matchId: match.id, handNo: match.handNo },
+        attempts: 0,
+      } satisfies Outbox
     }
-    return { record, reveal }
+    return { record, reveal, own }
   }
 
   private bankOf(hand: HandState) {
@@ -655,11 +806,68 @@ export class TableDO extends DurableObject<WorkerEnv> {
       )
       return true
     } catch (error) {
-      // Loud and final rather than a wrong payout.
-      console.error('engine invariant failed', error, JSON.stringify(state))
-      void this.finish('engine_fault')
+      this.engineFault(error, state.config.handNo, state)
       return false
     }
+  }
+
+  /**
+   * Loud and final rather than a wrong payout: the match ends as
+   * `engine_fault`. Ids only in the log: `evidence` (the state or plan) holds
+   * the deck and every hole card.
+   */
+  private engineFault(error: unknown, handNo: number, evidence: unknown) {
+    const detail = error instanceof Error ? error.message : describeError(error)
+    logEvent('error', {
+      matchId: this.match?.id,
+      handNo,
+      reason: 'engine_fault',
+      detail,
+    })
+    // The evidence goes where only the service role can read it. Written
+    // before finish() so its flush sends it.
+    if (this.recordable())
+      void this.ctx.storage.put(outboxKey(handNo, 'incident'), {
+        rpc: 'record_incident',
+        attempts: 0,
+        body: {
+          matchId: this.match!.id,
+          handNo,
+          kind: 'engine_fault',
+          detail: { error: detail, evidence },
+        },
+      } satisfies Outbox)
+    void this.finish('engine_fault')
+  }
+
+  /**
+   * An expired invite or a finished table deletes itself, closing any
+   * socket still open, once nothing is left to archive; otherwise it checks
+   * again later. True when the table is gone.
+   */
+  private async idle() {
+    if (this.match?.status === 'playing') return false
+    const pending = await this.ctx.storage.list({ prefix: 'outbox:', limit: 1 })
+    if (pending.size) {
+      this.deadlines.push({ kind: 'idle', at: this.clock() + IDLE_MS })
+      return false
+    }
+    for (const ws of this.ctx.getWebSockets())
+      try {
+        ws.close(CLOSE_GONE, 'closed')
+      } catch {
+        // Already closed.
+      }
+    await this.ctx.storage.deleteAlarm()
+    await this.ctx.storage.deleteAll()
+    this.match = null
+    this.hand = null
+    this.current = null
+    this.ended = null
+    this.deadlines = []
+    this.seq = 0
+    this.lastAck = {}
+    return true
   }
 
   /** A paired table not everyone opened in time. */
@@ -681,7 +889,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (forfeit !== undefined) match.forfeit = forfeit
     if (noShow) match.noShow = noShow
     this.seq++
-    this.setGameDeadline(null)
+    this.logFinish(match, reason, forfeit, noShow)
+    this.setGameDeadline({ kind: 'idle', at: this.clock() + IDLE_MS })
     const writes: Record<string, unknown> = {
       match,
       seq: this.seq,
@@ -713,8 +922,31 @@ export class TableDO extends DurableObject<WorkerEnv> {
         match.id,
       )
     } catch (error) {
-      console.error('lobby release failed', error)
+      logEvent('error', {
+        matchId: match.id,
+        reason: 'lobby_release',
+        detail: describeError(error),
+      })
     }
+  }
+
+  private logFinish(
+    match: Match,
+    reason: MatchEndReason,
+    forfeit?: SeatId,
+    noShow?: SeatId[],
+  ) {
+    const userOf = (seat: SeatId) =>
+      match.players.find((p) => p.seat === seat)?.userId
+    if (forfeit !== undefined)
+      logEvent('forfeit', {
+        matchId: match.id,
+        seat: forfeit,
+        userId: userOf(forfeit),
+      })
+    for (const seat of noShow ?? [])
+      logEvent('no_show', { matchId: match.id, seat, userId: userOf(seat) })
+    logEvent('match_end', { matchId: match.id, reason, handNo: match.handNo })
   }
 
   // ---- Archive ---------------------------------------------------------------
@@ -767,26 +999,56 @@ export class TableDO extends DurableObject<WorkerEnv> {
     this.flushing = true
     try {
       const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
+      // The most attempts among calls that failed without stopping the flush.
+      let behind = 0
       for (const [key, call] of queued) {
-        if (await archive(this.env, call)) {
+        const done =
+          'send' in call
+            ? await this.enqueue(call.send)
+            : await archive(this.env, call)
+        if (done) {
           await this.ctx.storage.delete(key)
           continue
         }
         const attempts = call.attempts + 1
+        logEvent('outbox_retry', {
+          matchId: this.match?.id,
+          rpc: 'send' in call ? 'hand_queue' : call.rpc,
+          attempt: attempts,
+          depth: queued.size,
+        })
         await this.ctx.storage.put(key, { ...call, attempts })
-        this.deadlines = [
-          ...this.deadlines.filter((d) => d.kind !== 'outbox'),
-          { kind: 'outbox', at: this.clock() + outboxBackoff(attempts) },
-        ]
-        await this.armAlarm()
-        return
+        if ('send' in call || call.rpc === 'record_incident') {
+          behind = Math.max(behind, attempts)
+          continue
+        }
+        return this.retryOutbox(attempts)
       }
+      if (behind) return this.retryOutbox(behind)
       if (this.deadlines.some((d) => d.kind === 'outbox')) {
         this.deadlines = this.deadlines.filter((d) => d.kind !== 'outbox')
         await this.armAlarm()
       }
     } finally {
       this.flushing = false
+    }
+  }
+
+  private async retryOutbox(attempts: number) {
+    this.deadlines = [
+      ...this.deadlines.filter((d) => d.kind !== 'outbox'),
+      { kind: 'outbox', at: this.clock() + outboxBackoff(attempts) },
+    ]
+    await this.armAlarm()
+  }
+
+  /** Hands a finished hand to the verify queue. Never throws. */
+  private async enqueue(message: HandMessage) {
+    try {
+      await this.env.HAND_QUEUE.send(message)
+      return true
+    } catch {
+      return false
     }
   }
 
@@ -845,6 +1107,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const ended = this.ended
     if (!ended || !this.hand || ended.record.handNo !== this.hand.config.handNo)
       return
+    const { seat } = ws.deserializeAttachment() as Attachment
     const base = { seq: this.seq, matchId: ended.record.matchId }
     this.send(ws, {
       ...base,
@@ -852,7 +1115,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
       handNo: ended.record.handNo,
       record: ended.record,
     })
-    this.send(ws, { ...base, t: 'reveal', ...ended.reveal })
+    const own = ended.own?.[seat]
+    this.send(ws, {
+      ...base,
+      t: 'reveal',
+      ...ended.reveal,
+      ...(own ? { own } : {}),
+    })
   }
 
   /**
@@ -863,6 +1132,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     kind: 'state',
     { gone, skip }: { gone?: WebSocket; skip?: WebSocket } = {},
   ) {
+    if (!this.match) return
     for (const ws of this.openSockets(gone)) {
       if (ws === skip) continue
       const { seat } = ws.deserializeAttachment() as Attachment

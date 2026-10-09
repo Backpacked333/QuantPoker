@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act as engineAct } from '../engine/hand'
+import { CLOSE_ABUSE, CLOSE_GONE, CLOSE_RATE_LIMITED } from '../shared/protocol'
 import { TableConnection } from './client'
 import { FakeSocket, firstHand, frame, MATCH } from './testing'
 
@@ -183,6 +184,44 @@ describe('TableConnection', () => {
     socket.drop(1000)
     await vi.advanceTimersByTimeAsync(10_000)
     expect(FakeSocket.all).toHaveLength(2)
+  })
+
+  it('backs off at least a second after a limit close, says why, and keeps trying', async () => {
+    vi.useFakeTimers()
+    for (const code of [CLOSE_RATE_LIMITED, CLOSE_ABUSE]) {
+      FakeSocket.all = []
+      const { connection } = connect()
+      await vi.advanceTimersByTimeAsync(0)
+      FakeSocket.last().open()
+      FakeSocket.last().drop(code, 'Too many messages')
+      expect(connection.getState()).toMatchObject({
+        status: 'reconnecting',
+        error: {
+          code: 'rate_limited',
+          message: 'Too many messages, reconnecting…',
+        },
+      })
+      await vi.advanceTimersByTimeAsync(999)
+      expect(FakeSocket.all).toHaveLength(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(FakeSocket.all).toHaveLength(2)
+      FakeSocket.last().open()
+      expect(connection.getState()).toMatchObject({
+        status: 'open',
+        error: null,
+      })
+      connection.stop()
+    }
+  })
+
+  it('stops for good when the table has closed', async () => {
+    vi.useFakeTimers()
+    const { connection } = connect()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last().drop(CLOSE_GONE, 'closed')
+    expect(connection.getState().status).toBe('closed')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(FakeSocket.all).toHaveLength(1)
   })
 
   it('records the match result', async () => {

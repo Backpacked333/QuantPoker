@@ -1,0 +1,35 @@
+name: Engine soak
+# 100,000 random hands at every table size (2-6 players) through the engine
+# invariants, with a fresh seed each run. A failure names the seed and hand;
+# replay it with: ENGINE_SEED=<seed> npm run engine:soak
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Seed to replay (empty for a fresh one)
+        required: false
+  pull_request:
+    paths:
+      - 'src/engine/**'
+permissions: {}
+jobs:
+  soak:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: 100k hands per table size
+        env:
+          ENGINE_SEED: ${{ inputs.seed || github.run_id }}
+        run: npm run engine:soak

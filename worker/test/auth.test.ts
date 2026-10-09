@@ -2,12 +2,12 @@
 // stubbed JWKS endpoint. Everything else the Worker does with a token is
 // covered by dev tokens in table.test.ts; this file is about who gets in.
 import { env, SELF } from 'cloudflare:test'
-import { exportJWK, generateKeyPair, SignJWT } from 'jose'
+import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import type { JWTPayload } from 'jose'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { identify, verifyToken } from '../src/auth'
 import type { WorkerEnv } from '../src/env'
-import { ORIGIN } from './helpers'
+import { DEV_SECRET, ORIGIN } from './helpers'
 
 const USER = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
 const NO_PROFILE = '00000000-0000-4000-8000-000000000000'
@@ -18,6 +18,9 @@ const prodEnv = { ...env, DEV_AUTH_SECRET: undefined } as WorkerEnv
 
 let signingKey: CryptoKey
 let strangerKey: CryptoKey
+/** What Supabase publishes, as an attacker can fetch it. */
+let publishedJwk = ''
+let publishedPem = ''
 
 beforeAll(async () => {
   const signing = await generateKeyPair('ES256', { extractable: true })
@@ -29,6 +32,8 @@ beforeAll(async () => {
     alg: 'ES256',
     use: 'sig',
   }
+  publishedJwk = JSON.stringify(jwk)
+  publishedPem = await exportSPKI(signing.publicKey)
   const realFetch = globalThis.fetch
   // The test module and the Worker share an isolate, so this also stands in
   // for Supabase when requests go through SELF.
@@ -67,6 +72,16 @@ function sign(
 
 const b64url = (s: string) =>
   btoa(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+
+/** A token whose HMAC key is public text, as in the classic confusion. */
+const hs256With = (secret: string) =>
+  new SignJWT({ role: 'authenticated' })
+    .setProtectedHeader({ alg: 'HS256', kid: KID })
+    .setSubject(USER)
+    .setIssuer(ISSUER)
+    .setAudience('authenticated')
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode(secret))
 
 const createMatch = (jwt: string) =>
   SELF.fetch(`${ORIGIN}/api/matches`, {
@@ -132,6 +147,30 @@ describe('Supabase access tokens', () => {
           .setExpirationTime('1h')
           .sign(new TextEncoder().encode(env.SUPABASE_PUBLISHABLE_KEY)),
     ],
+    [
+      'a token that is not valid yet (nbf in an hour)',
+      () => sign({ nbf: Math.floor(Date.now() / 1000) + 3600 }),
+    ],
+    [
+      'HS256 keyed with the published EC key (JWK text): alg confusion',
+      () => hs256With(publishedJwk),
+    ],
+    [
+      'HS256 keyed with the published EC key (PEM): alg confusion',
+      () => hs256With(publishedPem),
+    ],
+    [
+      'RS256 under the published key id',
+      async () => {
+        const { privateKey } = await generateKeyPair('RS256')
+        return new SignJWT({ role: 'authenticated', sub: USER })
+          .setProtectedHeader({ alg: 'RS256', kid: KID })
+          .setIssuer(ISSUER)
+          .setAudience('authenticated')
+          .setExpirationTime('1h')
+          .sign(privateKey)
+      },
+    ],
     ['garbage', async () => 'eyJnot.a.jwt'],
   ])('rejects %s', async (_, make) => {
     const jwt = await make()
@@ -153,6 +192,7 @@ describe('Supabase access tokens', () => {
       SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
         headers: {
           Upgrade: 'websocket',
+          Origin: ORIGIN,
           'Sec-WebSocket-Protocol': `qp.v1, bearer.${jwt}`,
         },
       })
@@ -170,21 +210,35 @@ describe('dev tokens', () => {
   const devEnv = env as WorkerEnv
 
   it('work only where DEV_AUTH_SECRET is set', async () => {
-    expect(await verifyToken('dev.alice.test', devEnv)).toBe('alice')
+    expect(await verifyToken(`dev.alice.${DEV_SECRET}`, devEnv)).toBe('alice')
     expect(await verifyToken('dev.alice.wrong', devEnv)).toBeNull()
     // In production the same string is just a malformed JWT.
-    expect(await verifyToken('dev.alice.test', prodEnv)).toBeNull()
+    expect(await verifyToken(`dev.alice.${DEV_SECRET}`, prodEnv)).toBeNull()
     expect(
       await verifyToken('dev.alice.', {
         ...env,
         DEV_AUTH_SECRET: '',
       } as WorkerEnv),
     ).toBeNull()
-    expect((await createMatch('dev.alice.test')).status).toBe(201)
+    expect((await createMatch(`dev.alice.${DEV_SECRET}`)).status).toBe(201)
+  })
+
+  it('stay off when the configured secret is too short to resist guessing', async () => {
+    // A short secret set by mistake on a deployed Worker would let anyone
+    // guess it and play as any account id they name.
+    for (const weak of ['x', 'e2e', 'fifteen-chars!!'])
+      expect(
+        await verifyToken(`dev.alice.${weak}`, {
+          ...env,
+          DEV_AUTH_SECRET: weak,
+        } as WorkerEnv),
+      ).toBeNull()
   })
 
   it('reject user ids that are not plain words', async () => {
-    expect(await verifyToken('dev.a b.test', devEnv)).toBeNull()
-    expect(await verifyToken(`dev.${'x'.repeat(65)}.test`, devEnv)).toBeNull()
+    expect(await verifyToken(`dev.a b.${DEV_SECRET}`, devEnv)).toBeNull()
+    expect(
+      await verifyToken(`dev.${'x'.repeat(65)}.${DEV_SECRET}`, devEnv),
+    ).toBeNull()
   })
 })

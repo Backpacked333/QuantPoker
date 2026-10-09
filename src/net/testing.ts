@@ -1,6 +1,12 @@
 // Test-only: a WebSocket stand-in the tests drive by hand, and server frames
 // built from real engine states.
-import { commitDeck, publicSlots, revealSlots, toBase64 } from '../engine/deck'
+import {
+  commitDeck,
+  dealSlots,
+  publicSlots,
+  revealSlots,
+  toBase64,
+} from '../engine/deck'
 import { act, isOver, startHand } from '../engine/hand'
 import { seatView } from '../engine/redact'
 import { config, deckWith } from '../engine/testing'
@@ -100,12 +106,12 @@ export function frame(
  * Hand 1 played to showdown with a real commitment and reveal, as the
  * server would send it: the frames for each seat and what a seat should see.
  */
-export async function finishedHand() {
+export async function finishedHand({ fold = false } = {}) {
   const cfg = config([2000, 2000], 0)
   const deck = deckWith(cfg, { 0: 'As Kd', 1: '7c 2h' }, '2c 7d 9h Tc 3s')
   const secret = new Uint8Array(32).fill(5)
   let hand = startHand(cfg, deck)
-  hand = act(hand, 0, { type: 'call' })
+  hand = act(hand, 0, fold ? { type: 'fold' } : { type: 'call' })
   while (!isOver(hand)) hand = act(hand, hand.toAct!, { type: 'check' })
   const { commitment, leaves } = await commitDeck(deck, secret)
   const shown = hand.players
@@ -132,7 +138,7 @@ export async function finishedHand() {
     shown,
     awards: hand.result!.awards,
     netBySeat: hand.result!.netBySeat,
-    showdown: true,
+    showdown: hand.result!.showdown,
   }
   const reveal: Reveal = {
     handNo: 1,
@@ -142,6 +148,8 @@ export async function finishedHand() {
       secret,
       publicSlots({ config: cfg, board: hand.board, shown }),
     ),
+    // Seat 0's view: its own hole slots, opened for it alone.
+    own: await revealSlots(deck, secret, dealSlots(cfg).holes[0]),
   }
   const base = { seq: 9, matchId: MATCH }
   const frames = {

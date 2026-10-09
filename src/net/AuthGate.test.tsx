@@ -109,6 +109,9 @@ describe('AuthGate', () => {
     expect(
       await screen.findByRole('button', { name: 'Continue with GitHub' }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Play money only\. No prizes, no deposits\. 18\+\./),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Google/ })).toBeNull()
     await userEvent.type(screen.getByLabelText('Email'), 'a@b.co')
     await userEvent.click(

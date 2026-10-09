@@ -17,7 +17,9 @@ import {
 } from 'vitest'
 import { dealSlots, fromBase64, verifyDeal } from '../../src/engine/deck'
 import type { HandRecordV1 } from '../../src/shared/protocol'
+import { forgetUsernames } from '../src/auth'
 import { START_WITHIN_MS } from '../src/lobby'
+import { IDLE_MS } from '../src/deadlines'
 import { NEXT_HAND_MS, OUTBOX_SAFETY_MS } from '../src/table'
 import type { Outbox, TableDO } from '../src/table'
 import {
@@ -28,6 +30,7 @@ import {
   isState,
   lobby,
   peek,
+  storageOf,
   stub,
 } from './helpers'
 import type { Client } from './helpers'
@@ -39,6 +42,8 @@ const NAMES: Record<string, string> = { [ALICE]: 'alice', [BOB]: 'bob' }
 type Call = { rpc: string; p: Record<string, unknown> }
 let calls: Call[] = []
 let failing = false
+/** Every request the Worker made, wherever it went. */
+let sent: { url: string; headers: Headers; body: string }[] = []
 
 beforeAll(() => {
   const realFetch = globalThis.fetch
@@ -46,6 +51,11 @@ beforeAll(() => {
     'fetch',
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
+      sent.push({
+        url: url.toString(),
+        headers: new Headers(init?.headers),
+        body: typeof init?.body === 'string' ? init.body : '',
+      })
       if (url.origin !== new URL(env.SUPABASE_URL).origin)
         return realFetch(input, init)
       if (url.pathname === '/rest/v1/players') {
@@ -55,6 +65,10 @@ beforeAll(() => {
       if (url.pathname.startsWith('/rest/v1/rpc/')) {
         expect(new Headers(init?.headers).get('apikey')).toBe('sb_secret_test')
         if (failing) return new Response('down', { status: 503 })
+        // The verify consumer reads hands back; verification itself is
+        // verify.test.ts. Here every hand reads as verified already.
+        if (url.pathname.endsWith('/audit_hand'))
+          return Response.json({ verified: true })
         calls.push({
           rpc: url.pathname.slice('/rest/v1/rpc/'.length),
           p: JSON.parse(String(init!.body)).p,
@@ -68,7 +82,9 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
   calls = []
+  sent = []
   failing = false
+  forgetUsernames()
 })
 
 async function until(test: () => boolean) {
@@ -108,6 +124,35 @@ const outbox = (matchId: string) =>
   })
 
 describe('the archive', () => {
+  it('sends the secret key only to the service functions', async () => {
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await until(() => calls.length === 3)
+    const secret = 'sb_secret_test'
+    const carrying = sent.filter(
+      (r) =>
+        r.url.includes(secret) ||
+        r.body.includes(secret) ||
+        [...r.headers.values()].some((v) => v.includes(secret)),
+    )
+    // The three archive calls, plus the verify consumer's reads.
+    expect(
+      carrying.filter((r) => /record_(match|hand)$/.test(r.url)),
+    ).toHaveLength(3)
+    for (const r of carrying)
+      expect(r.url).toMatch(
+        new RegExp(
+          `^${env.SUPABASE_URL}/rest/v1/rpc/(record_(match|hand|incident)|audit_hand|verify_hand)$`,
+        ),
+      )
+    // Username lookups go out with the publishable key, never the secret.
+    const lookups = sent.filter((r) => r.url.includes('/rest/v1/players'))
+    expect(lookups.length).toBeGreaterThan(0)
+    for (const r of lookups)
+      expect(r.headers.get('apikey')).toBe(env.SUPABASE_PUBLISHABLE_KEY)
+  })
+
   it('records the match, each hand, then the result, in that order', async () => {
     const { matchId, seats } = await table(2)
     await foldHand(matchId, seats)
@@ -183,6 +228,7 @@ describe('the archive', () => {
     expect(queued.map(([key]) => key)).toEqual([
       'outbox:0000:match',
       'outbox:0001:hand',
+      'outbox:0001:verify',
     ])
     expect(queued[0][1].attempts).toBeGreaterThanOrEqual(1)
     expect(queued[1][1].attempts).toBe(0)
@@ -211,6 +257,7 @@ describe('the archive', () => {
     await foldHand(matchId, seats)
     expect((await outbox(matchId)).map(([key]) => key)).toEqual([
       'outbox:0001:hand',
+      'outbox:0001:verify',
     ])
     await abortAllDurableObjects()
     await freezeClock(matchId) // the fresh object starts on the real clock
@@ -244,6 +291,29 @@ describe('the archive', () => {
         result: { reason: 'no_show', noShow: [1] },
       },
     })
+  })
+
+  it('deletes a finished table only once its archive calls are done', async () => {
+    failing = true
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next((f) => f.t === 'match_end')
+    // Supabase is still down when the table would be cleaned up.
+    await elapse(matchId, IDLE_MS)
+    expect((await outbox(matchId)).map(([key]) => key)).toEqual([
+      'outbox:0000:match',
+      'outbox:0001:hand',
+      'outbox:0001:verify',
+      'outbox:9999:end',
+    ])
+    expect((await peek(matchId)).match?.status).toBe('finished')
+    failing = false
+    // The next retry empties the outbox; the next idle check cleans up.
+    await elapse(matchId, 300_000)
+    await until(() => calls.length === 3)
+    await elapse(matchId, IDLE_MS)
+    expect(await storageOf(matchId)).toEqual({ keys: [], alarm: null })
   })
 
   it('archives nothing for local dev accounts', async () => {

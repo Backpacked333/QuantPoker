@@ -183,3 +183,25 @@ for (const colorScheme of ['light', 'dark'] as const)
       page.getByRole('region', { name: 'Poker table' }),
     ).toBeVisible()
   })
+
+test('fair play and terms open from the lobby and are accessible', async ({
+  page,
+}) => {
+  await onboard(page)
+  await page.getByRole('button', { name: 'Online', exact: true }).click()
+  for (const [link, heading] of [
+    ['Fair play', 'Fair play'],
+    ['Terms', 'Terms of play'],
+  ]) {
+    await page.goto('/#lobby')
+    await page.getByRole('link', { name: link, exact: true }).click()
+    await expect(
+      page.getByRole('heading', { level: 1, name: heading }),
+    ).toBeVisible()
+    const results = await new AxeBuilder({ page }).analyze()
+    const serious = results.violations.filter((v) =>
+      ['serious', 'critical'].includes(v.impact ?? ''),
+    )
+    expect(serious.map((v) => `${v.id}: ${v.help}`)).toEqual([])
+  }
+})

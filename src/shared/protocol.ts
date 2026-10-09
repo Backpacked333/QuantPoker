@@ -16,6 +16,22 @@ export const PROTOCOL = 'qp.v1'
 /** Largest client frame the server will parse. */
 export const MAX_FRAME = 4096
 
+// Close codes the server uses (the WebSocket private range 4000–4999). Each
+// one tells the client what to do next.
+/** Another socket for this account took over (a second tab). Stop. */
+export const CLOSE_REPLACED = 4001
+/**
+ * An oversized frame, or too many illegal frames in one hand. The seat keeps
+ * its reconnect rights; reconnect after a backoff.
+ */
+export const CLOSE_ABUSE = 4400
+/** The table has closed (finished and cleaned up, or an expired invite). */
+export const CLOSE_GONE = 4404
+/** This account is playing at another table; the reason is its matchId. */
+export const CLOSE_ELSEWHERE = 4409
+/** Too many frames or connections. Reconnect after a backoff of ≥ 1 s. */
+export const CLOSE_RATE_LIMITED = 4429
+
 export type MatchKind = 'hu-casual'
 export type MatchConfig = {
   kind: MatchKind
@@ -44,6 +60,7 @@ export type ErrorCode =
   | 'illegal'
   | 'stale'
   | 'rate_limited'
+  | 'too_large'
   | 'replaced'
   | 'halted'
   | 'unauthorized'
@@ -128,7 +145,13 @@ export type Reveal = {
   handNo: number
   /** Base64 of all 52 leaves (52 × 32 bytes). */
   leaves: string
+  /** The board and shown hands: the same for every seat, and archived. */
   slots: { slot: number; card: number; salt: string }[]
+  /**
+   * This seat's own two hole slots, so a player can check the cards they
+   * were dealt (folded or not). Sent to that seat only; never archived.
+   */
+  own?: { slot: number; card: number; salt: string }[]
 }
 
 export type MatchEndReason = 'complete' | 'forfeit' | 'no_show' | 'engine_fault'

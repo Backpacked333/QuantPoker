@@ -23,7 +23,7 @@ No API keys, database, account or environment variables are needed for the train
 
 - `src/engine/`: the server-authoritative N-player engine (2–6 seats, side pots, deck commitment, per-seat redaction). It is not used by the trainer, which keeps `src/lib/poker.ts`.
 - `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules.
-- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`). `npm run worker:dev` runs both locally on :8787 (add `-- --var DEV_AUTH_SECRET:<s>` and set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` to play without an account); `npm run worker:test` runs its tests inside Cloudflare's runtime. Deploys come from Cloudflare's Git integration.
+- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`). `npm run worker:dev` runs both locally on :8787 (add `-- --var DEV_AUTH_SECRET:<s>` with `<s>` at least 16 characters, letters, digits or `-`, and set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` to play without an account; shorter secrets leave dev tokens off); `npm run worker:test` runs its tests inside Cloudflare's runtime. Deploys come from Cloudflare's Git integration.
 - `supabase/migrations/`: players, matches and the hand archive with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project manually; CI never touches the database.
 
 ```sh

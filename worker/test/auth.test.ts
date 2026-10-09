@@ -7,7 +7,7 @@ import type { JWTPayload } from 'jose'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { identify, verifyToken } from '../src/auth'
 import type { WorkerEnv } from '../src/env'
-import { ORIGIN } from './helpers'
+import { DEV_SECRET, ORIGIN } from './helpers'
 
 const USER = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
 const NO_PROFILE = '00000000-0000-4000-8000-000000000000'
@@ -170,21 +170,35 @@ describe('dev tokens', () => {
   const devEnv = env as WorkerEnv
 
   it('work only where DEV_AUTH_SECRET is set', async () => {
-    expect(await verifyToken('dev.alice.test', devEnv)).toBe('alice')
+    expect(await verifyToken(`dev.alice.${DEV_SECRET}`, devEnv)).toBe('alice')
     expect(await verifyToken('dev.alice.wrong', devEnv)).toBeNull()
     // In production the same string is just a malformed JWT.
-    expect(await verifyToken('dev.alice.test', prodEnv)).toBeNull()
+    expect(await verifyToken(`dev.alice.${DEV_SECRET}`, prodEnv)).toBeNull()
     expect(
       await verifyToken('dev.alice.', {
         ...env,
         DEV_AUTH_SECRET: '',
       } as WorkerEnv),
     ).toBeNull()
-    expect((await createMatch('dev.alice.test')).status).toBe(201)
+    expect((await createMatch(`dev.alice.${DEV_SECRET}`)).status).toBe(201)
+  })
+
+  it('stay off when the configured secret is too short to resist guessing', async () => {
+    // A short secret set by mistake on a deployed Worker would let anyone
+    // guess it and play as any account id they name.
+    for (const weak of ['x', 'e2e', 'fifteen-chars!!'])
+      expect(
+        await verifyToken(`dev.alice.${weak}`, {
+          ...env,
+          DEV_AUTH_SECRET: weak,
+        } as WorkerEnv),
+      ).toBeNull()
   })
 
   it('reject user ids that are not plain words', async () => {
-    expect(await verifyToken('dev.a b.test', devEnv)).toBeNull()
-    expect(await verifyToken(`dev.${'x'.repeat(65)}.test`, devEnv)).toBeNull()
+    expect(await verifyToken(`dev.a b.${DEV_SECRET}`, devEnv)).toBeNull()
+    expect(
+      await verifyToken(`dev.${'x'.repeat(65)}.${DEV_SECRET}`, devEnv),
+    ).toBeNull()
   })
 })

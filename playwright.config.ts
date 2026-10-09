@@ -66,7 +66,7 @@ export default defineConfig({
       // Serves the same dist/ once the build above is up, plus the table
       // server, with dev tokens enabled for the two test players.
       command:
-        "sh -c 'until curl -sf http://localhost:4174 >/dev/null; do sleep 1; done; npx wrangler dev --port 8787 --var DEV_AUTH_SECRET:e2e'",
+        "sh -c 'until curl -sf http://localhost:4174 >/dev/null; do sleep 1; done; npx wrangler dev --port 8787 --var DEV_AUTH_SECRET:e2e-local-secret-0001'",
       url: 'http://localhost:8787/api/health',
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

@@ -4,7 +4,9 @@ import type { ClientMsg, LobbyMsg, ServerMsg } from '../../src/shared/protocol'
 import type { InitBody, TableDO } from '../src/table'
 
 export const ORIGIN = 'https://quantpoker.test'
-export const token = (user: string) => `dev.${user}.test`
+/** The test Worker's DEV_AUTH_SECRET (worker/vitest.config.ts). */
+export const DEV_SECRET = 'worker-test-secret-0001'
+export const token = (user: string) => `dev.${user}.${DEV_SECRET}`
 
 export function stub(matchId: string) {
   return env.TABLE.get(env.TABLE.idFromName(matchId))

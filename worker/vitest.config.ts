@@ -14,7 +14,8 @@ export default defineConfig({
       },
       miniflare: {
         bindings: {
-          DEV_AUTH_SECRET: 'test',
+          // Matches DEV_SECRET in test/helpers.ts; at least MIN_DEV_SECRET long.
+          DEV_AUTH_SECRET: 'worker-test-secret-0001',
           SUPABASE_SECRET_KEY: 'sb_secret_test',
         },
       },

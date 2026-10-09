@@ -20,7 +20,8 @@
     "worker:test": "vitest run --config worker/vitest.config.ts",
     "worker:types": "wrangler types worker/worker-configuration.d.ts",
     "typecheck:worker": "tsc -p worker/tsconfig.json",
-    "verify:deploy": "npm run build && node scripts/verify-deploy.ts"
+    "verify:deploy": "npm run build && node scripts/verify-deploy.ts",
+    "smoke": "node scripts/smoke-ws.mjs"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.3.0",

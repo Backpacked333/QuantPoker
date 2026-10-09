@@ -17,7 +17,9 @@ import {
 } from 'vitest'
 import { dealSlots, fromBase64, verifyDeal } from '../../src/engine/deck'
 import type { HandRecordV1 } from '../../src/shared/protocol'
+import { forgetUsernames } from '../src/auth'
 import { START_WITHIN_MS } from '../src/lobby'
+import { IDLE_MS } from '../src/deadlines'
 import { NEXT_HAND_MS, OUTBOX_SAFETY_MS } from '../src/table'
 import type { Outbox, TableDO } from '../src/table'
 import {
@@ -28,6 +30,7 @@ import {
   isState,
   lobby,
   peek,
+  storageOf,
   stub,
 } from './helpers'
 import type { Client } from './helpers'
@@ -77,6 +80,7 @@ beforeEach(() => {
   calls = []
   sent = []
   failing = false
+  forgetUsernames()
 })
 
 async function until(test: () => boolean) {
@@ -276,6 +280,28 @@ describe('the archive', () => {
         result: { reason: 'no_show', noShow: [1] },
       },
     })
+  })
+
+  it('deletes a finished table only once its archive calls are done', async () => {
+    failing = true
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next((f) => f.t === 'match_end')
+    // Supabase is still down when the table would be cleaned up.
+    await elapse(matchId, IDLE_MS)
+    expect((await outbox(matchId)).map(([key]) => key)).toEqual([
+      'outbox:0000:match',
+      'outbox:0001:hand',
+      'outbox:9999:end',
+    ])
+    expect((await peek(matchId)).match?.status).toBe('finished')
+    failing = false
+    // The next retry empties the outbox; the next idle check cleans up.
+    await elapse(matchId, 300_000)
+    await until(() => calls.length === 3)
+    await elapse(matchId, IDLE_MS)
+    expect(await storageOf(matchId)).toEqual({ keys: [], alarm: null })
   })
 
   it('archives nothing for local dev accounts', async () => {

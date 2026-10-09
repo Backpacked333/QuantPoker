@@ -2,6 +2,7 @@
 // project's published keys; nothing is trusted from the request body.
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 import { PROTOCOL } from '../../src/shared/protocol'
+import { now } from './clock'
 import type { WorkerEnv } from './env'
 
 export type Identity = { userId: string; username: string }
@@ -49,19 +50,48 @@ export async function verifyToken(
   }
 }
 
+/**
+ * Usernames already looked up in this isolate. Every socket upgrade needs
+ * one, so without this a reconnecting client is a Supabase request each time,
+ * and a Supabase outage would stop players who are already known.
+ */
+const names = new Map<string, { username: string; at: number }>()
+/** A rename shows at new tables within this time. */
+export const NAME_TTL_MS = 300_000
+const MAX_NAMES = 10_000
+
+/** Empties the username cache (tests). */
+export function forgetUsernames() {
+  names.clear()
+}
+
 /** The public username, from public.players (readable with the anon key). */
 export async function usernameFor(
   userId: string,
   env: WorkerEnv,
 ): Promise<string | null> {
   if (devTokensOn(env) && !/^[0-9a-f-]{36}$/.test(userId)) return userId
-  const response = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/players?select=username&user_id=eq.${userId}`,
-    { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY } },
-  )
-  if (!response.ok) return null
-  const rows = (await response.json()) as { username: string }[]
-  return rows[0]?.username ?? null
+  const cached = names.get(userId)
+  if (cached && now() - cached.at < NAME_TTL_MS) return cached.username
+  let username: string | null = null
+  try {
+    const response = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/players?select=username&user_id=eq.${userId}`,
+      { headers: { apikey: env.SUPABASE_PUBLISHABLE_KEY } },
+    )
+    // Supabase down: a player we know keeps their stale name.
+    if (!response.ok) return cached?.username ?? null
+    const rows = (await response.json()) as { username: string }[]
+    username = rows[0]?.username ?? null
+  } catch {
+    return cached?.username ?? null
+  }
+  if (username) {
+    names.delete(userId)
+    if (names.size >= MAX_NAMES) names.delete(names.keys().next().value!)
+    names.set(userId, { username, at: now() })
+  }
+  return username
 }
 
 export async function identify(

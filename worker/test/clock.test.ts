@@ -1,9 +1,11 @@
 // The shot clock, time bank and forfeit, and the deck commitment each hand
 // carries. Time is moved with `elapse`, never waited for.
+import { runInDurableObject } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import { verifyDeal, fromBase64 } from '../../src/engine/deck'
 import { legalActions } from '../../src/engine/hand'
 import type { ServerMsg, SeatView } from '../../src/shared/protocol'
+import { IDLE_MS } from '../src/deadlines'
 import { DEFAULT_CONFIG, NEXT_HAND_MS } from '../src/table'
 import {
   connect,
@@ -12,6 +14,8 @@ import {
   freezeClock,
   isState,
   peek,
+  storageOf,
+  stub,
 } from './helpers'
 import type { Client } from './helpers'
 
@@ -179,8 +183,15 @@ describe('the shot clock', () => {
     expect(end).toMatchObject({ result: { reason: 'forfeit', forfeit: 0 } })
     const { match } = await peek(matchId)
     expect(match.status).toBe('finished')
-    // Nothing is left to fire.
-    expect(await elapse(matchId, 10 * 60_000)).toBe(false)
+    // Nothing is left to fire but the cleanup, and it deletes the table.
+    const { keys } = await storageOf(matchId)
+    expect(keys).toContain('deadlines')
+    const deadlines = await runInDurableObject(stub(matchId), (_, state) =>
+      state.storage.get<{ kind: string }[]>('deadlines'),
+    )
+    expect(deadlines?.map((d) => d.kind)).toEqual(['idle'])
+    expect(await elapse(matchId, IDLE_MS)).toBe(true)
+    expect(await storageOf(matchId)).toEqual({ keys: [], alarm: null })
   })
 })
 

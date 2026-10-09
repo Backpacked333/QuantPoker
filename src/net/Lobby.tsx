@@ -173,7 +173,9 @@ function QuickMatch({
         <span className="live-clock">{clock(waited)}</span>
       </p>
       {state.status === 'reconnecting' && (
-        <p className="live-warn">Reconnecting to the lobby…</p>
+        <p className="live-warn">
+          {state.error ?? 'Reconnecting to the lobby…'}
+        </p>
       )}
       {waited >= BAIL_OUT_MS && alone && !keepWaiting ? (
         <>

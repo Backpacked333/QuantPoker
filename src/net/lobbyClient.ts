@@ -1,7 +1,12 @@
 // The lobby connection: presence counts, the quick-match queue, and the
 // table the server pairs us at. A queue place is held only while the socket
 // is open, so after a reconnect we ask again if we were still looking.
-import { PROTOCOL } from '../shared/protocol'
+import {
+  CLOSE_ABUSE,
+  CLOSE_RATE_LIMITED,
+  CLOSE_REPLACED,
+  PROTOCOL,
+} from '../shared/protocol'
 import type { LobbyMsg } from '../shared/protocol'
 import { socketOrigin } from './client'
 
@@ -14,6 +19,8 @@ export type LobbyState = {
   matched: { matchId: string; resumed: boolean } | null
   error: string | null
 }
+
+const LIMITED = 'Too many messages, reconnecting…'
 
 export const INITIAL_LOBBY: LobbyState = {
   status: 'connecting',
@@ -104,7 +111,10 @@ export class LobbyConnection {
     this.socket = socket
     socket.onopen = () => {
       this.attempts = 0
-      this.set({ status: 'open' })
+      this.set({
+        status: 'open',
+        ...(this.state.error === LIMITED ? { error: null } : {}),
+      })
       if (this.state.looking) this.sendQueue()
     }
     socket.onmessage = (event) => {
@@ -117,15 +127,23 @@ export class LobbyConnection {
     socket.onclose = (event) => {
       if (this.socket !== socket || this.stopped) return
       this.socket = null
-      if (event.code === 4001) return this.set({ status: 'replaced' })
+      if (event.code === CLOSE_REPLACED) return this.set({ status: 'replaced' })
+      const limited =
+        event.code === CLOSE_RATE_LIMITED || event.code === CLOSE_ABUSE
       this.attempts++
       if (this.attempts > this.options.maxAttempts)
         return this.set({
           status: 'failed',
           error: 'Could not reach the lobby. Reload to try again.',
         })
-      const delay = Math.min(8000, 500 * 2 ** (this.attempts - 1))
-      this.set({ status: 'reconnecting', queued: null })
+      const backoff = Math.min(8000, 500 * 2 ** (this.attempts - 1))
+      // Sent too much: the server wants a pause of at least a second.
+      const delay = limited ? Math.max(1000, backoff) : backoff
+      this.set({
+        status: 'reconnecting',
+        queued: null,
+        ...(limited ? { error: LIMITED } : {}),
+      })
       this.timer = setTimeout(() => void this.open(), delay)
     }
   }

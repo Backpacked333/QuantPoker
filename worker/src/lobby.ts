@@ -5,12 +5,19 @@
 //   queue:<userId>          { userId, username, since }  (connected + asked)
 //   active:<userId>         matchId                      (one table each)
 //   pairs:<day>:<a>:<b>     times paired that UTC day    (limit 2)
+//   creates:<day>:<userId>  invite tables made that day  (limit 30)
 import { DurableObject } from 'cloudflare:workers'
-import { parseClientMsg, PROTOCOL } from '../../src/shared/protocol'
+import {
+  CLOSE_ABUSE,
+  CLOSE_RATE_LIMITED,
+  MAX_FRAME,
+  parseClientMsg,
+  PROTOCOL,
+} from '../../src/shared/protocol'
 import type { ErrorCode, LobbyMsg } from '../../src/shared/protocol'
 import { now } from './clock'
 import type { WorkerEnv } from './env'
-import { CLOSE_RATE_LIMITED, FrameBudget } from './limits'
+import { FrameBudget, MATCH_CREATES_PER_DAY } from './limits'
 import type { InitBody, Liveness } from './table'
 
 /** The same two accounts meet at most this often per UTC day. */
@@ -24,6 +31,7 @@ type Attachment = { userId: string; username: string }
 const OPEN = 1
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+const DAY_MS = 86_400_000
 const pairKey = (d: string, a: string, b: string) =>
   `pairs:${d}:${[a, b].sort().join(':')}`
 
@@ -42,7 +50,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   private seq = 0
   /** The lobby's clock; tests move it. */
   clock: () => number = now
-  /** Every player shares this object: each socket gets a frame budget. */
+  /** Every player shares this object: each account gets a frame budget. */
   private budget = new FrameBudget(() => this.clock())
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
@@ -71,6 +79,18 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     if (new URL(request.url).pathname !== '/connect')
       return json({ error: 'not found' }, 404)
     if (!userId || !username) return json({ error: 'unauthorized' }, 401)
+    // A connect costs a frame: reconnecting in a loop is a flood too, and
+    // a refused connect tells nobody anything.
+    if (!this.budget.spend(userId)) {
+      const pair = new WebSocketPair()
+      pair[1].accept()
+      pair[1].close(CLOSE_RATE_LIMITED, 'Too many connections')
+      return new Response(null, {
+        status: 101,
+        webSocket: pair[0],
+        headers: { 'Sec-WebSocket-Protocol': PROTOCOL },
+      })
+    }
     // One lobby socket per account: a second tab replaces the first.
     for (const old of this.ctx.getWebSockets(userId))
       old.close(4001, 'replaced')
@@ -89,10 +109,17 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     // Frames still in flight from a socket we already closed do nothing.
     if (ws.readyState !== OPEN) return
-    if (!this.budget.spend(ws)) {
-      ws.close(CLOSE_RATE_LIMITED, 'Too many messages')
-      return this.leave(ws)
-    }
+    if (!this.budget.spend(this.who(ws).userId))
+      return this.cutOff(
+        ws,
+        CLOSE_RATE_LIMITED,
+        'rate_limited',
+        'Too many messages',
+      )
+    const size =
+      typeof message === 'string' ? message.length : message.byteLength
+    if (size > MAX_FRAME)
+      return this.cutOff(ws, CLOSE_ABUSE, 'too_large', 'Message too large')
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
     if (msg?.t === 'queue') return this.enqueue(ws)
     if (msg?.t === 'dequeue') {
@@ -113,6 +140,18 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
 
   async webSocketError(ws: WebSocket) {
     await this.leave(ws)
+  }
+
+  /** Tells the socket why, closes it, and lets its queue place go. */
+  private cutOff(
+    ws: WebSocket,
+    code: number,
+    error: ErrorCode,
+    message: string,
+  ) {
+    this.reject(ws, error, message)
+    ws.close(code, message)
+    return this.leave(ws)
   }
 
   /** A closed socket takes its queue row with it (unless a newer tab is open). */
@@ -220,6 +259,37 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     if (active && active !== matchId) return active
     await this.ctx.storage.put(`active:${userId}`, matchId)
     return null
+  }
+
+  /**
+   * For `POST /api/matches`: records that `userId` is at the new invite
+   * table `matchId`, unless they are playing elsewhere (that table's id
+   * comes back) or have made MATCH_CREATES_PER_DAY tables today (seconds
+   * until the next UTC day come back). Only a table that is made counts.
+   */
+  async createMatch(
+    userId: string,
+    matchId: string,
+  ): Promise<{ active?: string; retryAfter?: number }> {
+    const active = await this.liveActive(userId)
+    if (active) return { active }
+    const t = this.clock()
+    const today = day(t)
+    const key = `creates:${today}:${userId}`
+    const made = ((await this.ctx.storage.get(key)) as number) ?? 0
+    if (made >= MATCH_CREATES_PER_DAY)
+      return { retryAfter: Math.ceil((DAY_MS - (t % DAY_MS)) / 1000) }
+    await this.ctx.storage.put({
+      [key]: made + 1,
+      [`active:${userId}`]: matchId,
+    })
+    // Earlier days' counts are no longer needed.
+    const old = await this.ctx.storage.list({
+      prefix: 'creates:',
+      end: `creates:${today}`,
+    })
+    if (old.size) await this.ctx.storage.delete([...old.keys()])
+    return {}
   }
 
   /** Called by a table when its match ends. */

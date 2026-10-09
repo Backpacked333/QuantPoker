@@ -14,7 +14,14 @@ import { act, assertInvariants, isOver, startHand } from '../../src/engine/hand'
 import { seatView } from '../../src/engine/redact'
 import { EngineError } from '../../src/engine/types'
 import type { HandState, SeatId } from '../../src/engine/types'
-import { parseClientMsg, PROTOCOL } from '../../src/shared/protocol'
+import {
+  CLOSE_ABUSE,
+  CLOSE_GONE,
+  CLOSE_RATE_LIMITED,
+  MAX_FRAME,
+  parseClientMsg,
+  PROTOCOL,
+} from '../../src/shared/protocol'
 import type {
   ErrorCode,
   HandRecordV1,
@@ -31,6 +38,8 @@ import {
   bankAfter,
   earliest,
   FORFEIT_TIMEOUTS,
+  IDLE_MS,
+  INVITE_TTL_MS,
   isCurrentTurn,
   outboxBackoff,
   timeoutAction,
@@ -38,7 +47,7 @@ import {
 } from './deadlines'
 import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
-import { CLOSE_RATE_LIMITED, FrameBudget } from './limits'
+import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
@@ -126,8 +135,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
   controller: TableController = new LocalController()
   /** The table's clock; tests move it instead of waiting. */
   clock: () => number = now
-  /** Frames that do not move the game are metered per socket. */
+  /** Frames and connects that do not move the game, per account. */
   private budget = new FrameBudget(() => this.clock())
+  /** Illegal frames per seat in the current hand. */
+  private illegalCount = new Map<SeatId, { handNo: number; n: number }>()
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env)
@@ -190,10 +201,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
     }
     this.match.players.push(this.newPlayer(0, body.creator))
     if (body.opponent) this.match.players.push(this.newPlayer(1, body.opponent))
-    if (body.startWithinMs)
-      this.deadlines = [
-        { kind: 'start', at: this.clock() + body.startWithinMs },
-      ]
+    // A paired table must start soon; an invite waits for its friend, but
+    // not forever.
+    this.deadlines = [
+      body.startWithinMs
+        ? { kind: 'start', at: this.clock() + body.startWithinMs }
+        : { kind: 'idle', at: this.clock() + INVITE_TTL_MS },
+    ]
     await this.ctx.storage.put({
       match: this.match,
       seq: this.seq,
@@ -220,7 +234,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
 
   private async join(userId: string, username: string) {
     const match = this.match
-    if (!match) return json({ error: 'no such table' }, 404)
+    // Cleaned up (or never existed): say so, and store nothing.
+    if (!match) return this.refuse(CLOSE_GONE, 'closed')
+    // A connect costs a frame, so reconnecting does not refill a budget.
+    if (!this.budget.spend(userId))
+      return this.refuse(CLOSE_RATE_LIMITED, 'Too many connections')
     let player = match.players.find((p) => p.userId === userId)
     if (!player) {
       // Invite link: the first other account to open it takes the empty seat.
@@ -285,20 +303,27 @@ export class TableDO extends DurableObject<WorkerEnv> {
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     // Frames still in flight from a socket we already closed do nothing.
-    if (ws.readyState !== OPEN) return
-    if (!this.budget.spend(ws)) {
-      ws.close(CLOSE_RATE_LIMITED, 'Too many messages')
-      return this.broadcast('state', { gone: ws })
-    }
-    const { seat } = ws.deserializeAttachment() as Attachment
+    if (ws.readyState !== OPEN || !this.match) return
+    const { seat, userId } = ws.deserializeAttachment() as Attachment
+    if (!this.budget.spend(userId))
+      return this.cutOff(
+        ws,
+        CLOSE_RATE_LIMITED,
+        'rate_limited',
+        'Too many messages',
+      )
+    const size =
+      typeof message === 'string' ? message.length : message.byteLength
+    // Refused unread: parsing is the cost an oversized frame imposes.
+    if (size > MAX_FRAME)
+      return this.cutOff(ws, CLOSE_ABUSE, 'too_large', 'Message too large')
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
-    if (!msg) return this.reject(ws, 'illegal', 'Malformed message')
+    if (!msg) return this.illegal(ws, seat, 'Malformed message')
     if (msg.t === 'resync') {
       this.send(ws, this.frame('welcome', seat))
       return this.sendEnded(ws)
     }
-    if (msg.t !== 'act')
-      return this.reject(ws, 'illegal', 'Not a table message')
+    if (msg.t !== 'act') return this.illegal(ws, seat, 'Not a table message')
 
     // A retry of the action we already applied: acknowledge it again.
     if (this.lastAck[seat]?.reqId === msg.reqId)
@@ -321,13 +346,47 @@ export class TableDO extends DurableObject<WorkerEnv> {
       next = act(hand, seat, msg.action)
     } catch (error) {
       if (error instanceof EngineError)
-        return this.reject(ws, 'illegal', error.message, msg.reqId)
+        return this.illegal(ws, seat, error.message, msg.reqId)
       throw error
     }
     await this.applyAction(seat, next, 'client', msg.reqId)
     // A move the table applied is play, not noise: it costs nothing. Moves
     // are paced by the opponent, so they cannot flood.
-    this.budget.refund(ws)
+    this.budget.refund(userId)
+  }
+
+  /** Tells the socket why, then closes it; the seat may reconnect. */
+  private cutOff(
+    ws: WebSocket,
+    code: number,
+    error: ErrorCode,
+    message: string,
+  ) {
+    this.reject(ws, error, message)
+    ws.close(code, message)
+    this.broadcast('state', { gone: ws })
+  }
+
+  /**
+   * A frame an honest client never sends: answered with `illegal`, and
+   * counted. More than ILLEGAL_PER_HAND in one hand closes the socket.
+   * Wrong-turn and stale moves are not counted: lag produces those.
+   */
+  private illegal(
+    ws: WebSocket,
+    seat: SeatId,
+    message: string,
+    reqId?: string,
+  ) {
+    this.reject(ws, 'illegal', message, reqId)
+    const handNo = this.hand?.config.handNo ?? 0
+    const seen = this.illegalCount.get(seat)
+    const n = seen?.handNo === handNo ? seen.n + 1 : 1
+    this.illegalCount.set(seat, { handNo, n })
+    if (n > ILLEGAL_PER_HAND) {
+      ws.close(CLOSE_ABUSE, 'Too many illegal messages')
+      this.broadcast('state', { gone: ws })
+    }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string) {
@@ -361,6 +420,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
         }
         if (d.kind === 'start') {
           if (this.match?.status === 'waiting') await this.noShow()
+          continue
+        }
+        if (d.kind === 'idle') {
+          // Deleted: nothing is left to arm.
+          if (await this.idle()) return
           continue
         }
         if (this.match?.status !== 'playing') continue
@@ -677,6 +741,36 @@ export class TableDO extends DurableObject<WorkerEnv> {
     }
   }
 
+  /**
+   * An expired invite or a finished table deletes itself, closing any
+   * socket still open, once nothing is left to archive; otherwise it checks
+   * again later. True when the table is gone.
+   */
+  private async idle() {
+    if (this.match?.status === 'playing') return false
+    const pending = await this.ctx.storage.list({ prefix: 'outbox:', limit: 1 })
+    if (pending.size) {
+      this.deadlines.push({ kind: 'idle', at: this.clock() + IDLE_MS })
+      return false
+    }
+    for (const ws of this.ctx.getWebSockets())
+      try {
+        ws.close(CLOSE_GONE, 'closed')
+      } catch {
+        // Already closed.
+      }
+    await this.ctx.storage.deleteAlarm()
+    await this.ctx.storage.deleteAll()
+    this.match = null
+    this.hand = null
+    this.current = null
+    this.ended = null
+    this.deadlines = []
+    this.seq = 0
+    this.lastAck = {}
+    return true
+  }
+
   /** A paired table not everyone opened in time. */
   private noShow() {
     const absent = this.match!.players.map((p) => p.seat).filter(
@@ -696,7 +790,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (forfeit !== undefined) match.forfeit = forfeit
     if (noShow) match.noShow = noShow
     this.seq++
-    this.setGameDeadline(null)
+    this.setGameDeadline({ kind: 'idle', at: this.clock() + IDLE_MS })
     const writes: Record<string, unknown> = {
       match,
       seq: this.seq,
@@ -878,6 +972,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     kind: 'state',
     { gone, skip }: { gone?: WebSocket; skip?: WebSocket } = {},
   ) {
+    if (!this.match) return
     for (const ws of this.openSockets(gone)) {
       if (ws === skip) continue
       const { seat } = ws.deserializeAttachment() as Attachment

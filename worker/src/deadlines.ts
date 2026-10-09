@@ -16,6 +16,16 @@ export type Deadline =
   | { kind: 'outbox'; at: number }
   /** A paired table both players must open by `at`, or it is a no-show. */
   | { kind: 'start'; at: number }
+  /**
+   * A table with no more play: an invite nobody joined, or a finished
+   * match. At `at` it deletes itself once its archive calls are done.
+   */
+  | { kind: 'idle'; at: number }
+
+/** A finished table keeps its storage this long for late arrivals. */
+export const IDLE_MS = 600_000
+/** An invite table nobody joined closes after this long. */
+export const INVITE_TTL_MS = 24 * 3600_000
 
 /** Consecutive missed decisions that end the match as a forfeit. */
 export const FORFEIT_TIMEOUTS = 3

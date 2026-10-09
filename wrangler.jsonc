@@ -24,6 +24,17 @@
     { "tag": "v1", "new_sqlite_classes": ["TableDO"] },
     { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] },
   ],
+  // Signed-in requests per client address per minute (UPGRADES_PER_IP_PER_MINUTE
+  // in worker/src/limits.ts). Counted per Cloudflare location and
+  // approximate by design: a backstop against one address, not accounting.
+  // Per-account limits live in the Durable Objects.
+  "ratelimits": [
+    {
+      "name": "IP_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 300, "period": 60 },
+    },
+  ],
   // Browser-safe values the online area reads from /api/config at runtime.
   // The service-role key is never here: `wrangler secret put` only.
   "vars": {

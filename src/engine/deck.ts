@@ -212,7 +212,11 @@ export async function verifyDeal(
   deal: PublicDeal,
 ) {
   const expected = publicCards(deal)
-  if (slots.length !== expected.size) return false
+  // Each public slot opened exactly once: a repeated opening must not stand
+  // in for a slot the server cannot open (a card changed after committing).
+  const opened = new Set(slots.map((s) => s.slot))
+  if (slots.length !== expected.size || opened.size !== expected.size)
+    return false
   for (const { slot, card } of slots)
     if (expected.get(slot) !== card) return false
   return verifyReveal(commitment, leaves, slots)

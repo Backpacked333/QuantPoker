@@ -183,4 +183,18 @@ describe('verifyDeal', () => {
     const other = await commitDeck(seededDeck(12), secret(9))
     expect(await verifyDeal(other.commitment, leaves, slots, deal)).toBe(false)
   })
+
+  it('rejects a reveal that repeats one slot to leave a re-dealt card unopened', async () => {
+    // A cheating server commits, then changes the river. It cannot open the
+    // river slot for the new card, so it sends a genuine opening twice and
+    // keeps the slot count right.
+    const { deck, deal, commitment, leaves, slots } = await finished(false)
+    const riverSlot = dealSlots(deal.config).board[4]
+    const used = new Set([...deal.board, ...deal.shown.flatMap((s) => s.cards)])
+    const redealt = deck.find((card) => !used.has(card))!
+    const cheat = { ...deal, board: [...deal.board.slice(0, 4), redealt] }
+    const padded = [...slots.filter((s) => s.slot !== riverSlot), slots[0]]
+    expect(padded).toHaveLength(slots.length)
+    expect(await verifyDeal(commitment, leaves, padded, cheat)).toBe(false)
+  })
 })

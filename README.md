@@ -27,6 +27,10 @@ How it is built (decisions in `.10x/decisions/architect/multiplayer-platform.md`
 - `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules. `src/info/` holds the Fair play and Terms pages, also lazy.
 - `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`): a `TableDO` Durable Object per match and one `LobbyDO`. Every finished hand is archived to Postgres through an outbox, then re-verified off the game path by a queue consumer (`worker/src/verify.ts`). Limits, close codes and the operator's runbook are in [Operations](#operations-online-play).
 - `supabase/migrations/`: players, matches, the hand archive and the verify functions, with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project before deploying the code that calls them; CI never touches the database.
+- `supabase/bench/` (DBA review 2026-10-09):
+  - `plans.ts`: query plans and timings at 10k–1M generated rows, plus self-checks of the Phase 1 rules;
+  - `concurrency.ts`: two real PostgreSQL sessions racing each archive write.
+- `supabase/proposed/phase1.sql`: the Phase 1 schema, designed and measured but not applied (`.10x/decisions/dba/phase1-schema.md`).
 
 Run it locally: `npm run worker:dev -- --var DEV_AUTH_SECRET:<s>` serves the site and the table server on :8787 (`<s>` at least 16 characters, letters, digits or `-`; shorter secrets leave dev tokens off). Set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` in each browser to play without an account, or open two browsers with different names. `npm run worker:test` runs the server's tests inside Cloudflare's runtime. `npm run smoke` (with the server running and `<s>` = `smoke-local-secret-0001`) plays 500 hands with 20 clients and prints ack latency percentiles and the integrity checks; it refuses to touch production unless a person types its confirmation phrase.
 
@@ -283,7 +287,10 @@ Queries worth saving in the Logs view: `evt = hand_end` grouped by day (hands/da
 
 **Close codes and limits** (`src/shared/protocol.ts`, `worker/src/limits.ts`): `4001` another tab took the seat; `4400` an oversized frame or more than 5 illegal frames in one hand (the seat may reconnect); `4404` the table has closed (finished tables delete themselves 10 minutes after the end, unjoined invites after 24 hours); `4409` playing at another table; `4429` more than 20 frames or connects per 5 s from one account. HTTP `403 origin` for a socket from another site; `429` for more than 30 new invite tables per account per UTC day, or 300 signed-in requests per minute from one address (approximate, per Cloudflare location; a WAF rate-limiting rule on `/ws/*` and `/api/*` is the stronger control).
 
-**Deploys.** Cloudflare builds and deploys `main` on every push; `.github/workflows/deploy-check.yml` then waits for that build and compares production with the commit, file by file (`npm run verify:deploy` does the same by hand). Before a deploy that adds queues or migrations: create the queues (`npx wrangler queues create quantpoker-hands` and `quantpoker-hands-dlq`) and apply the new `supabase/migrations/*` first, or the deploy or the verify consumer fails.
+**Deploys.** Cloudflare builds and deploys `main` on every push; `.github/workflows/deploy-check.yml` then waits for that build and compares production with the commit, file by file (`npm run verify:deploy` does the same by hand). Before a deploy that adds queues or migrations:
+
+- **Queues:** the deploy creates any queue `wrangler.jsonc` names as a producer, and both are. If the build's token may not create queues, the build fails and the old version keeps serving; then run `npx wrangler queues create <name>`.
+- **Migrations:** apply new `supabase/migrations/*` first, or the verify consumer fails. Then rename the repo file to the version Supabase recorded (`list_migrations`), so the repo and the live history stay identical.
 
 ## Deliberate boundaries
 

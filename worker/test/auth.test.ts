@@ -2,7 +2,7 @@
 // stubbed JWKS endpoint. Everything else the Worker does with a token is
 // covered by dev tokens in table.test.ts; this file is about who gets in.
 import { env, SELF } from 'cloudflare:test'
-import { exportJWK, generateKeyPair, SignJWT } from 'jose'
+import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import type { JWTPayload } from 'jose'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { identify, verifyToken } from '../src/auth'
@@ -18,6 +18,9 @@ const prodEnv = { ...env, DEV_AUTH_SECRET: undefined } as WorkerEnv
 
 let signingKey: CryptoKey
 let strangerKey: CryptoKey
+/** What Supabase publishes, as an attacker can fetch it. */
+let publishedJwk = ''
+let publishedPem = ''
 
 beforeAll(async () => {
   const signing = await generateKeyPair('ES256', { extractable: true })
@@ -29,6 +32,8 @@ beforeAll(async () => {
     alg: 'ES256',
     use: 'sig',
   }
+  publishedJwk = JSON.stringify(jwk)
+  publishedPem = await exportSPKI(signing.publicKey)
   const realFetch = globalThis.fetch
   // The test module and the Worker share an isolate, so this also stands in
   // for Supabase when requests go through SELF.
@@ -67,6 +72,16 @@ function sign(
 
 const b64url = (s: string) =>
   btoa(s).replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
+
+/** A token whose HMAC key is public text, as in the classic confusion. */
+const hs256With = (secret: string) =>
+  new SignJWT({ role: 'authenticated' })
+    .setProtectedHeader({ alg: 'HS256', kid: KID })
+    .setSubject(USER)
+    .setIssuer(ISSUER)
+    .setAudience('authenticated')
+    .setExpirationTime('1h')
+    .sign(new TextEncoder().encode(secret))
 
 const createMatch = (jwt: string) =>
   SELF.fetch(`${ORIGIN}/api/matches`, {
@@ -131,6 +146,30 @@ describe('Supabase access tokens', () => {
           .setAudience('authenticated')
           .setExpirationTime('1h')
           .sign(new TextEncoder().encode(env.SUPABASE_PUBLISHABLE_KEY)),
+    ],
+    [
+      'a token that is not valid yet (nbf in an hour)',
+      () => sign({ nbf: Math.floor(Date.now() / 1000) + 3600 }),
+    ],
+    [
+      'HS256 keyed with the published EC key (JWK text): alg confusion',
+      () => hs256With(publishedJwk),
+    ],
+    [
+      'HS256 keyed with the published EC key (PEM): alg confusion',
+      () => hs256With(publishedPem),
+    ],
+    [
+      'RS256 under the published key id',
+      async () => {
+        const { privateKey } = await generateKeyPair('RS256')
+        return new SignJWT({ role: 'authenticated', sub: USER })
+          .setProtectedHeader({ alg: 'RS256', kid: KID })
+          .setIssuer(ISSUER)
+          .setAudience('authenticated')
+          .setExpirationTime('1h')
+          .sign(privateKey)
+      },
     ],
     ['garbage', async () => 'eyJnot.a.jwt'],
   ])('rejects %s', async (_, make) => {

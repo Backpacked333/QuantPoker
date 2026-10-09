@@ -39,6 +39,8 @@ const NAMES: Record<string, string> = { [ALICE]: 'alice', [BOB]: 'bob' }
 type Call = { rpc: string; p: Record<string, unknown> }
 let calls: Call[] = []
 let failing = false
+/** Every request the Worker made, wherever it went. */
+let sent: { url: string; headers: Headers; body: string }[] = []
 
 beforeAll(() => {
   const realFetch = globalThis.fetch
@@ -46,6 +48,11 @@ beforeAll(() => {
     'fetch',
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
+      sent.push({
+        url: url.toString(),
+        headers: new Headers(init?.headers),
+        body: typeof init?.body === 'string' ? init.body : '',
+      })
       if (url.origin !== new URL(env.SUPABASE_URL).origin)
         return realFetch(input, init)
       if (url.pathname === '/rest/v1/players') {
@@ -68,6 +75,7 @@ beforeAll(() => {
 afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
   calls = []
+  sent = []
   failing = false
 })
 
@@ -108,6 +116,30 @@ const outbox = (matchId: string) =>
   })
 
 describe('the archive', () => {
+  it('sends the secret key only to the two archive functions', async () => {
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await until(() => calls.length === 3)
+    const secret = 'sb_secret_test'
+    const carrying = sent.filter(
+      (r) =>
+        r.url.includes(secret) ||
+        r.body.includes(secret) ||
+        [...r.headers.values()].some((v) => v.includes(secret)),
+    )
+    expect(carrying.length).toBe(3)
+    for (const r of carrying)
+      expect(r.url).toMatch(
+        new RegExp(`^${env.SUPABASE_URL}/rest/v1/rpc/record_(match|hand)$`),
+      )
+    // Username lookups go out with the publishable key, never the secret.
+    const lookups = sent.filter((r) => r.url.includes('/rest/v1/players'))
+    expect(lookups.length).toBeGreaterThan(0)
+    for (const r of lookups)
+      expect(r.headers.get('apikey')).toBe(env.SUPABASE_PUBLISHABLE_KEY)
+  })
+
   it('records the match, each hand, then the result, in that order', async () => {
     const { matchId, seats } = await table(2)
     await foldHand(matchId, seats)

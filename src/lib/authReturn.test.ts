@@ -38,4 +38,23 @@ describe('auth return', () => {
     restoreAuthReturn(at('/?code=abc'))
     expect(window.location.hash).toBe('')
   })
+
+  it('never leaves this page, whatever was stored', () => {
+    // sessionStorage is same-origin, but another script on the page (or a
+    // future bug) could write it: the return must stay a hash on this page.
+    for (const hostile of [
+      'https://evil.example/#lobby',
+      '//evil.example',
+      '/\\evil.example',
+      'javascript:alert(1)',
+      '#lobby\n//evil',
+      '#/../../evil',
+      '#lobby?next=https://evil.example',
+    ]) {
+      rememberAuthReturn(hostile)
+      const before = `${window.location.origin}/`
+      restoreAuthReturn(at('/?code=abc'))
+      expect(window.location.href, hostile).toBe(`${before}?code=abc`)
+    }
+  })
 })

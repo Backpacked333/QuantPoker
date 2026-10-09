@@ -1,10 +1,12 @@
 # Project status
 
-Last updated: 2026-10-09 by SDE (repo cleanup)
+Last updated: 2026-10-09 by DevOps/SRE (deploy verification)
 
 ## Phase
 
 **Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
+
+Deploy verification 2026-10-09 (`.10x/reviews/2026-10-09-deploy-verification.md`): production serves exactly `main` (`22ccf8a`; 30/30 built assets byte-identical), migrations match, `/api/config` exposes only the URL and publishable key, JWKS has one ES256 key. **Open:** no account has signed in to production yet (0 users), so the day-5 token check and the archive/RLS proof wait on the user's two sign-ins and one match.
 
 Supabase project `quantpoker` also carries an earlier line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage; all tables empty). Its migration file is now in the repo, byte-identical to production, so the repo and the live database have the same 7 migrations. Multiplayer tables are additive beside it.
 
@@ -46,11 +48,17 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
 - [x] User: Cloudflare Workers Paid + Git-connected Worker; Supabase Pro org
 - [ ] User: repo cleanup dashboard steps (rename default branch to `main`; Cloudflare and Supabase production branch → `main`; Cloudflare preview builds off; delete the Vercel project; Supabase Auth Site URL → workers.dev; optionally enable Google/GitHub) — see `.10x/handoff.md`
+  - [x] Default branch is `main` (verified 2026-10-09); production serves the `main` build (verified by artifact; Cloudflare branch-control setting not readable via MCP)
+  - [ ] Cleanup script (step 7): 14 non-`main` branches still on `origin`, including `claude/amazing-ride-4vip4x`, which is not in the branch-fates table
 - [ ] SDE: first real sign-in on the deployed site, then decode the access token header and confirm `alg: ES256` (ADR day-5 check)
+  - [x] JWKS: exactly one ES256 key, `kid 146bb67a-3a94-457d-b882-dc53d6154404` (2026-10-09)
+  - [ ] Real token header: blocked, 0 users in production; waiting on the user's sign-in
 - [x] SDE: Step 3 — `worker/` + root `wrangler.jsonc`: `TableDO`, ES256 auth, invite-by-link matches, runtime `/api/config`; 9 Workers-runtime tests + a real two-client smoke run. All gates green.
 - [x] SDE: Step 4 — live table in the browser (`src/net/client.ts`, `LiveTable`, `#play/<id>`, Play a friend by link); two-browser e2e against `wrangler dev`; full 20-hand match verified. All gates green.
 - [x] SDE: Step 5 — turn clock + bank + auto check/fold + 3-timeout forfeit via one DO alarm; `hand_start` commitment, `hand_end` + `reveal`, in-browser "Deck verified" review; outbox → `record_match`/`record_hand` (new migration applied live, dry-run verified). 592 unit, 38 worker, 17 e2e; 20-hand smoke with a real 80 s timeout. (`.10x/decisions/sde/multiplayer-platform.md` §Step 5)
 - [ ] User: create a Supabase secret key and add it to the Worker as `SUPABASE_SECRET_KEY` (until then nothing is archived)
+  - [ ] Proof by one two-account production match + role-scoped `hand_holes` queries (queries dry-run on production 2026-10-09; archive tables still empty)
+- [x] DevOps: deploy verification steps 1–3 (default branch, migrations, `/api/config`, JWKS, live assets = `main`) — `.10x/reviews/2026-10-09-deploy-verification.md`
 - [x] SDE: Step 6 — `LobbyDO` quick-match (persisted queue, oldest-first pairing, ≤ 2 pairings per pair per day), one active table per account (queue resumes, invite 409/4409, self-healing), 30 s no-show (void match + abandonment; migration applied live), Find a match enabled with wait timer and 60 s bail-out. 605 unit, 52 worker, 18 e2e; real-time no-show smoke. (`.10x/decisions/sde/multiplayer-platform.md` §Step 6)
 - [ ] SDE: Step 7 per ADR (hardening, verify consumer, CI deploy, rate limits, Fair Play page)
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.

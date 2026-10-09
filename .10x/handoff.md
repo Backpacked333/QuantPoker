@@ -1,12 +1,48 @@
 # Handoff
 
-## Current handoff: SDE → User (repo cleanup: one `main` branch)
+## Current handoff: DevOps/SRE → User (deploy verification, ADR day-5 auth check)
+
+Date: 2026-10-09 · Status: **production matches `main`; two checks wait on your sign-ins.** Evidence: `.10x/reviews/2026-10-09-deploy-verification.md`.
+
+### Read first
+
+- `.10x/reviews/2026-10-09-deploy-verification.md` (commands, hashes, counts)
+- `.10x/decisions/devops/multiplayer-platform.md` (log)
+
+### Verified
+
+- `main` is the default branch (`22ccf8a`). All 30 built JS/CSS assets are byte-identical to what https://quantpoker.bbcroysalman.workers.dev serves.
+- 7/7 migrations match production by version and name; 5 byte-identical, 2 (`record_match`, `record_match_no_show`) differ only by the file's final newline. Live RLS policies match the repo.
+- `/api/config` returns only `supabaseUrl` and the publishable key.
+- JWKS: one ES256 key, `kid 146bb67a-3a94-457d-b882-dc53d6154404` (unchanged since the ADR).
+- Gates at `22ccf8a`: lint, typecheck, typecheck:worker exit 0; 610 unit; 52 worker; build 141.4 kB gzip; 18 e2e.
+
+### What to test (User)
+
+1. Sign in at `/#lobby` with a real account. DevTools console: `JSON.parse(localStorage[Object.keys(localStorage).find(k => k.endsWith('-auth-token'))]).access_token.split('.')[0]`. Paste that first segment only. Claude decodes it: pass is `alg ES256`, `kid 146bb67a-…`. If `HS256`: rotate signing keys in Supabase (Project Settings → JWT Keys); no HS256 fallback in the Worker.
+2. With a second account in a private window: both Find a match, play a few hands to the end (or let one forfeit). Tell Claude "match done". Claude counts the archive rows and runs one role-scoped `hand_holes` query per player (already dry-run on production).
+3. Run the cleanup script from the previous handoff: 14 non-`main` branches remain on `origin`. `claude/amazing-ride-4vip4x` is not in the branch-fates table; check it before the script deletes or refuses it.
+
+### What to review
+
+- Not verifiable through the MCPs: Cloudflare branch control = `main` (proved by artifacts instead), and whether `SUPABASE_SECRET_KEY` is set (proved only by a match archiving rows).
+- The legacy HS256 `anon` key is still enabled in Supabase. The Worker rejects it; disabling legacy keys is a later dashboard step.
+
+### Next step
+
+Close day-5 and the archive proof from your paste and match, tick both in `status.md`, then SDE Step 7.
+
+---
+
+## Handoff history
+
+### 2026-10-09 — SDE → User (repo cleanup: one `main` branch)
 
 Date: 2026-10-09 · Decisions (user): squash PR #8; close and archive PR #2; merge PR #5; keep Devin with PR monitoring off. Summary in `.10x/status.md` §Repository.
 
 Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no comment, so Devin's monitor has nothing to react to); PR #8 gains the live `learning_cloud` migration file (byte-identical, md5 `170f50fbda835ec89c4148d8fce80b9b`) and the matching test-filter fix. Claude's session can only push its own branch, so tags and branch deletions run from the user's machine (script below).
 
-### User steps, in this order
+#### User steps, in this order
 
 1. **Devin:** in Devin's first comment on PR #5 (and #2), tick "Disable automatic comment, CI, and merge conflict monitoring".
 2. **Vercel:** project `quantpoker` → Settings → Environment Variables: note the variable names (only matter if the AI coach is ever ported) → Settings → Advanced → Delete Project. Do not uninstall the Vercel GitHub app: other Vercel projects use it.
@@ -17,7 +53,7 @@ Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no com
 7. **Paste the cleanup script** (Claude posts it after step 6) on your computer: it pushes the `archive/*` tags and deletes every branch except `main`, refusing any branch whose work is neither in `main` nor tagged.
 8. Optional: Settings → Rules → protect `main` (require `check` and `e2e`, block force-push and deletion).
 
-### Branch fates
+#### Branch fates
 
 | Branch                                                                                                                      | Fate                                                 |
 | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -27,10 +63,6 @@ Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no com
 | `devin/1791354563-context-aware-coach`, `devin/1791358830-cinematic-poker`, `devin/1791400999-supabase-vercel` (PR #2 line) | tagged `archive/*`, deleted                          |
 | `devin/1791351737-interactive-curriculum`, six `devin/quantpoker-r1-*-4673c0d0`                                             | content already in main; tagged `archive/*`, deleted |
 | `claude/blissful-planck-wrb5my`, `devin/1791353078-integrate-curriculum`, `devin/1791357371-quantpoker-r1`                  | fully merged; deleted                                |
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE (Step 6) → QA Engineer + Security Engineer
 

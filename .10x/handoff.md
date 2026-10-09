@@ -1,12 +1,66 @@
 # Handoff
 
-## Current handoff: SDE → User (repo cleanup: one `main` branch)
+## Current handoff: Staff Engineer / EM → User, Security, DBA (tickets for Step 7 and Phases 1–2)
+
+Date: 2026-10-09 · Status: **the remaining plan is ticketed.** 49 tickets; 29.7 session-hours on the ladder's critical path; earliest ladder date 2026-10-13, planning date 2026-10-19. One product decision (Q1, the duplicate format) is needed before Phase 1's deck work. No product code changed.
+
+### Read first
+
+- `.10x/tickets.md` §Summary, §Questions for you, §Critical path and parallel lanes
+- `.10x/decisions/engineering-manager/multiplayer-platform.md` (log, calibration, method)
+
+### User actions
+
+1. Answer Q1–Q5 in `.10x/tickets.md`; each has a recommendation. Only Q1 blocks anything (P1-00 and P1-02).
+2. Run Prompt 3 (security) and Prompt 4 (DBA). They can run as two parallel sessions. Their findings land on the ticket ids named in §Review fold-in.
+3. Before S7-03 merges to `main`: create Cloudflare queues `quantpoker-hands` and `quantpoker-hands-dlq` (dashboard → Queues, or `npx wrangler queues create <name>`).
+4. Still open from the deploy verification: set `SUPABASE_SECRET_KEY`; sign in once and paste only the token header; play one two-account match.
+5. Choose a contact address for "how to report" on the Fair Play page (S7-10).
+6. Merge `claude/zen-darwin-0t5q1p` (deploy verification) and `claude/amazing-ride-4vip4x` (prompts) before this branch. All three edit `.10x/status.md` and `.10x/handoff.md`.
+
+### What to test
+
+Nothing executable changed. The Q1 finding takes two minutes to see yourself:
+
+1. Play a casual match for a few hands.
+2. Open "Review hand 1".
+3. Your hand-1 hole cards and board are listed. Under the ADR's duplicate rule (segment 2 reuses deck _n_ with the button flipped), they are exactly your opponent's cards and the board of hand 21.
+
+### What to review
+
+- **Q1 / R-1 (is the leak real?)** `worker/src/controller.ts`; `src/engine/deck.ts:37` (`dealSlots`: HU deal order is relative to the button, so flipping the button swaps the hole cards); `src/net/LiveTable.tsx:348` and `src/net/client.ts` (`hands[n].mine` is kept for the whole match); ADR §Randomness "Duplicate (Phase 1)".
+- **Calibration** (`.10x/tickets.md` §Calibration): commit timestamps as the pace measure, ±50%.
+- **Reconciliation R-2** (no Origin allowlist, per the ADR amendment) **and R-6** (signed hand-history ids interpreted as service-role-only writes plus commitments).
+
+### Noticed, not done
+
+- `worker/src/table.ts:659` logs `JSON.stringify(state)` on an engine invariant failure, and that state includes the deck and every hole card. Ticketed in S7-03 and S7-04: the full state goes to `incidents` and logs carry ids only. The security review should confirm.
+- The `incidents` table exists, but nothing writes to it (S7-03).
+- The ADR's `idle` deadline was never built, so finished tables keep their Durable Object storage forever (S7-01).
+- `POST /api/telemetry` (ADR §Client integration) does not exist, so the ack→render p95 metric is unmeasured (S7-05). Queue wait is not recorded either (S7-05).
+- `TableController` in code (synchronous `nextHandPlan` only) is narrower than the ADR's version; P1-00 corrects the ADR.
+- The live table still has no keyboard shortcuts or sounds (deferred in Steps 4 and 5). That is a Phase 1 acceptance criterion (P1-07).
+- `.10x/prompts.md` and the deploy verification exist only on unmerged branches; `.10x/tickets.md` cites them by commit.
+
+### Next step
+
+Prompts 3 and 4 in parallel. Then three sessions:
+
+- S7-01, lane W (worker core);
+- S7-06 and S7-07, lane T (tooling);
+- P1-07, lane C (client), which must finish before P1-01.
+
+---
+
+## Handoff history
+
+### 2026-10-09 — SDE → User (repo cleanup: one `main` branch)
 
 Date: 2026-10-09 · Decisions (user): squash PR #8; close and archive PR #2; merge PR #5; keep Devin with PR monitoring off. Summary in `.10x/status.md` §Repository.
 
 Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no comment, so Devin's monitor has nothing to react to); PR #8 gains the live `learning_cloud` migration file (byte-identical, md5 `170f50fbda835ec89c4148d8fce80b9b`) and the matching test-filter fix. Claude's session can only push its own branch, so tags and branch deletions run from the user's machine (script below).
 
-### User steps, in this order
+#### User steps, in this order
 
 1. **Devin:** in Devin's first comment on PR #5 (and #2), tick "Disable automatic comment, CI, and merge conflict monitoring".
 2. **Vercel:** project `quantpoker` → Settings → Environment Variables: note the variable names (only matter if the AI coach is ever ported) → Settings → Advanced → Delete Project. Do not uninstall the Vercel GitHub app: other Vercel projects use it.
@@ -17,7 +71,7 @@ Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no com
 7. **Paste the cleanup script** (Claude posts it after step 6) on your computer: it pushes the `archive/*` tags and deletes every branch except `main`, refusing any branch whose work is neither in `main` nor tagged.
 8. Optional: Settings → Rules → protect `main` (require `check` and `e2e`, block force-push and deletion).
 
-### Branch fates
+#### Branch fates
 
 | Branch                                                                                                                      | Fate                                                 |
 | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
@@ -27,10 +81,6 @@ Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no com
 | `devin/1791354563-context-aware-coach`, `devin/1791358830-cinematic-poker`, `devin/1791400999-supabase-vercel` (PR #2 line) | tagged `archive/*`, deleted                          |
 | `devin/1791351737-interactive-curriculum`, six `devin/quantpoker-r1-*-4673c0d0`                                             | content already in main; tagged `archive/*`, deleted |
 | `claude/blissful-planck-wrb5my`, `devin/1791353078-integrate-curriculum`, `devin/1791357371-quantpoker-r1`                  | fully merged; deleted                                |
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE (Step 6) → QA Engineer + Security Engineer
 

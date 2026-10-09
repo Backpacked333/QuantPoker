@@ -1,10 +1,12 @@
 # Project status
 
-Last updated: 2026-10-09 by SDE (repo cleanup)
+Last updated: 2026-10-09 by Staff Engineer / EM (tickets)
 
 ## Phase
 
 **Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
+
+**Tickets 2026-10-09 (`.10x/tickets.md`):** the remaining plan is 49 tickets: Step 7 is 11, Phase 1 is 23, Phase 2 is 15. That is 134 half-days, about 90 session-hours at the measured Phase 0 pace. The ladder's critical path is 29.7 h; earliest ladder date 2026-10-13, planning date 2026-10-19. **Open finding (Q1 in tickets):** the PM's same-pair duplicate format lets a player see the opponent's segment-2 cards by recalling or reviewing their own segment-1 hands. The user decides the format before P1-02. Step 7 is not blocked.
 
 Supabase project `quantpoker` also carries an earlier line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage; all tables empty). Its migration file is now in the repo, byte-identical to production, so the repo and the live database have the same 7 migrations. Multiplayer tables are additive beside it.
 
@@ -29,19 +31,20 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 
 ## Roadmap
 
-| Phase             | Feature slugs                                                                                          | Exit criteria                                                                                                                                                                                            | Effort                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| 0 — Foundation    | `multiplayer-platform`                                                                                 | Two browsers play a full HU match through the deployed Cloudflare Worker (site + game server; day-10 milestone); engine invariant suite green N=2..6; lobby quick-match; commitment + records; CI/deploy | 15 working days + 3 reserve (see ADR §Migration path) |
-| 1 — HU ladder     | `heads-up-duplicate-ladder`, `rating-and-leaderboard` v1, `integrity-and-trust` v1, review→lesson loop | Rated duplicate matches, Glicko-2 ± RD, accuracy, profile, ladder                                                                                                                                        | 3–4 weeks                                             |
-| 2 — 6-max         | `six-max-tables` casual + rated arenas, 6-max rating                                                   | 6 seats, N-seat `Table`, arenas, provisional rating                                                                                                                                                      | 3–4 weeks                                             |
-| Later (triggered) | `integrity-and-trust` v2                                                                               | Fires on ≥1,000 players, first recruiter inbound, first credible cheating report, or a sponsored event                                                                                                   | —                                                     |
+| Phase             | Feature slugs                                                                                          | Exit criteria                                                                                                                                                                                            | Effort                                                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 0 — Foundation    | `multiplayer-platform`                                                                                 | Two browsers play a full HU match through the deployed Cloudflare Worker (site + game server; day-10 milestone); engine invariant suite green N=2..6; lobby quick-match; commitment + records; CI/deploy | 15 working days + 3 reserve (see ADR §Migration path); Step 7 re-estimated at 11.5 builder-days (≈ 14 h) in `.10x/tickets.md` |
+| 1 — HU ladder     | `heads-up-duplicate-ladder`, `rating-and-leaderboard` v1, `integrity-and-trust` v1, review→lesson loop | Rated duplicate matches, Glicko-2 ± RD, accuracy, profile, ladder                                                                                                                                        | 3–4 weeks (tickets: 34 builder-days, ≈ 45 h)                                                                                  |
+| 2 — 6-max         | `six-max-tables` casual + rated arenas, 6-max rating                                                   | 6 seats, N-seat `Table`, arenas, provisional rating                                                                                                                                                      | 3–4 weeks (tickets: 21.5 builder-days, ≈ 30 h)                                                                                |
+| Later (triggered) | `integrity-and-trust` v2                                                                               | Fires on ≥1,000 players, first recruiter inbound, first credible cheating report, or a sponsored event                                                                                                   | —                                                                                                                             |
 
 ## Tasks
 
 - [x] PM: problem, audience, constraints, success metrics; 5 feature specs; user alignment
 - [x] Architect: Phase 0 system design (`.10x/decisions/architect/multiplayer-platform.md`) — engine, DOs, protocol, auth, data model, randomness/commitment, grading placement, client integration, lobby, failure modes, dev/CI, 7-step migration path, verified assumptions
-- [ ] User: answer the 5 open questions in the ADR (commitment scheme, invite-link visibility, domain; the Vercel and Cloudflare-plan questions are settled: Cloudflare hosts everything)
-- [ ] Staff Engineer / EM: turn the 7 migration steps into tickets with acceptance tests; confirm day-10 milestone scope
+- [ ] User: answer the 5 open questions in the ADR (commitment scheme, invite-link visibility, domain; the Vercel and Cloudflare-plan questions are settled: Cloudflare hosts everything) — `.10x/tickets.md` Q3 proposes closing the first three as built (per-slot commitment, link visible, `workers.dev` until a domain)
+- [x] Staff Engineer / EM: tickets for Step 7, Phase 1 and Phase 2 with acceptance tests, critical path, lanes and metrics sources (`.10x/tickets.md`, 2026-10-09). Day-10 milestone was already reached in Step 4.
+- [ ] User: answer the 5 questions in `.10x/tickets.md` (Q1 blocks P1-00/P1-02; nothing else is blocked)
 - [x] SDE: Step 1 — `src/engine/` + invariant, differential, redaction, commitment tests; `src/shared/protocol.ts`; `src/lib/presets.ts` (`.10x/decisions/sde/multiplayer-platform.md`). All gates green.
 - [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
 - [x] User: Cloudflare Workers Paid + Git-connected Worker; Supabase Pro org

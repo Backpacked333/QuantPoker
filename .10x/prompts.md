@@ -1,14 +1,14 @@
 # 10x prompts for every remaining step
 
-Ordered exactly like the roadmap in `.10x/status.md` and the migration path in the architecture doc: **Phase 0 → Phase 1 → Phase 2 → Later.** Run them top to bottom, one per fresh Claude Code session. Each prompt stands alone: it names the files to read first, the deliverable, the quality gates, what not to touch, and how to hand off.
+Ordered like the roadmap in `.10x/status.md` and the migration path in the architecture doc: **Phase 0 → Phase 1 → Phase 2 → Later.** Run top to bottom, one prompt per fresh Claude Code session. Each prompt is self-contained: mission, what to read, method, deliverables, a verifiable definition of done, when to stop and ask, and what not to do.
 
 | #   | Phase | Prompt                                    | Source spec                                | Roles              |
 | --- | ----- | ----------------------------------------- | ------------------------------------------ | ------------------ |
-| 0   | all   | Preamble (prepend to every prompt)        | —                                          | all                |
-| 1   | 0     | Post-cleanup verification + ES256 sign-in | status.md tasks, ADR day-5 check           | SDE                |
+| 0   | all   | Operating contract (prepend to every one) | —                                          | all                |
+| 1   | 0     | Deploy verification + ES256 sign-in       | status.md tasks, ADR day-5 check           | SDE                |
 | 2   | 0     | Tickets for Step 7 and Phases 1–2         | status.md task, ADR §Migration path        | Staff Eng / EM     |
-| 3   | 0     | Security review before the Step 7 deploy  | status.md task                             | Security Engineer  |
-| 4   | 0     | DBA review of applied migrations          | status.md task                             | DBA                |
+| 3   | 0     | Security review (gate)                    | status.md task                             | Security Engineer  |
+| 4   | 0     | DBA review (gate)                         | status.md task                             | DBA                |
 | 5   | 0     | **Step 7:** hardening, CI, launch         | ADR §Migration path row 7                  | SDE + DevOps + SRE |
 | 6   | 1     | Heads-up duplicate engine and match flow  | `heads-up-duplicate-ladder`                | Architect → SDE    |
 | 7   | 1     | Grading pipeline + accuracy               | `rating-and-leaderboard` §Accuracy         | SDE                |
@@ -17,336 +17,396 @@ Ordered exactly like the roadmap in `.10x/status.md` and the migration path in t
 | 10  | 2     | N-seat `Table` and casual 6-max           | `six-max-tables`                           | SDE                |
 | 11  | 2     | Arenas and 6-max rating                   | `six-max-tables`, `rating-and-leaderboard` | SDE                |
 | 12  | Later | Integrity v2 (only when triggered)        | `integrity-and-trust` v2                   | Security Engineer  |
-| 13  | Later | Optional: port the AI coach to the Worker | status.md §Repository                      | SDE                |
+| 13  | Later | Optional: port the AI coach               | status.md §Repository                      | SDE                |
 
-Decisions only you can make (not prompts): the five open questions at the end of `.10x/decisions/architect/multiplayer-platform.md` (commitment scheme, invite-link visibility, domain, plan state), and the dashboard steps in `.10x/handoff.md`. Prompt 1 assumes you did them. The security and DBA reviews (3, 4) are gates: run both before Prompt 5 deploys.
+Not prompts, your decisions: the five open questions at the end of `.10x/decisions/architect/multiplayer-platform.md` (commitment scheme, invite-link visibility, domain, plan state) and the dashboard steps in `.10x/handoff.md`. Prompt 1 assumes both are done. Prompts 3 and 4 are gates: both finish before Prompt 5 deploys.
+
+Already true in the repo (so prompts do not ask you to build it): `typecheck:worker`, `worker:test`, `engine:soak` scripts exist; `ci.yml` runs check + e2e; `wrangler.jsonc` has observability on and the `TABLE`/`LOBBY` DOs; `worker/src` has `auth, clock, controller, deadlines, env, index, lobby, shuffle, supabase, table`. Still missing: queues, rate limits, Origin allowlist, deploy/soak workflows, bench test, smoke script, Fair Play page.
 
 ---
 
-## 0. Preamble (prepend to every prompt)
+## 0. Operating contract (prepend to every prompt)
 
 ```
-You are working in the QuantPoker repo (branch: the one the session gives you; never push elsewhere, never open a PR unless I ask).
-Use the 10x-Team skill and switch to the role named in the task.
+OPERATING CONTRACT — read fully before touching anything.
 
-Orient first, in this order, and do not skip:
-1. .10x/status.md (phase, roadmap, open tasks)
-2. .10x/handoff.md (latest handoff section)
-3. The files named in the task below
-Do not re-derive anything the ADR already decided. If the ADR and the code disagree, the code is the truth: say so, fix the doc.
+Context. QuantPoker: a quant-poker trainer plus (in progress) online play-money poker with a chess-style rating. One Cloudflare Worker serves the site and the game server (Durable Objects TableDO/LobbyDO); Supabase holds auth and the hand archive. Solo builder, AI-assisted, shipping fast but trusted: a rating on a résumé is only worth what its fairness is worth.
+
+Branch/PR rules. Work only on the branch this session gives you. Never push elsewhere. Never open a PR unless asked. Commit in small, reviewable steps with messages that say why.
+
+Orient (mandatory, in this order, parallelise the reads with subagents where the files are independent):
+1. .10x/status.md  2. latest section of .10x/handoff.md  3. the files the task names.
+The ADR and PM specs are decided; do not re-litigate. Where the code disagrees with a doc, the code is the truth: say so and fix the doc. Where the spec is silent, choose the simplest option that keeps the specified guarantees and write the decision down.
+
+Method (follow it, do not shortcut it):
+1. PLAN FIRST. Before editing, write a plan of at most 15 lines: the smallest change that meets the definition of done, the files you will touch, the riskiest assumption, and how you will test that assumption first. Verify the riskiest assumption before building on it.
+2. RED THEN GREEN. For every behaviour change, write the failing test first, run it, see it fail for the right reason, then make it pass. Bug fix = a test that reproduces the bug. Never write a test that cannot fail.
+3. SMALLEST SCOPE. Do exactly the task. Note adjacent problems in the handoff under "Noticed, not done"; do not fix them here.
+4. ADVERSARIAL SELF-REVIEW. Before each commit, reread your own diff as a hostile reviewer: what input, ordering, retry, restart, or malicious client breaks this? Fix what you find or record it.
+5. VERIFY LIKE A USER. Tests passing is necessary, not sufficient. Run the real thing (wrangler dev, two real browsers, a killed socket, a restarted DO) and say what you saw.
 
 Non-negotiables:
-- Server owns the cards. No client ever receives an opponent's hole cards, the deck, or analysis data during a live rated hand.
-- Entry bundle stays under the 150 kB budget (npm run build + scripts/check-bundle.mjs). Lobby/network/lab stay lazy chunks.
-- No Math.random, timers or globals in src/engine. Never await inside the evaluator hot path.
-- Never skip, disable or loosen a test to get green. A flaky test is a bug to root-cause.
-- Secrets never printed, logged, committed or sent anywhere but their one intended host.
-- Every migration is additive and applied through supabase/migrations with a PGlite RLS test.
+- Server owns the cards. No client ever receives an opponent's hole cards, the deck, or analysis data during a live rated hand. Any new message type gets a redaction test.
+- Entry bundle stays under 150 kB (npm run build runs scripts/check-bundle.mjs). Lobby/network/lab stay lazy chunks.
+- src/engine: no Math.random, timers or globals; never await inside the evaluator hot path.
+- Never skip, disable, loosen or delete a test to get green. A flaky test is a bug with a cause; find it.
+- Migrations are additive, live in supabase/migrations, and ship with a PGlite RLS test (supabase/tests). Never write to production data while investigating; read-only unless the task says otherwise.
+- Secrets are never printed, logged, committed, or sent anywhere except their one intended host. Never ask me to paste a full token or key.
+- Destructive or outward-facing actions (production deploys, deletes, force-pushes, dashboard changes, sending anything externally) need my explicit go-ahead in this session.
 
-Gates before you call anything done (run them, paste the real counts):
-npm run lint && npm run typecheck && npm run typecheck:worker (if it exists) && npm test && npm run worker:test && npm run build && npm run e2e
-If a gate does not exist yet, say so; do not invent a pass.
+Gates (run them; paste the real command output summary with counts):
+npm run typecheck && npm run typecheck:worker && npm run lint && npm test && npm run worker:test && npm run build && npm run e2e
+If a gate fails, you are not done. If a gate does not exist, say so; never claim a pass you did not see.
 
-Finish by (a) updating .10x/status.md (tasks ticked, phase line, date), (b) appending a dated handoff section to .10x/handoff.md in the existing format (Read first / What to test / What to review / Next step), (c) appending your log to .10x/decisions/<role>/<feature>.md, (d) committing with clear messages and pushing the designated branch.
-Report outcomes faithfully: failing tests, skipped steps and unverified claims are stated plainly, not smoothed over.
+Evidence standard. Every claim in your final report is one of: VERIFIED (you ran it, say how), INFERRED (from code/docs, say which), or UNKNOWN (say what would settle it). No unlabeled confidence. Failing tests, skipped steps and workarounds are stated plainly.
+
+Stop and ask me (one concise question with your recommendation) only when: the spec forces a product tradeoff I have not decided; an action is destructive/outward-facing; or two documented requirements contradict and neither is clearly older. Otherwise decide, document, continue.
+
+Close-out (all four, in this order):
+a) .10x/status.md: tick tasks, update phase line and date.
+b) Append a dated section to .10x/handoff.md in the existing format: Read first / User actions / What to test / What to review / Noticed, not done / Next step.
+c) Append your log to .10x/decisions/<role>/<feature>.md: what you built, deviations from the ADR and why, numbers measured.
+d) Commit and push the designated branch. Final message: 5 lines max — what is now true, evidence, what I must do, what is next.
 ```
 
 ---
 
 # PHASE 0: Foundation (finish `multiplayer-platform`)
 
-## 1. Post-cleanup verification and first real ES256 sign-in
+## 1. Deploy verification and first real ES256 sign-in
 
 Role: SDE.
 
 ```
-Task: prove the deployed system matches the repo after the cleanup, and close the ADR day-5 auth check.
+MISSION. Phase 0 claims "two browsers play each other through the Worker" and "every hand is archived", but those claims have not been checked on the deployed system after the repo cleanup. Establish ground truth before anything is built on it, and close the ADR day-5 auth check. Evidence over assertions.
 
-Read: .10x/handoff.md (cleanup section), .10x/status.md §Repository and §Stack, wrangler.jsonc, worker/src/auth.ts, worker/test/auth.test.ts, supabase/migrations/.
+READ: .10x/handoff.md (cleanup section), .10x/status.md §Repository and §Stack, wrangler.jsonc, worker/src/auth.ts, worker/src/supabase.ts, worker/test/auth.test.ts, supabase/migrations/, ADR §Auth and §Verified assumptions row 4.
 
-Do:
-1. Confirm main is the default branch, the 7 migrations in supabase/migrations equal what Supabase reports (use the Supabase MCP list_migrations; do not apply anything), and Cloudflare deploys from main (read, don't change).
-2. Check GET /api/config on https://quantpoker.bbcroysalman.workers.dev returns the Supabase URL and publishable key and nothing secret.
-3. Fetch the project JWKS and confirm it still has exactly one ES256 key. Document the kid.
-4. I will sign in once with a real account in a browser and paste you the access token header only (base64url of the first segment, never the full token). Decode it, confirm alg is ES256 and kid matches the JWKS. If it is HS256, stop and tell me how to rotate the signing key on the Supabase dashboard; do not add an HS256 fallback to the Worker.
-5. Confirm SUPABASE_SECRET_KEY is set as a Worker secret by running one two-account match against production and then querying matches, match_players, hands and hand_holes with the Supabase MCP (read-only). Each player must see only their own hand_holes row through RLS; prove it with two role-scoped queries, not by reading the policy.
+DO (read-only against production; no dashboard or schema changes):
+1. Repo state: default branch is main; production deploys from main; git log shows the PR #8 squash and PR #5.
+2. Migrations: Supabase MCP list_migrations equals the 7 files in supabase/migrations (names and order). Any drift is a finding.
+3. GET https://quantpoker.bbcroysalman.workers.dev/api/config returns only the Supabase URL and publishable key. Assert no secret-looking field. Try an unauthenticated /ws/ upgrade and an invalid token: both must be refused with the documented close/status.
+4. JWKS: fetch the project JWKS; assert exactly one ES256 key; record the kid.
+5. Real sign-in: ask me to sign in once and give you ONLY the base64url of the token's first (header) segment. Decode it; assert alg=ES256 and kid matches the JWKS. If it is HS256, stop: explain the dashboard rotation; do NOT add an HS256 fallback to the Worker.
+6. Archive proof: after I play one real two-account match (ask me to), use the Supabase MCP with SELECT only to confirm rows exist in matches, match_players, hands and hand_holes with consistent counts, and that SUPABASE_SECRET_KEY is therefore set. Prove RLS with two role-scoped queries (as player A, as player B): each sees only their own hand_holes row, neither sees hands_private. Do not rely on reading the policy text.
+7. Record anything surprising (latency from first connect, console errors, warnings) as findings.
 
-Deliverable: a short .10x/reviews/<date>-deploy-verification.md with the evidence (commands, ids, counts), and any repo fixes as small commits. Tick the matching tasks in status.md.
-Out of scope: new features, dashboard changes, schema changes.
+DONE WHEN: .10x/reviews/<date>-deploy-verification.md exists with a table (check, command or query, result, VERIFIED/INFERRED/UNKNOWN); every item from the DO list has a verdict; failing checks have a proposed fix and an owner (you or me); status.md tasks "first real sign-in" and "SUPABASE_SECRET_KEY" are ticked only if proven.
+
+DO NOT: change infrastructure, apply migrations, add features, or print the token.
 ```
 
----
-
-## 2. Tickets for Step 7 and Phase 1
+## 2. Tickets for Step 7 and Phases 1–2
 
 Role: Staff Engineer / Engineering Manager.
 
 ```
-Task: turn the remaining plan into tickets an AI-assisted solo builder can execute without ambiguity.
+MISSION. The remaining plan is big and the builder is one person working through AI sessions. Convert it into tickets so unambiguous that a fresh session can pick any ticket and finish it without asking questions, and so the order of work is the shortest path to a trustworthy ladder. Do not write product code.
 
-Read: .10x/status.md, the ADR §Migration path and §Out of scope, all four PM feature files, and the deploy verification from Prompt 1. The security and DBA reviews (Prompts 3 and 4) run after you; leave a "fold in review findings" line in the Step 7 and Phase 1 tickets and list which tickets they are likely to change.
+READ: .10x/status.md, ADR §Migration path, §Out of scope, §Risks, all four PM feature files, .10x/prompts.md (the prompts are the draft scope per ticket), the deploy verification (Prompt 1), and the SDE log for how long Steps 1–6 really took versus the ADR estimate (use that ratio to calibrate).
 
-Produce .10x/tickets.md with, for Step 7, Phase 1 and Phase 2:
-- Ticket id, one-line goal, files to create/change, dependencies, effort in half-days (be honest; use the ADR's 15 days + 3 reserve as the calibration for Phase 0 and say where Phase 1/2 estimates are weaker).
-- Acceptance tests written as concrete test names and assertions, not prose ("segment 2 deals segment 1's decks with seats swapped, card-for-card equality" becomes an exact test file and case).
-- A risk line per ticket and the cut line: what ships if time runs out.
-- A critical path and what can run in parallel as separate sessions.
-Confirm or correct the success metrics and exit criteria in status.md so each is measurable from data we actually record.
-Resolve contradictions between PM files and the ADR yourself where the answer is clear; list the rest as questions for the user (max 5, each with your recommendation).
+METHOD:
+1. Inventory every deliverable named in the PM specs and ADR for Step 7, Phase 1, Phase 2. Build a traceability table: spec requirement → ticket id. Any requirement without a ticket is a gap; any ticket without a requirement is scope creep (cut or justify).
+2. Slice vertically. Each ticket ships something testable end to end (migration + worker + UI + test), not a layer. Max 2 days of work each; split anything larger.
+3. For each ticket write: id, goal in one sentence, user-visible outcome, files to create/change (real paths from the repo), dependencies, estimate in half-days with a confidence (H/M/L), acceptance tests as concrete test names with the assertion (e.g. `worker/test/duplicate.test.ts › segment 2 deals segment 1's decks, seats swapped, card-for-card`), the riskiest assumption and the cheapest experiment that checks it, and the cut line (what ships if time runs out).
+4. Build the critical path and mark which tickets can run as parallel sessions without merge conflicts (name the files that would collide).
+5. Reconcile contradictions: PM vs ADR vs status.md (for example success metrics that need data we do not record). Resolve the clear ones; list the rest as at most 5 questions for me, each with your recommendation.
+6. Leave an explicit "fold in review findings" slot on Step 7 and Phase 1 tickets: the security and DBA reviews (Prompts 3, 4) run after you and will adjust them. List which tickets are most likely to change.
+7. Make every PM success metric measurable: name the table/column or log line that produces it, or mark it "needs instrumentation" and add the ticket.
 
-Do not write product code. Deliver the file and a three-bullet summary.
+DONE WHEN: .10x/tickets.md has the traceability table, all tickets, the critical path with parallel lanes, the question list, and a 5-bullet summary at top (total estimate, earliest ladder date at the calibrated pace, the top 3 risks).
+
+DO NOT: start implementing, re-decide the ADR, or invent features the PM files do not contain.
 ```
 
----
-
-## 3. Security review before the Step 7 deploy
+## 3. Security review (gate before Step 7 deploy)
 
 Role: Security Engineer.
 
 ```
-Task: light but adversarial security review of Phase 0 before launch hardening. Find exploitable problems; do not write essays.
+MISSION. A rating that recruiters trust is only as good as the weakest exploit. Find real, demonstrable weaknesses in Phase 0 before strangers arrive. Prefer a working exploit or failing test over a theoretical concern; rank by what an attacker with a normal account can actually do.
 
-Read: worker/src/auth.ts, table.ts, lobby.ts, supabase.ts, index.ts; src/shared/protocol.ts (validator); src/engine/redact.ts and its tests; supabase/migrations/* (RLS, security definer functions); .10x/decisions/integrity-and-trust (PM) and the QA file. Handoff sections for Steps 5 and 6 list reviewer pointers: cover each.
+READ: worker/src/{auth,table,lobby,supabase,index,shuffle,deadlines,controller}.ts, src/shared/protocol.ts, src/engine/{redact,deck}.ts and tests, supabase/migrations/* and supabase/tests, the handoff reviewer pointers for Steps 5 and 6, PM integrity-and-trust.md, QA notes.
 
-Threat model to work through, with a concrete exploit attempt or test for each:
-1. Token handling: ES256-only, issuer, audience, exp/nbf clock tolerance, token in WebSocket subprotocol never logged, dev.<user>.<secret> path impossible in production (DEV_AUTH_SECRET absent) and fail-closed if the var is misconfigured.
-2. Seat hijack and replay: invite-link seat claim race, replaying an old action with a stale seq/idempotency key, acting out of turn, acting for the other seat, two sockets on one account.
-3. Information leaks: per-seat redaction in every frame type (welcome, state, hand_end, reveal, errors, close reasons, the 4409 body); anything in logs; timing or frame-size side channels that reveal a hole card; the reveal opening only publicSlots.
-4. Commitment scheme: can the server cheat undetectably; can a client pre-compute; does the secret ever leave the Worker before the hand ends.
-5. Database: hand_holes and hands_private RLS from anon, authenticated and a different authenticated user; record_match and record_hand are security definer with search_path '' and not executable by anon/authenticated; the service-role key goes only to ${SUPABASE_URL}/rest/v1/rpc/*; username enumeration and profile exposure.
-6. Abuse and DoS: frame size and rate limits (table and lobby have none yet), queue flooding, match creation spam, alarm abuse, unbounded DO storage growth.
-7. Supply chain and CI: workflow permissions, secrets exposure to forks, pinned actions.
+METHOD. For each threat below, (a) state the attacker and goal, (b) attempt it for real (a Worker test with a hand-rolled malicious client, a PGlite query as another role, a crafted frame), (c) record result: EXPLOITED / HELD / NOT TESTABLE, with the artifact.
+1. Auth: ES256-only, issuer/audience/exp/nbf enforcement; alg=none, HS256-with-public-key confusion, wrong issuer, expired and not-yet-valid tokens; token only in the subprotocol and never logged; the dev.<user>.<secret> path impossible when DEV_AUTH_SECRET is absent and fail-closed when blank/short.
+2. Seat and session integrity: invite-link claim race (two clients, one empty seat); acting out of turn; acting for the other seat; replaying an old action with a stale seq or reused idempotency key; two sockets on one account; reconnect hijack.
+3. Information leaks: walk EVERY server→client frame type and error/close reason with the redaction rules: welcome, state, hand_end, reveal, errors, the 4409 body. Check logs for cards/tokens. Check frame size/timing side channels that could reveal a hidden card or whose turn is auto.
+4. Commitment scheme: can the server cheat undetectably; can a client predict the deck; does the per-hand secret ever leave the Worker before reveal; does reveal expose more than publicSlots.
+5. Database: from anon, authenticated-self, authenticated-other, service: matrix of read/insert/update/delete on every table; hands_private and hand_holes isolation; security definer functions have search_path '' and are not executable by anon/authenticated; service key goes only to ${SUPABASE_URL}/rest/v1/rpc/*; username enumeration and profile exposure.
+6. Abuse/DoS: oversized or malformed frames, frame floods (table and lobby have no limiter yet), queue flooding, match-creation spam, alarm abuse, unbounded Durable Object storage growth, WebSocket connection floods per account/IP.
+7. CI/supply chain: workflow permissions, secrets reachable from fork PRs, unpinned actions, dependency advisories (npm audit, read the results critically).
 
-Deliverable: .10x/reviews/<date>-security-review.md with a table (finding, severity, exploit steps, fix, status). Fix the High/Medium findings that are small and local with tests that fail before the fix and pass after; list the rest as tickets for Prompt 5 (Step 7) with exact file:line. Do not weaken any existing test. Do not touch Phase 1 designs.
+DELIVERABLE. .10x/reviews/<date>-security-review.md: executive summary (3 lines), then a findings table (id, severity Critical/High/Medium/Low, exploit steps, impact, fix, status). Fix every Critical/High and every small local Medium with a test that fails before and passes after (show both runs). Everything else becomes a ticket with exact file:line for Prompt 5 (Step 7). Also list what you did NOT test and why.
+
+DONE WHEN: every item 1–7 has a recorded verdict; zero unfixed Critical/High, or an explicit written risk acceptance request to me; gates green.
+
+DO NOT: weaken any test, touch Phase 1 designs, run load against production, or "fix" by hiding information in logs while leaving the leak.
 ```
 
----
-
-## 4. DBA review of the applied migrations
+## 4. DBA review (gate before Step 7 deploy)
 
 Role: DBA.
 
 ```
-Task: post-hoc review of the live schema and its migrations before ratings and ladders are built on top of it.
+MISSION. Ratings, ladders and public profiles are about to be built on seven migrations nobody has reviewed. Make sure the schema is correct, retry-safe, fast for the queries Phase 1 will run, and cheap at the projected volume — and design the additive Phase 1 schema before SDE work needs it.
 
-Read: supabase/migrations/* (the 4 files named 202610081*, record_match, and the learning_cloud one), supabase/tests/migrations.test.ts, the ADR §Data model, the PM rating-and-leaderboard and heads-up-duplicate-ladder files.
+READ: supabase/migrations/* (all 7), supabase/tests/migrations.test.ts, ADR §Data model and §Verified assumptions row 8, PM rating-and-leaderboard.md, heads-up-duplicate-ladder.md, integrity-and-trust.md.
 
-Do, using the Supabase MCP read-only tools (list_tables, execute_sql SELECT only, get_advisors, list_extensions):
-1. Run security and performance advisors; triage every finding (real / accepted / false positive) with a reason.
-2. Verify indexes against the real query shapes Phase 1 needs: player match history, opponent-pair counts per day (the ≤2/day limit), ladder by rating, last-20-matches profile, hands by match, outbox idempotency. Run EXPLAIN on each with realistic generated row counts in a scratch schema or transaction that you roll back; never write to production tables.
-3. Check idempotency of record_match/record_hand under retry and concurrent duplicate delivery; constraints that make a duplicate impossible rather than merely unlikely.
-4. Growth: bytes per hand with and without hands_private, projected rows/day at 1k and 4k hands/day, the day Supabase Pro limits bite, retention and archival policy for hands_private (the deck) after it is revealed.
-5. RLS matrix as a table: every table × anon / authenticated-self / authenticated-other / service. Anything not tested in PGlite gets a test.
-6. Design (do not apply yet) the additive migrations Phase 1 needs: ratings (per format, Glicko-2 mu/phi/sigma, history), accuracy aggregates, match_results with duplicate segment totals, reports, sanctions-ready columns. Write them as proposed SQL in .10x/decisions/dba/phase1-schema.md with rationale.
+METHOD (Supabase MCP read-only: list_tables, execute_sql SELECT only, get_advisors, list_extensions; do experiments in a transaction you roll back or in PGlite — never write to production tables):
+1. Advisors: run security and performance advisors; triage every item as real / accepted (with reason) / false positive.
+2. Query shapes and indexes: for each Phase 1 query write the real SQL and run EXPLAIN (ANALYZE) over generated data at 10k, 100k, 1M rows: profile last-20 matches; player match history; same-pair-pairings-today (the ≤2/day rule); ladder by rating with eligibility filters and pagination; hands by match; abandonment rate over 30 days; outbox/idempotency lookup. Missing or redundant indexes are findings with the migration to fix them.
+3. Retry-safety: call record_match/record_hand twice, concurrently twice, and after partial failure; show duplicates are structurally impossible (unique constraints, ON CONFLICT), not merely unlikely.
+4. Growth model: bytes per hand with and without hands_private, rows/day at 1k and 4k hands/day, the date Supabase limits bite, and a retention policy for hands_private (the deck) once revealed. Quantify cost.
+5. RLS matrix: table × {anon, authenticated-self, authenticated-other, service} × {select, insert, update, delete}. Every cell that is not already covered by a PGlite test gets one.
+6. Design (write, do not apply) the Phase 1 migrations as SQL with rationale and rollback notes: per-format Glicko-2 rating state (mu, phi, sigma) and rating history; per-decision grades and accuracy aggregates; match result with per-segment bb totals and draw band; reports; sanctions columns; ladder materialisation if needed. Name the constraints that protect integrity (a match is rated at most once; rating history append-only).
 
-Deliverable: .10x/reviews/<date>-dba-review.md + the proposed Phase 1 schema doc. Only apply a migration if it fixes a real defect found here, with a test, and say so explicitly.
+DELIVERABLES. .10x/reviews/<date>-dba-review.md (findings table: id, severity, evidence, fix) and .10x/decisions/dba/phase1-schema.md (proposed SQL + the queries it was designed against + EXPLAIN evidence). Apply a migration only to fix a real defect found here, with a PGlite test, and say so loudly.
+
+DONE WHEN: every advisor item triaged; every Phase 1 query has a plan and measured timing; RLS matrix complete and fully tested; the schema doc is complete enough that Prompts 7–9 never need to invent a table.
+
+DO NOT: modify production data, apply speculative Phase 1 migrations, or recommend extensions/plans without the cost.
 ```
 
----
-
-## 5. Phase 0 Step 7: hardening, CI, launch
+## 5. Step 7: hardening, CI, launch
 
 Role: SDE with DevOps and SRE hats.
 
 ```
-Task: ADR Step 7 (day 15). Make Phase 0 safe to put in front of strangers.
+MISSION. Phase 0 works for friends. Make it survive strangers: abuse, restarts, late alarms, bad actors, and a bad deploy — and make failures visible. This is the last Phase 0 step; when it is done, the system can be pointed at the public.
 
-Read: ADR §Migration path row 7, §Failure modes, §Local development/testing/CI, §Post-hand grading placement, §Verified assumptions rows 2, 5, 6; .10x/decisions/sde/multiplayer-platform.md (Steps 5-6); the security review (Prompt 3) and tickets (Prompt 2) if they exist.
+READ: ADR §Migration path row 7, §Failure modes, §Local development/testing/CI, §Post-hand grading placement, §Verified assumptions rows 2, 5, 6; .10x/decisions/sde/multiplayer-platform.md (Steps 5–6); the security review (Prompt 3), DBA review (Prompt 4) and tickets (Prompt 2). Every High/Medium finding from the reviews is in scope here unless the review says otherwise. Existing: typecheck:worker, worker:test, engine:soak, ci.yml, observability on.
 
-Build, each with tests that fail before and pass after:
-1. Rate limits and frame caps: per-socket token bucket and max frame size for TableDO and LobbyDO, with a clean error then close; match-creation limit per account.
-2. Origin allowlist for WebSocket upgrades (same-origin plus localhost in dev).
-3. HAND_QUEUE producer in TableDO endOfHand, a verify consumer (re-run the engine over the recorded actions and assert chip conservation and commitment match; max_batch_size 1; cpu stays default), and a DLQ consumer that writes incidents. Idempotent on redelivery.
-4. bench.test.ts in Node using process.cpuUsage on cold boards, recording preflop-table cost; fail if analyzeSpot exceeds the budget (< 500 ms CPU).
-5. CI: typecheck:worker, worker:test with @cloudflare/vitest-plugin, e2e/live.spec.ts with the second webServer, engine-soak.yml (nightly 100k random hands, N=2..6, invariants), and a deploy check that Workers Builds from main succeeded. Use least-privilege workflow permissions; pin actions by SHA.
-6. Observability: Workers Logs on, structured one-line logs for match start/end/forfeit/no-show/errors with ids only (no cards, no tokens), and hands/day counter exposed in /api/config-adjacent admin-only metric or a log line I can chart.
-7. scripts/smoke-ws.mjs: 20 concurrent Node ws clients playing 500 hands against production-like wrangler dev (and, with my explicit flag, production); prints ack p95 and fails above 300 ms p95 or any invariant break. Never run it against production without my flag.
-8. Fair Play page (what we do: server-owned cards, lab off mid-hand, deck commitment, abandonment counting; what we do not: collusion/RTA detection yet; how to report), "play money only" and public-hand-history ToS copy, README multiplayer section, and Phase 1 handoff notes naming the seams (queue, project.ts, DuplicateController, deck:<n>).
+BUILD (each with a failing test first):
+1. Limits. Per-socket token bucket and max frame size in TableDO and LobbyDO → typed error, then close with a documented code; per-account match-creation limit; per-IP connection cap if the platform allows (otherwise document). Tests: flood, oversized frame, slow-drip frames.
+2. Origin allowlist on WebSocket upgrade (same origin + localhost in dev) with tests for missing/foreign Origin.
+3. HAND_QUEUE. Producer in endOfHand; verify consumer (re-run the engine over recorded actions: chip conservation, final stacks, commitment matches reveal) with max_batch_size 1; DLQ consumer writing an incidents row. Idempotent under redelivery and out-of-order delivery. A consumer failure must never block play or archiving.
+4. Bench. bench.test.ts in Node with process.cpuUsage on cold boards, recording the one-time preflop-table cost; fail above the per-decision CPU budget (500 ms). Note performance.now() is frozen in deployed Workers; do not use it for the budget.
+5. CI. Add: (a) deploy-check job or documented verification that the Cloudflare Git build for main succeeded; (b) engine-soak.yml nightly (100k random hands, N=2..6, invariants) failing loudly with the seed in the log; (c) the live e2e second webServer; (d) pinned-by-SHA actions and least-privilege permissions across all workflows.
+6. Observability. One structured log line per match start/end/forfeit/no-show/error/limit-hit, ids only — never cards, tokens, or secrets (add a test that greps the log sink for hole-card patterns). A hands/day figure I can read without SQL. Document how to find a failed hand end to end.
+7. scripts/smoke-ws.mjs. 20 concurrent Node ws clients, 500 hands, against wrangler dev; prints ack p50/p95/p99 and invariants; exits non-zero above 300 ms p95 or any invariant break. A --prod flag exists but refuses to run without me typing the confirmation phrase in this session; do not run it against production without that.
+8. Chaos pass (by hand, record results): kill a socket mid-hand; delay the alarm; restart the DO mid-hand; two tabs on one account; Supabase down for 60 s (outbox must retry, play continues). Fix what breaks.
+9. Trust content. Fair Play page (what exists today: server-owned cards, lab off mid-hand, deck commitment with the verify step, abandonment counting; what does NOT exist yet: collusion/RTA detection; how to report), "play money only" and public-hand-history ToS copy, README multiplayer section, and Phase 1 seam notes (queue, project.ts, DuplicateController, deck:<n>).
 
-Verify like an operator: run wrangler dev, two real browsers, kill the socket mid-hand, let the alarm fire late, restart the DO, and show the match resumes. Report the real numbers.
-Out of scope: rating, duplicate, 6-max, spectating, anything in the ADR §Out of scope.
+DONE WHEN: gates green; chaos pass table in the SDE log with every row VERIFIED; smoke run numbers recorded; no unfixed Critical/High from the reviews; log sink test passes; deploy to production happens only after I say go.
+
+DO NOT: add rating, duplicate or 6-max; relax limits to make a test pass; deploy to production unasked.
 ```
 
 ---
 
 # PHASE 1: HU ladder (`heads-up-duplicate-ladder`, `rating-and-leaderboard` v1, `integrity-and-trust` v1, review→lesson loop)
 
-## 6. Phase 1a: heads-up duplicate engine
+## 6. Heads-up duplicate engine and match flow
 
-Role: Principal Architect first (short design addendum), then SDE.
+Role: Principal Architect (short addendum), then SDE.
 
 ```
-Task: heads-up duplicate matches, the format the whole ladder rests on.
+MISSION. The whole ladder rests on one idea: both players play the same shuffled decks twice with seats swapped, so card luck cancels and decisions decide. Get this exactly right, including the part that is easy to get wrong: reusing decks must not leak upcoming cards.
 
-Read: .10x/decisions/product-manager/heads-up-duplicate-ladder.md in full, ADR §Durable Objects and §Randomness and deck commitment (the Phase 1 seams: DuplicateController, deck:<n> retention, fresh secrets), src/engine/, worker/src/table.ts, the tickets from Prompt 2.
+READ: heads-up-duplicate-ladder.md in full, ADR §Durable Objects and §Randomness and deck commitment (seams: DuplicateController, deck:<n> retention, fresh secrets), src/engine/, worker/src/{table,controller,deadlines,shuffle}.ts, the DBA Phase 1 schema, tickets.
 
-Step 1 (architect, <= 1 page appended to the ADR as an Amendment): how a match of 2 segments x N hands is stored in the TableDO, how segment 2 reuses segment 1's decks with seats swapped WITHOUT leaking segment 2's cards during segment 1 (the opponent must not learn upcoming cards: commitments per deck, reveal rules for reused decks, fresh per-use secrets), and how fixed 100 bb stack resets, the +-2 bb draw band, the 20 s / 60 s clock, and 60 s reconnect grace map onto the existing clock and forfeit code.
+STEP A — ARCHITECT ADDENDUM (≤ 1 page, appended to the ADR as an Amendment, before any code). Answer precisely:
+- Storage of a match of 2 segments × N hands in TableDO (keys, size, hibernation, restore).
+- Segment 2 reuses segment 1's decks with seats swapped: how are the decks committed up front, what is revealed when, and why can neither player learn a segment 2 card during segment 1 (per-use secrets, commitment per deck, what the opponent could verify afterward)?
+- Stack reset to 100 bb each hand; match result = seg1 + seg2 net bb; draw band ±2 bb as a named constant.
+- Clock (20 s + 60 s bank per segment), 60 s reconnect grace, three timeouts = forfeit at segment end, abandonment = loss — mapped onto the existing deadlines/alarm code.
+- Failure matrix: DO restart mid-segment, one player gone for good, both gone, Supabase down at match end.
+List every decision and the alternative you rejected. If any requirement is infeasible, say so before building.
 
-Step 2 (SDE): implement it.
-- DuplicateController in the TableDO; rated flag on the match; match result in bb = seg1 + seg2 net; win / draw / loss with the noise band as a named constant.
-- Lab, equity ring and EV labels are not rendered AND not shipped to the client while a rated hand is live. Prove with a network-level test that asserts the exact set of frame fields.
-- End-of-match screen: result in bb, winner/draw, biggest EV swings (placeholder until Prompt 7), rematch button (reuses the pair limit logic and the ≤2/day rule).
-- Review: "compare with opponent on the same deck" side by side.
-- Quick-match lobby gets a Rated card next to Casual; casual keeps working untouched.
+STEP B — SDE.
+1. DuplicateController in the TableDO, rated flag on the match, match state machine with persisted transitions.
+2. The lab, equity ring and EV labels are not rendered AND not shipped while a rated hand is live. Prove it with a test that asserts the exact allowed field set of every server frame during a rated hand.
+3. End-of-match screen: result in bb, win/draw/loss, rematch button (obeys the ≤2 pairings/day rule), placeholder for swings (Prompt 7 fills it).
+4. Review: "compare with opponent on the same deck" side by side, showing only cards shown at showdown.
+5. Lobby gets a Rated card; Casual untouched and still tested.
 
-Tests (must exist): segment 2 deals exactly segment 1's decks with seats swapped (card-for-card); server rejects any non-legal action; neither client gets opponent hole cards or the deck before showdown; commitments verify for reused decks; forfeit and no-show mid-segment produce correct results and abandonment records; DO restart mid-segment resumes; e2e with two simulated clients passes the keyboard loop, axe, mobile layout and frame-time tests.
-Out of scope: rating math, grading pipeline, ladder UI.
+TESTS THAT MUST EXIST (names in the log): segment 2 deals exactly segment 1's decks, seats swapped, card for card; per-use secrets prevent pre-reveal inference (attempt it); server rejects every non-legal action; neither client gets opponent hole cards or deck before showdown (network-level); commitments verify for reused decks; forfeit / no-show / disconnect each produce the right result and abandonment row; DO restart mid-segment resumes to an identical state; draw band boundaries (±2.0, ±2.01); e2e with two clients passes the keyboard loop, axe, mobile layout, frame time.
+
+DONE WHEN: a scripted 40-hand rated match runs end to end in wrangler dev with a restart in the middle and ends with the correct result, archived rows and verifiable commitments; gates green; addendum merged into the ADR.
+
+DO NOT: write rating math, grading, or ladder UI; change casual behaviour.
 ```
 
----
-
-## 7. Phase 1b: grading pipeline and accuracy
+## 7. Grading pipeline and accuracy
 
 Role: SDE.
 
 ```
-Task: server-side post-hand grading and per-player accuracy, honestly labelled.
+MISSION. Accuracy is the second number on every profile. It must be computed server-side after the hand, never during it, be cheap, be repeatable, and be labelled honestly: it measures play against a model opponent, not a solver.
 
-Read: PM rating-and-leaderboard.md §Accuracy, ADR §Post-hand grading placement (queue, max_batch_size 1, CPU evidence), src/lib/grading.ts, model.ts, range code, src/engine/project.ts and its grading-equality test, worker/ queue consumer from Step 7.
+READ: rating-and-leaderboard.md §Accuracy, ADR §Post-hand grading placement (queue, max_batch_size 1, measured CPU), src/lib/{grading,model,range,equity.worker,sim,poker}.ts, src/engine/project.ts + project.test.ts (grading-equality), the Step 7 queue consumer and bench, the DBA schema for grades.
 
-Build:
-1. A population opponent model for humans (position-aware preflop ranges + a simple postflop continuation policy) behind the same interface as the existing uniform model. Document the numbers and where they come from. The UI label is exactly "Accuracy vs. a model opponent, not a solver."
-2. Grading in the queue consumer: per decision EV lost as a share of pot -> Best/Good/Inaccuracy/Mistake/Blunder and 0-100 accuracy. Heads-up hands are fully graded. Idempotent on redelivery; a failure never blocks the next hand or the match result.
-3. Persist per-decision grades (additive migration + PGlite RLS test: players read their own and their opponent's grades only for finished matches).
-4. Rolling accuracy over the last 500 graded decisions, grade distribution, and the luck-vs-skill cumulative chart extended across rated matches.
-5. Decision timing logged per action (needed for integrity v2 later), no detection logic.
+BUILD:
+1. Population opponent model for humans (position-aware preflop ranges, simple postflop continuation policy) behind the same interface as the uniform model. Document every number and its source. The UI label is exactly "Accuracy vs. a model opponent, not a solver."
+2. Grading consumer: per decision, EV lost as a share of pot → Best/Good/Inaccuracy/Mistake/Blunder and a 0–100 accuracy. Heads-up hands fully graded. Idempotent on redelivery; a grading failure never blocks the next hand, the match result, or the rating update (it degrades to "not graded yet" and retries).
+3. Persist per-decision grades (additive migration, PGlite RLS: a player reads own grades during/after; the opponent's only after the match is finished).
+4. Rolling accuracy over the last 500 graded decisions; grade distribution; extend the luck-vs-skill chart across rated matches.
+5. Log decision time per action (for integrity v2). No detection.
 
-Tests: project.ts + grading-equality still green; a golden set of 50 hands graded identically to the client-side trainer; replay determinism; bench stays under the CPU budget on cold boards; redelivery creates no duplicate rows.
-Be explicit in the log about what the model gets wrong (e.g. human tendencies it does not capture) and propose how we would validate it with real data (Spearman rating vs accuracy > 0.4 is the PM's check).
+VALIDATE (the part that makes it trustworthy):
+- Golden set: 50 recorded hands graded identically by the client trainer and the server consumer.
+- Replay determinism: same input → same grades bit for bit.
+- Bench within CPU budget on cold boards, worst-case multiway-free HU spots included.
+- Sanity on synthetic players: always-fold, always-call, a tight-aggressive scripted policy, and Atlas's own policy must rank in the order a poker player would expect. If they do not, the model is wrong; say so before shipping.
+- Write down in the log what the model misjudges (human tendencies it ignores) and the exact analysis you would run on real data later (Spearman of rating vs accuracy, target > 0.4).
+
+DONE WHEN: grades appear after real rated hands in wrangler dev; redelivery test passes; sanity ordering holds; gates green.
+
+DO NOT: send any analysis to a client during a live rated hand; grade multiway (that is Phase 2); change the displayed label.
 ```
 
----
-
-## 8. Phase 1c: Glicko-2 rating, ladder, profile
+## 8. Glicko-2 rating, ladder, public profile
 
 Role: SDE with DBA review.
 
 ```
-Task: the number people climb and recruiters read.
+MISSION. The number people climb and recruiters read. It must move noticeably after each match, show its own uncertainty, resist gaming, and be explainable from a public method page.
 
-Read: PM rating-and-leaderboard.md in full, the DBA Phase 1 schema proposal (Prompt 4), heads-up-duplicate-ladder.md acceptance criteria 4, grading output from Prompt 7.
+READ: rating-and-leaderboard.md in full, the DBA Phase 1 schema, heads-up-duplicate-ladder.md acceptance criterion 4, grading output (Prompt 7), existing hash-route and lobby code in src/net.
 
-Build:
-1. Glicko-2 as a pure, fully unit-tested module (src/shared or worker/, no I/O), per format (hu-duplicate now; 6-max later). Test against the published Glickman worked example to the digits. Draw handling and the rating period convention are named constants with comments.
-2. Rating update in a single transaction when a rated match completes; idempotent on retry; abandonment/forfeit rules; "provisional" until RD < 100 or >= 20 matches (whichever is later).
-3. Matchmaking: rated quick-match pairs near rating (widening window with wait time), keeps the <= 2 pairings per pair per day rule.
-4. Ladder: per format, all-time and this month; columns rank, player, rating +- RD, accuracy, matches, win rate, trend; min 20 rated matches to appear; eligibility (not provisional, >= 1 match in 30 days, abandonment < 10%); provisional players see "X matches to go". Pagination and the index plan from the DBA doc; EXPLAIN evidence in the log.
-5. Public profile at #/u/<username> (or the URL form the domain decision allows): rating +- RD over time, accuracy, volume, last 20 matches with review links, abandonment rate, sanctions field (empty for now), link to a Method page that states the formulas and versions. OG share image. Hole cards shown only where shown at showdown.
-6. End-of-match screen now shows real rating change and why.
+BUILD:
+1. Glicko-2 as a pure module (no I/O) with unit tests against the published Glickman worked example to the printed digits; draw handling and the rating-period convention as named, commented constants; versioned (`glicko2.v1`).
+2. Rating update in one transaction when a rated match completes: idempotent, a match rated at most once (constraint), append-only history. Forfeit/abandon rules per spec. Provisional until RD < 100 or ≥ 20 matches, whichever is later.
+3. Matchmaking: rated quick-match pairs near rating with a window that widens with wait time; keeps the ≤ 2 pairings per pair per day rule; never pairs the same two accounts as an instant rematch loop beyond the limit.
+4. Ladder per format, all-time and this month: rank, player, rating ± RD, accuracy, matches, win rate, trend; ≥ 20 rated matches to appear; eligibility (not provisional, ≥ 1 match in 30 days, abandonment < 10%); provisional players see "X matches to go". Keyset pagination; EXPLAIN evidence in the log.
+5. Public profile (route form per the domain decision): rating ± RD over time, accuracy, volume, last 20 matches with review links, abandonment rate, sanctions field (empty), link to a Method page stating formulas and versions; OG share image. Hole cards only where shown at showdown.
+6. End-of-match screen shows the real rating change and why.
 
-Tests: rating invariants (zero-sum-ish sanity, monotonic with results, RD shrinks with play), property tests on random match sequences, RLS tests for profile data, e2e for ladder and profile, axe + mobile layout.
-Instrument the PM success metrics (predictive validity at gap >= 150, median abs rating change < 15, Spearman) as a SQL view or script I can run; do not fake data.
+TESTS: published-example match; properties over random match sequences (RD shrinks with play and grows with inactivity, a win never lowers rating, upsets move more than expected results, repeat updates are idempotent); RLS for profile and ladder reads; e2e for ladder and profile; axe and mobile layout.
+
+INSTRUMENT the PM metrics as a script or SQL view I can run today, producing "insufficient data" honestly when it is: predictive validity at gap ≥ 150 (target ≥ 60%), median absolute rating change < 15, Spearman(rating, accuracy) > 0.4. Never seed fake data into production.
+
+DONE WHEN: a simulated 200-player, 5k-match season in a scratch DB produces sane ladders and the metrics script runs on it; gates green.
+
+DO NOT: add a Quant Score ladder (P1), merge formats, or hide RD.
 ```
 
----
+## 9. Integrity v1 and the review→lesson loop
 
-## 9. Phase 1d: integrity v1 and the review→lesson loop
-
-Role: SDE with Security review at the end.
+Role: SDE, finishing with a Security pass.
 
 ```
-Task: the near-free protections that make the ladder credible, and the loop that turns a mistake into learning.
+MISSION. Two things that turn a game into a credible product: protections that cost almost nothing but make the ladder defensible, and a loop that turns each mistake into learning (the reason people return).
 
-Read: PM integrity-and-trust.md (v1 column only), the security review, PM multiplayer-platform.md for the review->lesson loop, src/curriculum/ (the Learn tab) and src/lib/grading.ts.
+READ: integrity-and-trust.md (v1 column and Sanctions v1), the security review and Prompt 5 outcomes, multiplayer-platform.md PM file (review→lesson loop), src/curriculum/ (the Learn tab, its item ids and tags), src/lib/grading.ts, src/net/ReviewLive.tsx.
 
-Integrity v1:
-1. Abandonment score and ladder-eligibility effect (> 10% removes eligibility until it recovers), shown on profile.
-2. One-click "Report" from review: reports table (additive migration, RLS: reporter inserts, only service reads), rate-limited, with the match id and optional note. A tiny admin-only view or SQL script to triage; SLA target is 7 days.
-3. Sanctions plumbing: manual only, logged, with profile flag "sanctioned" and rating reset. No auto-bans.
-4. Win-trade guard verified end to end (<= 2 pairings per pair per day) and a test.
-5. Published Fair Play page updated to describe exactly what exists.
+BUILD — Integrity v1:
+1. Abandonment score; > 10% removes ladder eligibility until it recovers; shown on profile.
+2. Report button in review → reports table (additive, RLS: reporter inserts only, service reads), rate-limited, includes match id and optional note; a minimal admin triage script or view. SLA 7 days is a number you can compute from the table.
+3. Sanctions plumbing, manual only and logged: profile flag, rating reset, ladder removal, one appeal field. No auto-bans.
+4. Win-trade guard (≤ 2 pairings per pair per day) end to end, with a test through the real lobby.
+5. Update the Fair Play page to describe exactly what now exists, nothing more.
 
-Review -> lesson loop:
-6. From a graded mistake in review, deep-link to the specific curriculum item that teaches the underlying concept (map decision types and error classes to lessons; start with the ones the Learn tab already covers, list gaps). The link opens the lab with the situation pre-loaded where the lab supports it.
-7. A post-match "what to review first" list: the three biggest EV swings, each with its lesson link.
+BUILD — Review→lesson loop:
+6. Map error classes and decision types to curriculum items (start with what Learn already teaches; produce a gap list for what it does not). Mapping is data with a completeness test: every grade class either links to a lesson or is explicitly "none yet".
+7. From a graded mistake in review, deep link to the lesson with the situation pre-loaded where the lab supports it.
+8. Post-match "what to review first": the three biggest EV swings, each with its lesson link.
 
-Tests: network test that no analysis data reaches a client during a live rated hand (CI gate, success metric = 0); deck commitment verification failure count = 0 in the 500-hand smoke; report flow e2e; mapping completeness test that every grade class has a lesson or an explicit "none yet".
-Finish with a short security pass on reports and sanctions endpoints.
+TESTS: CI gate asserting zero analysis data on any client frame during a live rated hand (this is a PM success metric: 0); commitment verification failures = 0 across a 500-hand smoke; report flow e2e; abuse tests on reports (spam, self-report, report of a match you were not in); sanction endpoints reject non-admins.
+
+FINISH with a short adversarial pass on the report and sanction paths and record the result.
+
+DONE WHEN: all of the above verified in wrangler dev with two accounts; gates green.
+
+DO NOT: build v2 detectors, auto-ban anyone, or claim protections the Fair Play page cannot back.
 ```
 
 ---
 
 # PHASE 2: 6-max (`six-max-tables` casual, then rated arenas)
 
-## 10. Phase 2a: N-seat `Table` and casual 6-max
+## 10. N-seat `Table` and casual 6-max
 
 Role: SDE.
 
 ```
-Task: retire the toHeroGame crutch and ship casual 6-max with Atlas fill.
+MISSION. The user's bar is "highest quality, especially 6-max". Retire the heads-up crutch and ship casual 6-max that feels as good as the trainer table and is provably correct about chips.
 
-Read: PM six-max-tables.md in full, ADR §Engine N-player generalisation and the risk note on toHeroGame, src/engine/ invariant suite, the Table/ActionBar components, worker/src/table.ts, e2e frame-time test.
+READ: six-max-tables.md in full, ADR §Engine N-player generalisation and the toHeroGame risk note, src/engine invariants and soak, src/components Table/ActionBar and motion code, worker/src/table.ts, e2e frame-time and mobile tests.
 
-Build:
-1. N-seat Table UI: six seats with the same card art, chips and spring choreography; side-pot chip animation; turn indicator and timers readable on a phone; keyboard handling parity. Replace toHeroGame everywhere; a generic seat plate for humans (no Atlas avatar on humans).
-2. Table service: 6 seats, 100 bb fixed buy-in, blinds 1/2, rebuy to 100 bb when below, sit/stand, join = sit in the next hand, dead-button rule (pick the standard rule, document it in the ADR, test it), clock 20 s + 30 s time bank per orbit, sit-out after 2 consecutive timeouts, removal after 3 orbits.
-3. Atlas bots back-fill so a table is never empty, clearly labelled; bots never appear at rated tables.
-4. Table list: seats, average pot, players/hour; quick-sit.
-5. Reconnect without losing the seat for 60 s, including mobile Safari background-tab behaviour (document what you could and could not test).
-6. Post-hand review with the lab for every seat played; opponents' cards only where shown. Multiway decisions show "not graded" with a count.
-7. 6-max stats on profile (VPIP/PFR/aggression, luck-adjusted bb/100).
+HARD GATE FIRST. Before any UI work, run the engine through the reference comparison: 0 failures over 100k simulated random 6-max hands for chip conservation, side-pot sums, legal action sets, showdown award order, odd-chip rule. Extend the reference implementation or crafted cases if coverage is thin (multiple all-ins, split pots with odd chips, folded dead money, short stacks). If anything fails, stop and fix the engine; UI waits.
 
-Hard gate before you call it done: 0 invariant failures over 100k simulated random 6-max hands (chip conservation, side-pot sums, legal action sets, showdown award order and odd-chip rule vs a reference implementation), plus action-to-render p95 < 150 ms and no dropped frames through a 3-way all-in runout.
-Out of scope: rated arenas and the 6-max rating.
+BUILD:
+1. N-seat Table: six seats with the same card art, chips and spring choreography; side-pot chip animation; turn indicator and timer legible on a phone; keyboard parity. Replace toHeroGame everywhere; a generic seat plate for humans (Atlas's avatar is for Atlas only).
+2. Table service: 6 seats, 100 bb fixed, blinds 1/2, rebuy to 100 bb when below, sit/stand, join = sit in the next hand. Dead-button rule: pick the standard rule, write it into the ADR, test it with crafted departures.
+3. Clock 20 s + 30 s bank per orbit; sit-out after 2 consecutive timeouts; removal after 3 orbits.
+4. Atlas bots back-fill so no table is empty, clearly labelled; never at rated tables.
+5. Table list: seats, average pot, players/hour; quick-sit.
+6. 60 s reconnect keeps the seat; handle mobile Safari background tabs (test what you can, document what you cannot).
+7. Post-hand review with the lab for every seat played; multiway decisions show "not graded" with a count.
+8. 6-max stats on profile: VPIP, PFR, aggression, luck-adjusted bb/100.
+
+QUALITY GATES: action-to-render p95 < 150 ms with six seats; zero dropped frames through a 3-way all-in runout (extend the frame-time Playwright test); axe and mobile layout at 320 px; all earlier gates.
+
+DONE WHEN: six real browsers (or six scripted clients plus two real) play 200 hands with joins, leaves, timeouts and a reconnect, ending with chip conservation verified and no console errors.
+
+DO NOT: ship rated arenas, or let a bot sit at a rated table.
 ```
 
----
-
-## 11. Phase 2b: arenas and the 6-max rating
+## 11. Arenas and the 6-max rating
 
 Role: SDE.
 
 ```
-Task: scheduled rated arenas and a luck-adjusted 6-max rating.
+MISSION. Give 6-max a rating people can believe: scheduled humans-only arenas and a luck-adjusted result model, shown as provisional until the data supports it.
 
-Read: PM six-max-tables.md §Format (Arena) and §Gates, PM rating-and-leaderboard.md §6-max, the Glicko-2 module and ladder from Prompt 8, the first 1,000 human casual hands' invariant results.
+READ: six-max-tables.md §Format (Arena) and §Gates, rating-and-leaderboard.md §6-max, the Glicko-2 module and ladder (Prompt 8), casual 6-max invariant results from Prompt 10 and the first human hands.
 
-Pre-check: confirm the hard gate (0 invariant failures over 100k simulated + first 1,000 human casual hands). If it fails, stop and report.
+PRE-CHECK (stop if it fails): 0 invariant failures over 100k simulated hands AND over the first 1,000 human casual hands. Report the counts.
 
-Build:
-1. Arena scheduling: fixed 60-minute windows announced in the lobby (and email/notification if the infrastructure exists; otherwise note the gap), an ArenaDO that seats by rating band, rebalances as people leave, humans only.
-2. Luck-adjusted bb/100 with all-in pots settled at equity, converted to a pairwise result per opponent weighted by shared hands, fed to Glicko-2 for the 6-max format (separate rating, never merged).
-3. A rated arena with fewer than 4 humans is played but not rated. Players show "provisional" until >= 500 rated hands; ladder lists provisional separately.
-4. Ladder/profile: 6-max rating column and card, with RD and volume next to it.
+BUILD:
+1. Arena scheduling: fixed 60-minute windows announced in the lobby (plus email/notification only if the infrastructure exists; otherwise record the gap). An ArenaDO seats by rating band, rebalances as people leave, humans only.
+2. Luck-adjusted bb/100: all-in pots settled at equity; convert to pairwise results per opponent weighted by shared hands; feed Glicko-2 for the 6-max format (separate rating, never merged with HU).
+3. Fewer than 4 humans in a window → played but not rated. Provisional until ≥ 500 rated hands; ladder lists provisional players separately.
+4. Ladder and profile show the 6-max rating with RD and volume side by side.
 
-Tests: the luck-adjustment against hand-computed examples; rating conservation properties; arena rebalancing under joins/leaves; e2e with 6 simulated clients. Update the success metrics instrumentation.
-Out of scope: collusion detection (growth-triggered, Prompt 12).
+TESTS: luck adjustment against hand-computed examples (include a runout where the loser was 95% ahead); a player who is unlucky but plays well does not lose rating relative to expectation; conservation and symmetry properties of the pairwise conversion; arena rebalancing under joins/leaves/disconnects; e2e with six simulated clients; instrument the PM 6-max success metrics honestly.
+
+DONE WHEN: a scripted 60-minute arena with 12 bots-as-humans (test only) across 2 tables rebalances correctly and produces plausible ratings; gates green.
+
+DO NOT: build collusion detection (growth-triggered, Prompt 12) or treat provisional ratings as final in any UI.
 ```
 
 ---
 
 # LATER (triggered)
 
-## 12. Later: integrity v2 (run only when a trigger fires)
+## 12. Integrity v2 (run only when a trigger fires)
 
-Role: Security Engineer. Triggers: 1,000 registered players, first recruiter or firm inbound, first credible cheating report, or a sponsored event.
+Triggers: 1,000 registered players, first recruiter or firm inbound, first credible cheating report, or a sponsored event. Role: Security Engineer.
 
 ```
-Task: build integrity v2 against the real data we now have, retroactively over public rated histories.
+MISSION. Defend the ladder with evidence, not vibes. Build detectors against the real data we now have and apply them retroactively to public rated histories. Humans decide sanctions; the system produces ranked, explainable review packets.
 
-Read: PM integrity-and-trust.md (v2 column), the reports table and triage notes, decision-timing logs, accuracy data, rating history.
+READ: integrity-and-trust.md (v2 column), the reports table and triage log, decision-timing logs, accuracy and rating history, the Fair Play page, the security review.
 
-Build, each as an offline analysis job first (queue or scheduled script), a human review queue second, never auto-ban:
-1. External-RTA screen: accuracy and timing-variance distributions vs the population, flagged outliers with confidence and a review packet.
-2. Collusion and chip dumping (6-max): seat co-occurrence score, soft-play detection in checked-down pots between linked accounts, large all-in losses with weak holdings to the same account.
-3. Win-trade graph analysis for HU: match-pair graph, decayed gains against repeat opponents.
-4. Multi-accounting soft linkage (device/IP) and verified-email-domain badges; phone verification to appear on the ladder if the data says it is needed.
+BUILD, each as an offline job first, a review queue second, never an auto-ban:
+1. External-RTA screen: accuracy and timing-variance distributions against the population, outliers with confidence and a review packet (hands, timings, comparison to peers).
+2. Collusion/chip dumping (6-max): seat co-occurrence score, soft-play in checked-down pots between linked accounts, large all-in losses with weak holdings to the same account.
+3. Win-trade graph for HU: match-pair graph, decayed gains against repeat opponents.
+4. Multi-account soft linkage (device/IP) and verified email-domain badges; phone verification for the ladder only if the data justifies it.
 5. Public read-only profile JSON API for firms.
 
-For every detector: precision/recall estimate on seeded synthetic cheaters AND on the real population, a false-positive budget, and the explicit statement of what it cannot catch. Update the Fair Play page. Report the numbers faithfully; if a detector is noise, say so and do not ship it.
-```
+FOR EVERY DETECTOR: evaluate on seeded synthetic cheaters AND on the real population; report precision/recall, the false-positive budget (how many innocent players per 1,000 flagged), and what it cannot catch. If a detector is noise, say so and do not ship it. Update the Fair Play page to describe exactly what exists.
 
----
+DONE WHEN: each shipped detector has an evaluation report, a human review workflow, and an appeal path; the API respects profile privacy rules.
+
+DO NOT: auto-sanction, publish raw suspicion scores, or ship anything whose false-positive rate you did not measure.
+```
 
 ## 13. Optional: port the AI coach to the Worker
 
-Role: SDE. Only if you want the coach back; the code lives in `archive/context-aware-coach` and `refs/pull/2/head`.
+Role: SDE. Code lives in `archive/context-aware-coach` and `refs/pull/2/head`.
 
 ```
-Task: port the AI coach (server/coach.ts, src/lib/coach.ts, coach-stream.ts) from the archived branch to the Cloudflare Worker.
+MISSION. Bring back the AI coach on the new stack without weakening fairness or exposing keys. It explains finished hands; it must be impossible to use as real-time assistance.
 
-Read: git show archive/context-aware-coach (the three files and their tests), .10x/status.md §Repository, worker/src/index.ts, the grading output (Prompt 7).
+READ: git show archive/context-aware-coach for server/coach.ts, src/lib/coach.ts, coach-stream.ts and their tests; .10x/status.md §Repository; worker/src/index.ts; grading output (Prompt 7); the security review.
 
-Do: re-implement as a Worker route with streaming, per-account usage limits stored in Postgres, the model key as a Worker secret, never reachable during a live rated hand (server refuses; test it), grounded only in finished-hand data the requester is allowed to see. Entry bundle stays under budget (lazy chunk). Port the old tests; add abuse tests (rate limit, prompt injection through opponent usernames or notes cannot change tool or data access).
-Out of scope: the 3D terrain frontier/slice/camera port (a separate task).
+BUILD: a Worker route with streaming; per-account usage limits in Postgres (additive migration + RLS test); the model key as a Worker secret and never sent to the client; grounded only in finished-hand data the requester is allowed to see; refused server-side whenever the requester has a live rated hand (test it, including races where a hand starts mid-request); lazy chunk keeping the entry bundle under budget; ported tests plus abuse tests (rate limits, prompt injection via opponent usernames, notes or hand text cannot expand data access or tool use; output never echoes secrets).
+
+DONE WHEN: coach works on a finished hand in wrangler dev, is refused during a live rated hand, and all gates are green.
+
+DO NOT: port the 3D terrain frontier/slice/camera (separate task), or let the coach see hidden cards of any hand not finished.
 ```

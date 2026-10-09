@@ -106,6 +106,23 @@ describe('a table under a frame flood', () => {
     )
   })
 
+  it('refuses an oversized frame without parsing it, and the hand goes on', async () => {
+    const matchId = await createTable('alice')
+    const alice = await connect(matchId, 'alice')
+    const bob = await connect(matchId, 'bob')
+    await alice.next(isState(1))
+    await bob.next(isState(1))
+    const from = alice.frames.length
+    // Just under the platform's 1 MiB message limit, all of it junk.
+    alice.ws.send(`{"t":"act","pad":"${'x'.repeat(1_000_000)}"}`)
+    expect(await alice.next((f) => f.t === 'error', from)).toMatchObject({
+      code: 'illegal',
+    })
+    const { hand } = await peek(matchId)
+    expect(hand!.actions).toHaveLength(0)
+    expect(alice.closed).toBeNull()
+  })
+
   it('never charges moves that the table applied', async () => {
     const matchId = await createTable('alice', 3)
     await freezeClock(matchId)

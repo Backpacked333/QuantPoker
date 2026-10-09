@@ -39,7 +39,8 @@ const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'stacks',
   ],
   hand_end: ['t', 'seq', 'matchId', 'handNo', 'record'],
-  reveal: ['t', 'seq', 'matchId', 'handNo', 'leaves', 'slots'],
+  // `own`: this seat's two hole slots, opened for this seat only.
+  reveal: ['t', 'seq', 'matchId', 'handNo', 'leaves', 'slots', 'own'],
   match_end: ['t', 'seq', 'matchId', 'result'],
   error: ['t', 'seq', 'matchId', 'code', 'message', 'reqId?'],
 }
@@ -266,6 +267,14 @@ describe('every frame a seat receives', () => {
           expect(f.slots.map((s) => s.card)).not.toEqual(
             expect.arrayContaining(theirs),
           )
+          // Each seat can check its own folded cards, and only its own.
+          expect(f.own?.map((s) => [s.slot, s.card])).toEqual(
+            holes[seat].map((slot) => [slot, deck[slot]]),
+          )
+          for (const s of f.own ?? []) {
+            expect(holes[other]).not.toContain(s.slot)
+            expect(theirs).not.toContain(s.card)
+          }
         }
       }
     }

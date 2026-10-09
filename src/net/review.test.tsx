@@ -50,6 +50,8 @@ describe('TableConnection hand records', () => {
     expect(seen.mine).toEqual(hand.players[0].cards)
     expect(seen.record).toEqual(record)
     expect(seen.reveal?.slots).toHaveLength(9)
+    // Its own two cards' opening is kept for the deck check.
+    expect(seen.reveal?.own).toHaveLength(2)
   })
 
   it('marks a commitment first seen mid-hand as late', async () => {
@@ -112,6 +114,65 @@ describe('ReviewLive', () => {
     render(
       <ReviewLive
         seen={{ commitment: 'e'.repeat(64), record, reveal }}
+        you={0}
+      />,
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Deck check failed',
+    )
+  })
+
+  it('"Deck verified" covers your own folded cards', async () => {
+    const { record, reveal, commitment, hand } = await finishedHand({
+      fold: true,
+    })
+    // A fold before the flop opens no public card: only your own.
+    expect(reveal.slots).toEqual([])
+    expect(reveal.own).toHaveLength(2)
+    render(
+      <ReviewLive
+        seen={{ commitment, record, reveal, mine: hand.players[0].cards! }}
+        you={0}
+      />,
+    )
+    expect(await screen.findByText('Deck verified')).toHaveAttribute(
+      'title',
+      expect.stringContaining('your own two cards'),
+    )
+  })
+
+  it('fails the check when your own cards are not the committed ones', async () => {
+    const { record, reveal, commitment, hand } = await finishedHand({
+      fold: true,
+    })
+    const dealt = hand.players[0].cards!
+    const other = [0, 1, 2].find((c) => !dealt.includes(c))!
+    // You were shown different cards than the deck the server committed.
+    render(
+      <ReviewLive
+        seen={{ commitment, record, reveal, mine: [dealt[0], other] }}
+        you={0}
+      />,
+    )
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Deck check failed',
+    )
+  })
+
+  it('fails the check when the server leaves your own cards unopened', async () => {
+    const { record, reveal, commitment, hand } = await finishedHand({
+      fold: true,
+    })
+    const { own: _, ...withoutOwn } = reveal
+    void _
+    render(
+      <ReviewLive
+        seen={{
+          commitment,
+          record,
+          reveal: withoutOwn,
+          mine: hand.players[0].cards!,
+        }}
         you={0}
       />,
     )

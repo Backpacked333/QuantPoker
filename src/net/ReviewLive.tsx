@@ -40,7 +40,7 @@ const Cards = ({ ids }: { ids: number[] }) => (
 )
 
 export function ReviewLive({ seen, you }: { seen: HandSeen; you: SeatId }) {
-  const check = useDeckCheck(seen)
+  const check = useDeckCheck(seen, you)
   const record = seen.record
   if (!record) return null
   const name = (seat: SeatId) =>
@@ -120,7 +120,7 @@ function DeckBadge({ check, late }: { check: DeckCheck; late: boolean }) {
     return (
       <span
         className="live-deck live-deck-ok"
-        title="Before dealing, the server committed to every card of this deck. The board and the shown hands match that commitment, so nothing was re-dealt. Folded hands stay private."
+        title="Before dealing, the server committed to every card of this deck. The board, the shown hands and your own two cards match that commitment, so nothing was re-dealt. Your opponent's folded cards stay private."
       >
         Deck verified{late ? ' (you joined mid-hand)' : ''}
       </span>

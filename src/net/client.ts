@@ -262,8 +262,11 @@ export class TableConnection {
       return
     }
     if (msg.t === 'reveal') {
-      const { handNo, leaves, slots } = msg
-      this.seen(handNo, (h) => ({ ...h, reveal: { handNo, leaves, slots } }))
+      const { handNo, leaves, slots, own } = msg
+      this.seen(handNo, (h) => ({
+        ...h,
+        reveal: { handNo, leaves, slots, ...(own ? { own } : {}) },
+      }))
       return
     }
     if (msg.t !== 'welcome' && msg.t !== 'state') return

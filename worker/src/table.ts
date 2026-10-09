@@ -12,6 +12,7 @@ import {
 } from '../../src/engine/deck'
 import { act, assertInvariants, isOver, startHand } from '../../src/engine/hand'
 import { seatView } from '../../src/engine/redact'
+import type { RevealedSlot } from '../../src/engine/deck'
 import { EngineError } from '../../src/engine/types'
 import type { HandState, SeatId } from '../../src/engine/types'
 import {
@@ -97,8 +98,16 @@ type Current = {
   turnStartedAt: number
   timing: { atMs: number; decisionMs: number; source: 'client' | 'timeout' }[]
 }
-/** The last finished hand, re-sent to anyone who (re)joins before the next. */
-type Ended = { record: HandRecordV1; reveal: Reveal }
+/**
+ * The last finished hand, re-sent to anyone who (re)joins before the next.
+ * `own` holds each seat's opening of its own hole slots; a seat only ever
+ * receives its own.
+ */
+type Ended = {
+  record: HandRecordV1
+  reveal: Reveal
+  own?: Record<SeatId, RevealedSlot[]>
+}
 type Attachment = { userId: string; seat: SeatId }
 type Ack = { reqId: string; seq: number }
 /**
@@ -705,10 +714,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
       leaves: toBase64(leaves),
       slots,
     }
+    const holeSlots = dealSlots(hand.config).holes
+    const own: Record<SeatId, RevealedSlot[]> = {}
+    for (const p of hand.players)
+      own[p.seat] = await revealSlots(stored.deck, secret, holeSlots[p.seat])
     if (this.recordable()) {
       const userOf = (seat: SeatId) =>
         match.players.find((p) => p.seat === seat)!.userId
-      const holeSlots = dealSlots(hand.config).holes
       const holes = Object.fromEntries(
         hand.players.map((p) => [
           p.seat,
@@ -750,7 +762,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
         attempts: 0,
       } satisfies Outbox
     }
-    return { record, reveal }
+    return { record, reveal, own }
   }
 
   private bankOf(hand: HandState) {
@@ -1095,6 +1107,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const ended = this.ended
     if (!ended || !this.hand || ended.record.handNo !== this.hand.config.handNo)
       return
+    const { seat } = ws.deserializeAttachment() as Attachment
     const base = { seq: this.seq, matchId: ended.record.matchId }
     this.send(ws, {
       ...base,
@@ -1102,7 +1115,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
       handNo: ended.record.handNo,
       record: ended.record,
     })
-    this.send(ws, { ...base, t: 'reveal', ...ended.reveal })
+    const own = ended.own?.[seat]
+    this.send(ws, {
+      ...base,
+      t: 'reveal',
+      ...ended.reveal,
+      ...(own ? { own } : {}),
+    })
   }
 
   /**

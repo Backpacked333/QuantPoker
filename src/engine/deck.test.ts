@@ -9,6 +9,7 @@ import {
   isValidDeck,
   publicSlots,
   verifyDeal,
+  verifyOwn,
   orderedDeck,
   revealSlots,
   toBase64,
@@ -182,6 +183,67 @@ describe('verifyDeal', () => {
     expect(await verifyDeal(commitment, leaves, extra, deal)).toBe(false)
     const other = await commitDeck(seededDeck(12), secret(9))
     expect(await verifyDeal(other.commitment, leaves, slots, deal)).toBe(false)
+  })
+
+  it("verifies a player's own folded cards against the commitment, and fails a swapped or foreign opening", async () => {
+    const { deck, deal, commitment, leaves } = await finished(true)
+    const holes = dealSlots(deal.config).holes
+    for (const [seat, other] of [
+      [0, 1],
+      [1, 0],
+    ] as const) {
+      const mine = holes[seat].map((slot) => deck[slot]) as [number, number]
+      const own = await revealSlots(deck, secret(9), holes[seat])
+      expect(
+        await verifyOwn(commitment, leaves, own, deal.config, seat, mine),
+      ).toBe(true)
+      // The server dealt the player other cards than it committed to.
+      const unused = deck[40]
+      expect(
+        await verifyOwn(commitment, leaves, own, deal.config, seat, [
+          mine[0],
+          unused,
+        ]),
+      ).toBe(false)
+      expect(
+        await verifyOwn(commitment, leaves, own, deal.config, seat, [
+          mine[1],
+          mine[0],
+        ]),
+      ).toBe(false)
+      // Openings of other slots (the opponent's, or one twice) never pass.
+      const theirs = await revealSlots(deck, secret(9), holes[other])
+      expect(
+        await verifyOwn(commitment, leaves, theirs, deal.config, seat, mine),
+      ).toBe(false)
+      expect(
+        await verifyOwn(
+          commitment,
+          leaves,
+          [own[0], own[0]],
+          deal.config,
+          seat,
+          mine,
+        ),
+      ).toBe(false)
+      expect(
+        await verifyOwn(
+          commitment,
+          leaves,
+          own.slice(0, 1),
+          deal.config,
+          seat,
+          mine,
+        ),
+      ).toBe(false)
+      // A forged salt for the right card does not open the committed leaf.
+      const forged = own.map((s, i) =>
+        i ? s : { ...s, salt: '00'.repeat(16) },
+      )
+      expect(
+        await verifyOwn(commitment, leaves, forged, deal.config, seat, mine),
+      ).toBe(false)
+    }
   })
 
   it('rejects a reveal that repeats one slot to leave a re-dealt card unopened', async () => {

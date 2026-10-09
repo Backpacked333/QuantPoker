@@ -145,7 +145,13 @@ export type Reveal = {
   handNo: number
   /** Base64 of all 52 leaves (52 × 32 bytes). */
   leaves: string
+  /** The board and shown hands: the same for every seat, and archived. */
   slots: { slot: number; card: number; salt: string }[]
+  /**
+   * This seat's own two hole slots, so a player can check the cards they
+   * were dealt (folded or not). Sent to that seat only; never archived.
+   */
+  own?: { slot: number; card: number; salt: string }[]
 }
 
 export type MatchEndReason = 'complete' | 'forfeit' | 'no_show' | 'engine_fault'

@@ -1,15 +1,72 @@
 # Handoff
 
-## Current handoff: Staff Engineer / EM → User, Security, DBA (tickets for Step 7 and Phases 1–2)
+## Current handoff: Security Engineer → User, DBA, SDE (Phase 0 security review)
+
+Date: 2026-10-09 · Status: **no Critical or High open.** Fixed with red-then-green tests:
+
+- SR-01 (High): lobby frame flood; SR-02 (Medium): table frame flood;
+- SR-03, SR-04 (Medium): deck reveals that could hide a re-dealt card; dev tokens accepted with a short secret;
+- SR-05 (Low): the same-account join race.
+
+Three Mediums (SR-06 to SR-08) are Step 7 tickets with file:line. All gates green.
+
+### Read first
+
+- `.10x/reviews/2026-10-09-security-review.md` (summary, findings table, a verdict per item 1–7, what was not tested)
+- `.10x/decisions/security/multiplayer-platform.md` (commits, numbers, deviations)
+- `.10x/tickets.md` §Review fold-in → "Security review results" (what changed in S7-01/02/03/04/07/10, plus new S7-12)
+
+### User actions
+
+1. **U-8 dashboard checks** (none are readable from here):
+   - **(a)** Supabase → Authentication → URL Configuration: only `https://quantpoker.bbcroysalman.workers.dev/**` and localhost entries, with no wildcard to a foreign host.
+   - **(b)** Cloudflare → Worker `quantpoker` → Variables and Secrets: no `DEV_AUTH_SECRET`.
+   - **(c)** Supabase → Authentication: enable leaked-password protection, or turn off password sign-in (SR-13).
+   - **(d)** Optional: a WAF rate-limiting rule on `/ws/*` and `/api/*` (SR-07).
+2. Unchanged: answer Q1–Q5; create the two queues before S7-03; secret key, sign-in and a two-account match (U-3, U-4).
+
+### What to test
+
+- **Two browsers (local):** `npm run worker:dev -- --var DEV_AUTH_SECRET:<16+ chars>`. Play a hand; refresh one tab repeatedly. Nothing changes for honest play; e2e `live` 3/3 confirms it.
+- **Flood (local, scripted):** a Node script floods the lobby. Verified this session: the flooder closes with `4429 Too many messages`, the bystander sees 22 frames (was 200), and the reconnect is clean.
+- **The dev secret rule:** a secret under 16 characters now leaves dev tokens off. Update any local `.dev.vars` you keep.
+
+### What to review
+
+- `worker/src/limits.ts` and its two call sites: applied moves are refunded, and a reconnect gets a fresh budget (residual SR-07, ticketed).
+- `src/engine/deck.ts` `verifyDeal`: every public slot is opened exactly once.
+- `worker/src/table.ts` `join()`: after the awaited claim it looks for the same account before releasing.
+- `supabase/tests/rls-matrix.test.ts`: the expected matrix is data at the top of the file. Read it as the access policy.
+
+### Noticed, not done
+
+- **SR-06:** one account created 50/50 invite tables with no limit, and unjoined invites never expire (S7-01, S7-02).
+- **SR-07:** each upgrade does an uncached username lookup, and there is no per-account or per-IP cap (S7-02, U-8d).
+- **SR-08:** a folded player's own cards are never opened in the reveal, so they cannot be verified (new S7-12). Until it ships, the Fair Play copy must say "board and shown hands".
+- **SR-09:** `worker/src/table.ts:674` logs the full state, deck included, on an engine fault (S7-03/S7-04).
+- **SR-10:** dev ids may be UUID-shaped (S7-02).
+- **SR-11:** actions are not pinned by SHA (S7-07).
+- **SR-12:** `npm audit` reports 4 dev-only highs (`sharp` via `miniflare`); none are in the bundle.
+- **Docs:** `.10x/prompts.md` (Prompt 5) still lists an Origin allowlist; R-2 in `.10x/tickets.md` explains why not.
+
+### Next step
+
+Prompt 4 (DBA review), then Step 7 from S7-01. The S7-02 scope is smaller now: the budget ships here, so what remains is invite and connection limits, the illegal-move counter and the client message.
+
+---
+
+## Handoff history
+
+### 2026-10-09 — Staff Engineer / EM → User, Security, DBA (tickets for Step 7 and Phases 1–2)
 
 Date: 2026-10-09 · Status: **the remaining plan is ticketed.** 49 tickets; 29.7 session-hours on the ladder's critical path; earliest ladder date 2026-10-13, planning date 2026-10-19. One product decision (Q1, the duplicate format) is needed before Phase 1's deck work. No product code changed.
 
-### Read first
+#### Read first
 
 - `.10x/tickets.md` §Summary, §Questions for you, §Critical path and parallel lanes
 - `.10x/decisions/engineering-manager/multiplayer-platform.md` (log, calibration, method)
 
-### User actions
+#### User actions
 
 1. Answer Q1–Q5 in `.10x/tickets.md`; each has a recommendation. Only Q1 blocks anything (P1-00 and P1-02).
 2. Run Prompt 3 (security) and Prompt 4 (DBA). They can run as two parallel sessions. Their findings land on the ticket ids named in §Review fold-in.
@@ -18,7 +75,7 @@ Date: 2026-10-09 · Status: **the remaining plan is ticketed.** 49 tickets; 29.7
 5. Choose a contact address for "how to report" on the Fair Play page (S7-10).
 6. Merge `claude/zen-darwin-0t5q1p` (deploy verification) and `claude/amazing-ride-4vip4x` (prompts) before this branch. All three edit `.10x/status.md` and `.10x/handoff.md`.
 
-### What to test
+#### What to test
 
 Nothing executable changed. The Q1 finding takes two minutes to see yourself:
 
@@ -26,13 +83,13 @@ Nothing executable changed. The Q1 finding takes two minutes to see yourself:
 2. Open "Review hand 1".
 3. Your hand-1 hole cards and board are listed. Under the ADR's duplicate rule (segment 2 reuses deck _n_ with the button flipped), they are exactly your opponent's cards and the board of hand 21.
 
-### What to review
+#### What to review
 
 - **Q1 / R-1 (is the leak real?)** `worker/src/controller.ts`; `src/engine/deck.ts:37` (`dealSlots`: HU deal order is relative to the button, so flipping the button swaps the hole cards); `src/net/LiveTable.tsx:348` and `src/net/client.ts` (`hands[n].mine` is kept for the whole match); ADR §Randomness "Duplicate (Phase 1)".
 - **Calibration** (`.10x/tickets.md` §Calibration): commit timestamps as the pace measure, ±50%.
 - **Reconciliation R-2** (no Origin allowlist, per the ADR amendment) **and R-6** (signed hand-history ids interpreted as service-role-only writes plus commitments).
 
-### Noticed, not done
+#### Noticed, not done
 
 - `worker/src/table.ts:659` logs `JSON.stringify(state)` on an engine invariant failure, and that state includes the deck and every hole card. Ticketed in S7-03 and S7-04: the full state goes to `incidents` and logs carry ids only. The security review should confirm.
 - The `incidents` table exists, but nothing writes to it (S7-03).
@@ -42,17 +99,13 @@ Nothing executable changed. The Q1 finding takes two minutes to see yourself:
 - The live table still has no keyboard shortcuts or sounds (deferred in Steps 4 and 5). That is a Phase 1 acceptance criterion (P1-07).
 - `.10x/prompts.md` and the deploy verification exist only on unmerged branches; `.10x/tickets.md` cites them by commit.
 
-### Next step
+#### Next step
 
 Prompts 3 and 4 in parallel. Then three sessions:
 
 - S7-01, lane W (worker core);
 - S7-06 and S7-07, lane T (tooling);
 - P1-07, lane C (client), which must finish before P1-01.
-
----
-
-## Handoff history
 
 ### 2026-10-09 — SDE → User (repo cleanup: one `main` branch)
 

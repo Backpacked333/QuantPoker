@@ -1,12 +1,21 @@
 # Project status
 
-Last updated: 2026-10-09 by Staff Engineer / EM (tickets)
+Last updated: 2026-10-09 by Security Engineer (Phase 0 security review)
 
 ## Phase
 
 **Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
 
 **Tickets 2026-10-09 (`.10x/tickets.md`):** the remaining plan is 49 tickets: Step 7 is 11, Phase 1 is 23, Phase 2 is 15. That is 134 half-days, about 90 session-hours at the measured Phase 0 pace. The ladder's critical path is 29.7 h; earliest ladder date 2026-10-13, planning date 2026-10-19. **Open finding (Q1 in tickets):** the PM's same-pair duplicate format lets a player see the opponent's segment-2 cards by recalling or reviewing their own segment-1 hands. The user decides the format before P1-02. Step 7 is not blocked.
+
+**Security review 2026-10-09 (`.10x/reviews/2026-10-09-security-review.md`):** one High, three Medium and one Low fixed with red-then-green tests:
+
+- lobby frame flood (High) and table frame flood (Medium);
+- deck reveals that could hide a re-dealt card (Medium);
+- dev tokens accepted with a short secret (Medium);
+- the same-account join race (Low).
+
+No Critical or High is open. Three Mediums are now Step 7 tickets: invite spam and storage growth, connection floods, and own folded cards being unverifiable (new S7-12). Held, with tests: auth, seat integrity, every frame type, a byte-equality side-channel test, and the full database access matrix. Four dashboard checks are yours (U-8 in tickets).
 
 Supabase project `quantpoker` also carries an earlier line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage; all tables empty). Its migration file is now in the repo, byte-identical to production, so the repo and the live database have the same 7 migrations. Multiplayer tables are additive beside it.
 
@@ -57,5 +66,6 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 6 — `LobbyDO` quick-match (persisted queue, oldest-first pairing, ≤ 2 pairings per pair per day), one active table per account (queue resumes, invite 409/4409, self-healing), 30 s no-show (void match + abandonment; migration applied live), Find a match enabled with wait timer and 60 s bail-out. 605 unit, 52 worker, 18 e2e; real-time no-show smoke. (`.10x/decisions/sde/multiplayer-platform.md` §Step 6)
 - [ ] SDE: Step 7 per ADR (hardening, verify consumer, CI deploy, rate limits, Fair Play page)
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.
-- [ ] Security: light review of auth upgrade path, redaction tests and `hands_private` RLS before Step 7 deploy
+- [x] Security: Phase 0 review, items 1–7 (`.10x/reviews/2026-10-09-security-review.md`, `.10x/decisions/security/multiplayer-platform.md`). Fixed SR-01 to SR-05; SR-06 to SR-13 are tickets or user actions with file:line.
+- [ ] User: security dashboard checks U-8 in `.10x/tickets.md` (redirect allowlist, no `DEV_AUTH_SECRET` on the Worker, leaked-password protection, WAF rate limit)
 - [ ] DBA: post-hoc review of the four applied migrations (`supabase/migrations/202610081*`); RLS behaviour is covered by `supabase/tests/migrations.test.ts`

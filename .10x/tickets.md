@@ -409,6 +409,27 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 - **Cut line.** None.
 - **Review fold-in.** All reviews must be closed.
 
+### S7-12 · Players can verify their own folded cards (security review SR-08)
+
+- **Goal.** After each hand, each seat also receives the openings of its **own** hole slots, so a player can check that the cards they folded were the committed ones. Today the reveal opens only the board and shown hands (`publicSlots`, `src/engine/deck.ts:199`).
+- **User-visible outcome.** "Deck verified" also covers your own cards, folded or not.
+- **Files.**
+  - `src/shared/protocol.ts`: `Reveal` gains `own?: RevealedSlot[]`, sent per seat only.
+  - `worker/src/table.ts`: `sendEnded` builds the per-seat part.
+  - `src/engine/deck.ts`: new `verifyOwn(commitment, leaves, own, deal, seat, cards)`; `verifyDeal` is unchanged for public slots.
+  - `src/net/useDeckCheck.ts`.
+  - The public `hands.reveal` archive must **not** gain own slots; `hand_holes` already gives each player their cards.
+  - Tests in `src/engine/deck.test.ts`, `worker/test/leaks.test.ts`, `src/net/review.test.tsx`.
+- **Depends on.** Nothing. It must land before P1-22 (ladder launch); until then the Fair Play copy (S7-10) says "board and shown hands are checked".
+- **Estimate.** 2 hd · M (≈ 1.4 h).
+- **Acceptance tests.**
+  - `src/engine/deck.test.ts › a player's own folded cards verify against the commitment, and a swapped own card fails`.
+  - `worker/test/leaks.test.ts › each seat's reveal opens its own hole slots and never the other seat's unshown slots` (extends the frame allowlist with `own`).
+  - `src/net/review.test.tsx › "Deck verified" covers your own folded cards`.
+- **Riskiest assumption → check.** That a per-seat field fits the shared `reveal` frame without leaking across seats. The leak test's allowlist and byte-equality checks are the guard; write that test first.
+- **Cut line.** Engine and server first; the UI wording can follow.
+- **Review fold-in.** None; this ticket is itself a security finding.
+
 ---
 
 ## Phase 1: rated HU ladder, rating v1, integrity v1, review → lesson loop
@@ -1277,16 +1298,51 @@ Every S7 and P1 ticket above has a **Review fold-in** line. Most likely to chang
 8. **P1-17 / P1-18 (reports and sanctions RLS).**
 9. **P1-01 (email claim, `record_match` v4).**
 
+### Security review results (2026-10-09, `.10x/reviews/2026-10-09-security-review.md`)
+
+Already fixed on this branch, so these drop out of the tickets:
+
+- the per-socket frame budget in the lobby and tables (20 frames per 5 s, close `4429`, applied moves refunded): the core of **S7-02**;
+- `verifyDeal` duplicate slots;
+- dev tokens with a short secret;
+- the same-account join race;
+- the shared SQL harness, `supabase/tests/harness.ts`, from **S7-03**.
+
+What each ticket gains or loses:
+
+- **S7-01**:
+  - also expire **unjoined invites** (e.g. 24 h) with an `idle` deadline armed in `init` (`worker/src/table.ts:173`) (SR-06);
+  - test: `worker/test/table.test.ts › an invite nobody joins is deleted after 24 hours`.
+- **S7-02**, now:
+  - the illegal-move counter (`4400`);
+  - `MATCH_CREATES_PER_DAY` at `worker/src/index.ts:31` (SR-06: one account made 50/50 tables);
+  - a per-account upgrade rate and a username cache for `worker/src/auth.ts:53` (SR-07);
+  - refuse UUID-shaped dev ids at `worker/src/auth.ts:28`, moving `worker/test/archive.test.ts` to real ES256 tokens (SR-10);
+  - the client message for `4429`.
+
+  The tests `the 21st table frame…`, `20 frames spread over 5 s…` and `21 lobby frames…` are covered by `worker/test/limits.test.ts`. The oversized frame stays an `illegal` error, not a close (`limits.test.ts › refuses an oversized frame…`). Estimate: 3 → 2 hd.
+
+- **S7-03 / S7-04**: the invariant-failure log at `worker/src/table.ts:674` prints the full state with the deck and every hole card. It must log ids only, and the state goes to `incidents` (SR-09).
+- **S7-07**:
+  - pin the actions by SHA at `.github/workflows/ci.yml:11,12,26,27,35` (SR-11);
+  - bump `wrangler`/`@cloudflare/vitest-plugin` once a non-alpha `miniflare` ships a fixed `sharp` (SR-12; dev only, not in the deployed bundle).
+- **S7-10**: say "board and shown hands are checked" until S7-12 ships (SR-08), and state that decision times are recorded (SR-15, Q5).
+- **New S7-12** (above): players can verify their own folded cards (SR-08).
+- **No change** for the Origin check (R-2 stands; nothing found needs it).
+
+**Totals after the fold-in:** S7-12 adds 2 hd and S7-02 loses 1 hd, so 135 hd in all. The critical path is unchanged; S7-12 is off it.
+
 The DBA's `phase1-schema.md`, if written first, replaces the SQL sketches in P1-01, P1-04, P1-05, P1-09, P1-12, P1-14, P1-16, P1-17 and P1-18. The tickets keep their tests.
 
 ## User gates (what only you can do)
 
-| Id  | Gate                                                                                                                                                                                                                        | Needed before               |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| U-1 | Answer Q1–Q5 (Q1 is the only blocker)                                                                                                                                                                                       | Q1 before P1-00             |
-| U-2 | Run Prompts 3 and 4 (two sessions, can be parallel)                                                                                                                                                                         | S7-11; ideally before S7-02 |
-| U-3 | Create Cloudflare queues `quantpoker-hands` and `quantpoker-hands-dlq`                                                                                                                                                      | S7-03 merging to `main`     |
-| U-4 | Open from Prompt 1: `SUPABASE_SECRET_KEY` set; one real sign-in and its token header; one two-account match                                                                                                                 | S7-11                       |
-| U-5 | Explicit go-ahead for each production deploy (S7-11, P1-22) and for any staging Worker (Q4)                                                                                                                                 | S7-11, P1-22                |
-| U-6 | A contact address for "how to report" until P1-17 (never inferred from your account email)                                                                                                                                  | S7-10                       |
-| U-7 | Merge order: `claude/zen-darwin-0t5q1p` (deploy verification) and `claude/amazing-ride-4vip4x` (prompts) also edit `.10x/`; merge them before this branch or expect a small append conflict in `status.md` and `handoff.md` | Next merge                  |
+| Id  | Gate                                                                                                                                                                                                                                                                                                                                                    | Needed before               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| U-1 | Answer Q1–Q5 (Q1 is the only blocker)                                                                                                                                                                                                                                                                                                                   | Q1 before P1-00             |
+| U-2 | Run Prompts 3 and 4 (two sessions, can be parallel)                                                                                                                                                                                                                                                                                                     | S7-11; ideally before S7-02 |
+| U-3 | Create Cloudflare queues `quantpoker-hands` and `quantpoker-hands-dlq`                                                                                                                                                                                                                                                                                  | S7-03 merging to `main`     |
+| U-4 | Open from Prompt 1: `SUPABASE_SECRET_KEY` set; one real sign-in and its token header; one two-account match                                                                                                                                                                                                                                             | S7-11                       |
+| U-5 | Explicit go-ahead for each production deploy (S7-11, P1-22) and for any staging Worker (Q4)                                                                                                                                                                                                                                                             | S7-11, P1-22                |
+| U-6 | A contact address for "how to report" until P1-17 (never inferred from your account email)                                                                                                                                                                                                                                                              | S7-10                       |
+| U-8 | Security review dashboard checks: (a) Supabase → Authentication → URL Configuration has no wildcard to a foreign host; (b) Cloudflare → Worker `quantpoker` → Variables and Secrets has no `DEV_AUTH_SECRET`; (c) enable leaked-password protection, or turn off password sign-in (SR-13); (d) a WAF rate-limiting rule on `/ws/*` and `/api/*` (SR-07) | S7-11                       |
+| U-7 | Merge order: `claude/zen-darwin-0t5q1p` (deploy verification) and `claude/amazing-ride-4vip4x` (prompts) also edit `.10x/`; merge them before this branch or expect a small append conflict in `status.md` and `handoff.md`                                                                                                                             | Next merge                  |

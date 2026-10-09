@@ -2,6 +2,8 @@
 
 Status: Aligned with user 2026-10-08 · Priority: **P0** · First live product
 
+> Note 2026-10-09 (Staff Eng / EM, doc fix only): the "Boring repetition in segment 2?" risk below understates what segment 2 reveals. The deal order is relative to the button (`src/engine/deck.ts` `dealSlots`). So reusing deck _n_ with the button flipped gives each player the opponent's segment-1 hole cards under the same board, and each player has seen their own segment-1 cards and every board that was dealt. The format decision is open as Q1 in `.10x/tickets.md`; nothing here is changed until the user answers.
+
 ## Problem statement
 
 Poker results over a few hundred hands are mostly luck, so a ladder built on raw results would reward heaters, not skill, and recruiters would (rightly) ignore it. We need a match format whose outcome is dominated by decisions.

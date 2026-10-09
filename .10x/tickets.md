@@ -720,6 +720,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-11 · Glicko-2 as a pure, versioned module
 
+**Status 2026-10-09: done** (`src/rating/glicko2.ts`; `.10x/decisions/sde/rating-and-leaderboard.md`). "RD shrinks with play" is tested as "lower than sitting the period out"; see the log.
+
 - **Goal.** `src/rating/glicko2.ts`: pure, no I/O, `VERSION = 'glicko2.v1'`, named and commented constants. τ = 0.5. One match is one rating period. Inactivity grows φ once per 30 days without a rated match. A draw scores 0.5.
 - **User-visible outcome.** None.
 - **Files.** New `src/rating/glicko2.ts`, `src/rating/glicko2.test.ts`; `eslint.config.js` (add `src/rating/**` to the engine block: no `Math.random`, timers or `Date.now`).

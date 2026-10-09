@@ -21,9 +21,10 @@ export default tseslint.config(
     },
   },
   {
-    // The engine and the table server are deterministic: randomness and time
-    // are injected (CSPRNG deck, Durable Object alarms), never ambient.
-    files: ['src/engine/**/*.ts', 'worker/src/**/*.ts'],
+    // The engine, the rating model and the table server are deterministic:
+    // randomness and time are injected (CSPRNG deck, Durable Object alarms,
+    // idle periods), never ambient.
+    files: ['src/engine/**/*.ts', 'src/rating/**/*.ts', 'worker/src/**/*.ts'],
     ignores: ['**/*.test.ts'],
     rules: {
       'no-restricted-globals': [

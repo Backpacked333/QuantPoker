@@ -4,9 +4,9 @@ Last updated: 2026-10-09
 
 ## Active features
 
-| Slug                   | Description                              | Status                                                                                                                                                                                                                                                      |
-| ---------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–6 **done**; Step 7 **built, not deployed** (limits, Origin allowlist, verify queue, logs, bench, CI, smoke, chaos 5/5, own-card verification, Fair play/Terms); deploy waits for queues, migration, U-6, DBA-review decision, U-8 and the user's go |
+| Slug                   | Description                              | Status                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–6 **done**; Step 7 **built, not deployed** (limits, Origin allowlist, verify queue, logs, bench, CI, smoke, chaos 5/5, own-card verification, Fair play/Terms); deploy prerequisites done 2026-10-09 (queues created by the deploy, both migrations applied, DBA review done, U-6 interim wording); waits for U-4, U-8 and the user's go |
 
 ## Cross-cutting notes
 

@@ -159,16 +159,17 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S7-01  | Done (+ invite expiry after 24 h, SR-06)                                                                                                                                                                                                                      |
 | S7-02  | Done: per-account budget incl. connects, oversize and illegal-frame closes, `MATCH_CREATES_PER_DAY`, per-address request rate (binding), username cache, client messages, Origin allowlist (requested; supersedes R-2). Not done: SR-10 (UUID-shaped dev ids) |
-| S7-03  | Done (outbox-entry producer, verify + DLQ consumers, migration `20261009213919_verify_hand.sql`, applied to production 2026-10-09; SR-09 closed)                                                                                                                              |
-| S7-04  | Done (`log.ts`, sink test, README §Operations; hands/day via `GET /api/stats`). Alerts: saved queries checked weekly (alerting not verified)                                                                                                                  |
+| S7-03  | Done (outbox-entry producer, verify + DLQ consumers, migration `20261009213919_verify_hand.sql`, applied to production 2026-10-09; SR-09 closed)                                                                                                              |
+| S7-04  | Done (`log.ts`, sink test, README §Operations; hands/day via `GET /api/stats`, counted on index `hands_created` since DBA DB-1, applied 2026-10-09). Alerts: saved queries checked weekly (alerting not verified)                                             |
 | S7-05  | **Not started** (queue wait and ack-latency telemetry); the smoke measures ack latency locally meanwhile                                                                                                                                                      |
 | S7-06  | Done (worst decision 212 ms of 500 over 10 runs)                                                                                                                                                                                                              |
 | S7-07  | Done. Evidence: PR #9 `soak` green (seed 37906875949, 100k × N=2..6) and `e2e` live guard `live: 3 passed`; deploy-check runs on the first push to `main`                                                                                                     |
 | S7-08  | Done: 500 hands, p95 17 ms, 0 failures (local)                                                                                                                                                                                                                |
 | S7-09  | Done: 5 rows VERIFIED, no server bug found                                                                                                                                                                                                                    |
-| S7-10  | Done; report contact pending (U-6)                                                                                                                                                                                                                            |
-| S7-11  | Open: needs U-3, U-4, U-5, U-6, U-8, the DBA review decision (U-2) and the migration applied                                                                                                                                                                  |
+| S7-10  | Done. Report contact (U-6): the interim wording stays ("keep them for the report form that comes with rated play"); an address can replace it in `src/info/contact.ts`                                                                                        |
+| S7-11  | Open: needs U-4, U-8 and your go (U-5). Done since: DBA review (U-2), migrations applied, queues created by the deploy itself (U-3), report contact (U-6)                                                                                                     |
 | S7-12  | Done                                                                                                                                                                                                                                                          |
+| S7-13  | Open (new, DBA review DB-4): park an archive call that can never succeed                                                                                                                                                                                      |
 
 ### S7-01 · Finished tables clean up after themselves
 
@@ -446,6 +447,22 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 - **Riskiest assumption → check.** That a per-seat field fits the shared `reveal` frame without leaking across seats. The leak test's allowlist and byte-equality checks are the guard; write that test first.
 - **Cut line.** Engine and server first; the UI wording can follow.
 - **Review fold-in.** None; this ticket is itself a security finding.
+
+---
+
+### S7-13 · Park an archive call that can never succeed (DBA review DB-4)
+
+- **Goal.** An outbox call that fails the same way every time stops blocking its match. Today it retries every 5 min forever (`outboxBackoff` caps at 300 s, `worker/src/deadlines.ts:68`) and, being first in key order, holds back every later archive call of that match (`flushOutbox`, `worker/src/table.ts`). Example: a seat whose account was deleted mid-match makes the `hand_holes` foreign key fail.
+- **User-visible outcome.** None for players. For you: one `incident` row naming the stuck call instead of an alarm firing every 5 minutes.
+- **Files.** `worker/src/table.ts` (`flushOutbox`: after `OUTBOX_MAX_ATTEMPTS` (proposal 12, ≈ 1 h) of failures whose Postgres code is class 22 or 23 (bad data or a broken constraint: a retry cannot change them), move the call to `parked:<key>`, report `record_incident` with the rpc and Postgres code only, continue the flush); `worker/test/archive.test.ts`.
+- **Depends on.** Nothing.
+- **Estimate.** 1 hd · L (≈ 0.7 h).
+- **Acceptance tests.**
+  - `worker/test/archive.test.ts › a call refused 12 times is parked with one incident, and the calls behind it are sent`.
+  - `worker/test/archive.test.ts › a 5xx, a network failure, a 401 or a 403 is never parked`. Supabase down must keep retrying, and a missing or wrong key (U-4) must replay everything once it is fixed.
+- **Riskiest assumption → check.** That a class 22/23 failure is permanent. A lost create race (23505, DB-3) is not; it succeeds on the next attempt, long before 12.
+- **Cut line.** None; small.
+- **Review fold-in.** This ticket is itself a DBA finding.
 
 ---
 
@@ -1238,7 +1255,7 @@ More sessions mostly add merge work: every W ticket rebases over `table.ts`.
 | R-25 | Rated vs casual pair counter                                                                                                                                                                                                            | One shared counter (the existing `pairs:<day>:<a>:<b>`, no code change). Stricter than required; revisit if players complain.                                                                                                                                                                                     |
 | R-26 | PM "avatar"                                                                                                                                                                                                                             | The initial avatar already in use. No uploads (storage and moderation cost).                                                                                                                                                                                                                                      |
 
-## Questions for you (5)
+## Questions for you (7)
 
 1. **Same-pair duplicate leaks segment 2. Which format should rated HU use?**
    - **What happens today.** Segment-2 hand _i_ is segment-1 deck _i_ with the button flipped. Each player therefore holds the opponent's segment-1 cards under the same board. The live table already lets you reopen every finished hand of the match, with your own cards and the board.
@@ -1265,6 +1282,14 @@ More sessions mostly add merge work: every W ticket rebases over `table.ts`.
    - **Recommendation: no.** Keep them server-side (in `hands_private` or a service-only column) and show only "ran out of time" publicly. This is free now (0 hands archived in production) and a data migration later.
    - If yes: S7-10 discloses it, and nothing else changes.
    - If no: add a 1 hd ticket to lane W before S7-11.
+
+6. **Per-decision grades after a match: everyone (R-15) or the two players (Prompt 7)?** (DBA review Q-DBA-1)
+   - A grade is computed from the player's hole cards, so a public "blunder" on a fold says something about the folded hand. The Terms say "Your folded cards are never published".
+   - **Recommendation:** the two players of the match, until a public need appears; the public accuracy number does not need per-decision rows. The policy gains one participant clause.
+   - **What it blocks.** P1-09's policy only.
+7. **Delete `hands_private` 90 days after a verified hand with no open report or incident?** (DBA review Q-DBA-2)
+   - It holds every folded card, and nothing needs it after the report and appeal window. It is ≈ 8% of the archive, so this is minimization, not cost.
+   - It deletes data by design, so it ships only on your yes.
 
 ## Success metrics → where the number comes from
 
@@ -1350,6 +1375,37 @@ What each ticket gains or loses:
 **Totals after the fold-in:** S7-12 adds 2 hd and S7-02 loses 1 hd, so 135 hd in all. The critical path is unchanged; S7-12 is off it.
 
 The DBA's `phase1-schema.md`, if written first, replaces the SQL sketches in P1-01, P1-04, P1-05, P1-09, P1-12, P1-14, P1-16, P1-17 and P1-18. The tickets keep their tests.
+
+**DBA fold-in, 2026-10-09 (Prompt 4).** `.10x/decisions/dba/phase1-schema.md` and `supabase/proposed/phase1.sql` now exist and replace those sketches. Per ticket, beyond the sketches:
+
+- **P1-01:**
+  - `record_match` v4 also sets `match_players.finished_at` (with a backfill) and `outcome`;
+  - it counts a rated no-show in `ratings.abandoned` (R-14);
+  - it calls `private.refresh_accuracy` for both players at the finish;
+  - the kind check ships `NOT VALID` + `VALIDATE`.
+- **P1-09:**
+  - `hand_grades` gains `format`;
+  - `record_grades` refreshes accuracy for grades that land after the match ended;
+  - visibility follows R-15 (see Q6).
+- **P1-10:** accuracy is stored on `ratings` (`accuracy`, `graded`) and shown from there; `player_accuracy` is the recomputation.
+- **P1-12:**
+  - `ratings` gains `wins`, `draws`, `abandoned`, `accuracy`, `graded`;
+  - `apply_rating` locks in `user_id` order;
+  - the CAS check now runs under true concurrency (`supabase/bench/concurrency.ts`).
+- **P1-14:**
+  - `ladder()` reads the counters (no per-candidate aggregates);
+  - `ladder_month()` covers R-16, with its materialization trigger in D6.
+- **P1-17:** reporters insert directly under policy `reports_file`; the cap trigger holds a per-reporter advisory lock.
+- **P1-18:** `appeal_sanction` runs with invoker rights over a one-column grant; no browser-callable security definer.
+
+Each migration adds its rows to `rls-matrix.test.ts`. The matching self-checks in `plans.ts` are its acceptance tests.
+
+**Status 2026-10-09 (DBA session):**
+
+- **U-2:** done (Prompt 3 earlier; Prompt 4 now).
+- **U-3:** no longer yours. Both queues are named in `wrangler.jsonc` producers, and `wrangler deploy` creates a missing producer queue. Not yet seen working: whether the Workers Builds token may create queues. If it may not, the build fails, the old version keeps serving, and `deploy-check` goes red.
+- **U-6:** decided. The interim wording stays.
+- **Open:** U-4, U-8, and your go (U-5).
 
 ## User gates (what only you can do)
 

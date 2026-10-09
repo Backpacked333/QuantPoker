@@ -139,7 +139,10 @@ describe('the verify functions', () => {
     }
     for (let i = 0; i < 3; i++)
       await as('service_role', call('record_incident', incident))
-    await as('service_role', call('record_incident', { ...incident, kind: 'dlq' }))
+    await as(
+      'service_role',
+      call('record_incident', { ...incident, kind: 'dlq' }),
+    )
     const rows = await as<{ kind: string; detail: unknown }>(
       'service_role',
       `select kind, detail from public.incidents where match_id = '${MATCH}' order by id`,

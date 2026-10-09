@@ -1,0 +1,28 @@
+# Principal Architect — index
+
+Last updated: 2026-10-08
+
+## Active features
+
+| Slug                        | Description                                                                                                                                                                                                          | Status                                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform`      | Phase 0: N-player engine (`src/engine/`), Cloudflare Workers + two Durable Objects (`TableDO`, `LobbyDO`), Supabase auth/archive, lazy `src/net/` client chunk reusing `Table`/`ActionBar`, per-slot deck commitment | **Decided** 2026-10-08; 5 open questions for the user (none change the shape)                     |
+| `heads-up-duplicate-ladder` | Phase 1: `DuplicateController` on the `TableController` seam; grading in the Queue consumer; Glicko-2                                                                                                                | Not started; seams reserved in Phase 0 (see `multiplayer-platform.md` §Durable Objects, §Grading) |
+| `six-max-tables`            | Phase 2: same `TableDO`, `n` and `players` already generic; N-seat `Table` component; dead-button rule; `ArenaDO` as a `TableController`                                                                             | Not started; rule choice recorded: forward-moving button, dead small blind                        |
+
+## How the Phase 0 design was produced
+
+Judge panel of three independent designs (ship-fast / integrity-first / evolution-ready), scored by three judges (DO operations, poker integrity, solo-founder build order); the winner's eight load-bearing assumptions were adversarially checked against Cloudflare and Supabase docs and against this repo (including measured CPU timings of `analyzeSpot` under workerd). One claim was refuted (`@cloudflare/vitest-pool-workers` is deprecated; use `@cloudflare/vitest-plugin`), several were corrected in detail. The architect reviewed the synthesis and added `commitment` to `SeatView` and the avatar-debt note.
+
+## Cross-cutting principles
+
+1. **The engine is pure and injected.** `src/engine/` has no RNG, no clock, no DOM, no Node globals. The deck is an input; shuffling and secrets happen in `worker/src/`. This is what makes duplicate matches, replay, review and the verify consumer trivial.
+2. **One serializer.** Every byte a client sees comes from `seatView()`. The `SeatView` type has no field that could carry another seat's cards, the deck, or analysis. New fields need a redaction test.
+3. **Write, then send.** A Durable Object transition is: engine → invariant assert → one atomic `ctx.storage.put` → broadcast. Never broadcast before the durable write. Timeouts use the same path as clients.
+4. **Deadlines are data.** One DO alarm, armed at `min(deadlines[].at)`; `alarm()` is idempotent and never throws.
+5. **Idempotency keys are per actor.** `act` carries `reqId` + `handNo` + `actionIndex`; staleness is judged against the actor's `actionIndex`, never the table-wide `seq`.
+6. **Postgres is an archive, never a dependency of play.** Rows are written only after settlement, through an outbox with retry; the DO is the single live source of truth.
+7. **Protocol version = WebSocket subprotocol name.** `qp.v1` today; unsupported → HTTP 426 → reload. Deploy the Worker before the client on breaking changes; the Worker accepts the previous version for one release.
+8. **No workspaces, one lockfile.** `worker/` is a directory, not a package. Root `tsconfig` covers `src/engine` and `src/shared`; `worker/tsconfig.json` is a second project with generated `worker-configuration.d.ts` types.
+9. **Guards are tests, not promises.** Bundle budget grep for `supabase|src/net/`; `src/net/imports.test.ts` forbids analysis modules; lint bans `Math.random`/timers under `worker/` and `src/engine/`; redaction permutation test; two-socket leak test.
+10. **Do not bump Vitest to 5.x** while `@cloudflare/vitest-plugin` peers on `^4.1.0`.

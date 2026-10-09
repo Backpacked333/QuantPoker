@@ -1,0 +1,202 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act as engineAct } from '../engine/hand'
+import { TableConnection } from './client'
+import { FakeSocket, firstHand, frame, MATCH } from './testing'
+
+const flush = () => new Promise((r) => setTimeout(r, 0))
+
+function connect(token: string | null = 'jwt', maxAttempts = 8) {
+  const getToken = vi.fn(async () => token)
+  let n = 0
+  const connection = new TableConnection(MATCH, getToken, {
+    origin: 'wss://qp.test',
+    WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
+    maxAttempts,
+    newRequestId: () => `req${++n}`,
+  })
+  connection.start()
+  return { connection, getToken }
+}
+
+beforeEach(() => {
+  FakeSocket.all = []
+})
+afterEach(() => vi.useRealTimers())
+
+describe('TableConnection', () => {
+  it('opens the table socket with the protocol and token as subprotocols', async () => {
+    const { connection } = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    expect(socket.url).toBe(`wss://qp.test/ws/table/${MATCH}`)
+    expect(socket.protocols).toEqual(['qp.v1', 'bearer.jwt'])
+    expect(connection.getState().status).toBe('connecting')
+    socket.open()
+    expect(connection.getState().status).toBe('open')
+  })
+
+  it('fails without a token instead of connecting', async () => {
+    const { connection } = connect(null)
+    await flush()
+    expect(FakeSocket.all).toHaveLength(0)
+    expect(connection.getState()).toMatchObject({
+      status: 'failed',
+      error: { code: 'unauthorized' },
+    })
+  })
+
+  it('keeps the newest snapshot and ignores older ones', async () => {
+    const { connection } = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    const hand = firstHand()
+    socket.emit(frame('welcome', 5, 0, hand))
+    expect(connection.getState()).toMatchObject({
+      seat: 0,
+      view: { handNo: 1 },
+    })
+    const later = engineAct(hand, 0, { type: 'call' })
+    socket.emit(frame('state', 6, 0, later))
+    socket.emit(frame('state', 5, 0, hand)) // late duplicate: dropped
+    expect(connection.getState().view?.actions).toHaveLength(1)
+    socket.emit(frame('state', 6, 0, later)) // same seq (presence): kept
+    expect(connection.getState().view?.actions).toHaveLength(1)
+  })
+
+  it('sends a move for the current decision and clears it on the ack', async () => {
+    const { connection } = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    const hand = firstHand()
+    socket.emit(frame('welcome', 1, 0, hand))
+    expect(connection.act({ type: 'call' })).toBe(true)
+    expect(JSON.parse(socket.sent[0])).toEqual({
+      t: 'act',
+      reqId: 'req1',
+      handNo: 1,
+      actionIndex: 0,
+      action: { type: 'call' },
+    })
+    // One move at a time until the server answers.
+    expect(connection.act({ type: 'fold' })).toBe(false)
+    expect(connection.getState().pending).toBe('req1')
+    socket.emit(
+      frame('state', 2, 0, engineAct(hand, 0, { type: 'call' }), 'req1'),
+    )
+    expect(connection.getState().pending).toBeNull()
+    // Now it is the other seat's turn.
+    expect(connection.act({ type: 'check' })).toBe(false)
+  })
+
+  it('surfaces a rejected move and lets the player try again', async () => {
+    const { connection } = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    socket.emit(frame('welcome', 1, 0, firstHand()))
+    connection.act({ type: 'raise', to: 21 })
+    socket.emit({
+      t: 'error',
+      seq: 1,
+      matchId: MATCH,
+      code: 'illegal',
+      reqId: 'req1',
+      message: 'Illegal raise size',
+    })
+    expect(connection.getState()).toMatchObject({
+      pending: null,
+      error: { code: 'illegal', message: 'Illegal raise size' },
+    })
+    expect(connection.act({ type: 'call' })).toBe(true)
+  })
+
+  it('does not act for the other seat or after the hand', async () => {
+    const { connection } = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    socket.emit(frame('welcome', 1, 1, firstHand()))
+    expect(connection.act({ type: 'call' })).toBe(false)
+    expect(socket.sent).toHaveLength(0)
+  })
+
+  it('reconnects with backoff and a fresh token, then gives up', async () => {
+    vi.useFakeTimers()
+    const { connection, getToken } = connect('jwt', 2)
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last().open()
+    FakeSocket.last().drop()
+    expect(connection.getState().status).toBe('reconnecting')
+    await vi.advanceTimersByTimeAsync(499)
+    expect(FakeSocket.all).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(FakeSocket.all).toHaveLength(2)
+    expect(getToken).toHaveBeenCalledTimes(2)
+    FakeSocket.last().drop()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(FakeSocket.all).toHaveLength(3)
+    FakeSocket.last().drop()
+    expect(connection.getState().status).toBe('failed')
+  })
+
+  it('gives up quickly on a table that never accepted the socket', async () => {
+    vi.useFakeTimers()
+    const { connection } = connect('jwt', 8)
+    await vi.advanceTimersByTimeAsync(0)
+    for (const wait of [500, 1000, 2000]) {
+      FakeSocket.last().drop()
+      await vi.advanceTimersByTimeAsync(wait)
+    }
+    expect(FakeSocket.all).toHaveLength(4)
+    FakeSocket.last().drop()
+    expect(connection.getState().status).toBe('failed')
+  })
+
+  it('resets the backoff once a connection opens', async () => {
+    vi.useFakeTimers()
+    connect('jwt', 1)
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last().drop()
+    await vi.advanceTimersByTimeAsync(500)
+    FakeSocket.last().open()
+    FakeSocket.last().drop()
+    await vi.advanceTimersByTimeAsync(500)
+    expect(FakeSocket.all).toHaveLength(3)
+  })
+
+  it('stops when another tab takes the seat, or when the page leaves', async () => {
+    vi.useFakeTimers()
+    const first = connect()
+    await vi.advanceTimersByTimeAsync(0)
+    FakeSocket.last().drop(4001)
+    expect(first.connection.getState().status).toBe('replaced')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(FakeSocket.all).toHaveLength(1)
+
+    const second = connect()
+    await vi.advanceTimersByTimeAsync(0)
+    const socket = FakeSocket.last()
+    second.connection.stop()
+    expect(socket.closedWith).toBe(1000)
+    socket.drop(1000)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(FakeSocket.all).toHaveLength(2)
+  })
+
+  it('records the match result', async () => {
+    const { connection } = connect()
+    await flush()
+    FakeSocket.last().emit({
+      t: 'match_end',
+      seq: 9,
+      matchId: MATCH,
+      result: { netBySeat: { 0: 120, 1: -120 }, reason: 'complete' },
+    })
+    expect(connection.getState().ended).toEqual({
+      netBySeat: { 0: 120, 1: -120 },
+      reason: 'complete',
+    })
+  })
+})

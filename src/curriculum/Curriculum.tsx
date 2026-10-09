@@ -987,6 +987,11 @@ export default function Curriculum({
                 ) : null}
               </a>
             ))}
+            <a href="#learn/quick" onClick={() => setMobileOpen(false)}>
+              <BookOpen size={18} />
+              <span>Quick lessons</span>
+              <span className="nav-count">6</span>
+            </a>
           </nav>
           <div className="sidebar-progress">
             <div>

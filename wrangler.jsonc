@@ -1,0 +1,33 @@
+// One Worker serves the whole site: the built app from ./dist as static
+// assets, and the table server for /api/* and /ws/*. The Git-connected
+// Cloudflare build runs `npm run build` then `npx wrangler deploy`, which
+// reads this file; the name must match the dashboard Worker.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "quantpoker",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/ws/*"],
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "TABLE", "class_name": "TableDO" },
+      { "name": "LOBBY", "class_name": "LobbyDO" },
+    ],
+  },
+  // The storage backend is fixed when a class is first created: SQLite.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TableDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] },
+  ],
+  // Browser-safe values the online area reads from /api/config at runtime.
+  // The service-role key is never here: `wrangler secret put` only.
+  "vars": {
+    "SUPABASE_URL": "https://dbkfuxczfkawxqmaieii.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_DKfxJ0I2bbnrMHMyxiK4eg_tqsrKoI7",
+  },
+}

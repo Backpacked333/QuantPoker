@@ -1,0 +1,162 @@
+// Test-only: a WebSocket stand-in the tests drive by hand, and server frames
+// built from real engine states.
+import { commitDeck, publicSlots, revealSlots, toBase64 } from '../engine/deck'
+import { act, isOver, startHand } from '../engine/hand'
+import { seatView } from '../engine/redact'
+import { config, deckWith } from '../engine/testing'
+import type { HandState, SeatId } from '../engine/types'
+import type {
+  HandRecordV1,
+  MatchInfo,
+  Reveal,
+  ServerMsg,
+} from '../shared/protocol'
+
+export class FakeSocket {
+  static all: FakeSocket[] = []
+  sent: string[] = []
+  readyState = 0
+  onopen: (() => void) | null = null
+  onmessage: ((e: { data: string }) => void) | null = null
+  onclose: ((e: { code: number; reason: string }) => void) | null = null
+  closedWith: number | null = null
+  constructor(
+    readonly url: string,
+    readonly protocols: string[],
+  ) {
+    FakeSocket.all.push(this)
+  }
+  send(data: string) {
+    this.sent.push(data)
+  }
+  close(code = 1000) {
+    this.closedWith = code
+  }
+  // Driven by tests:
+  open() {
+    this.readyState = 1
+    this.onopen?.()
+  }
+  emit(msg: ServerMsg) {
+    this.onmessage?.({ data: JSON.stringify(msg) })
+  }
+  drop(code = 1006, reason = '') {
+    this.readyState = 3
+    this.onclose?.({ code, reason })
+  }
+  static last() {
+    return FakeSocket.all[FakeSocket.all.length - 1]
+  }
+}
+
+export const MATCH = '33333333-3333-4333-8333-333333333333'
+
+export const tableInfo = (
+  players = 2,
+  status: MatchInfo['status'] = 'playing',
+): MatchInfo => ({
+  kind: 'hu-casual',
+  status,
+  handsTotal: 20,
+  players: [
+    { seat: 0, username: 'alice', connected: true, consecutiveTimeouts: 0 },
+    { seat: 1, username: 'bob', connected: true, consecutiveTimeouts: 0 },
+  ].slice(0, players),
+})
+
+/** Hand 1 with fixed cards: alice (seat 0) has the button and acts first. */
+export function firstHand(): HandState {
+  const cfg = config([2000, 2000], 0)
+  return startHand(
+    cfg,
+    deckWith(cfg, { 0: 'As Kd', 1: '7c 2h' }, '2c 7d 9h Tc 3s'),
+  )
+}
+
+export function frame(
+  kind: 'welcome' | 'state',
+  seq: number,
+  seat: SeatId,
+  hand: HandState | null,
+  lastReqId: string | null = null,
+): ServerMsg {
+  const table = tableInfo()
+  const view = hand
+    ? seatView(hand, seat, {
+        matchId: MATCH,
+        match: table,
+        clock: null,
+        lastReqId,
+        commitment: null,
+      })
+    : null
+  const base = { seq, matchId: MATCH, serverNow: 0, table, view }
+  return kind === 'welcome'
+    ? { ...base, t: 'welcome', seat }
+    : { ...base, t: 'state' }
+}
+
+/**
+ * Hand 1 played to showdown with a real commitment and reveal, as the
+ * server would send it: the frames for each seat and what a seat should see.
+ */
+export async function finishedHand() {
+  const cfg = config([2000, 2000], 0)
+  const deck = deckWith(cfg, { 0: 'As Kd', 1: '7c 2h' }, '2c 7d 9h Tc 3s')
+  const secret = new Uint8Array(32).fill(5)
+  let hand = startHand(cfg, deck)
+  hand = act(hand, 0, { type: 'call' })
+  while (!isOver(hand)) hand = act(hand, hand.toAct!, { type: 'check' })
+  const { commitment, leaves } = await commitDeck(deck, secret)
+  const shown = hand.players
+    .filter((p) => p.shown)
+    .map((p) => ({ seat: p.seat, cards: p.cards! }))
+  const record: HandRecordV1 = {
+    v: 1,
+    matchId: MATCH,
+    handNo: 1,
+    segment: 1,
+    config: cfg,
+    seats: [
+      { seat: 0, userId: 'alice', username: 'alice' },
+      { seat: 1, userId: 'bob', username: 'bob' },
+    ],
+    commitment,
+    actions: hand.actions.map((a) => ({
+      ...a,
+      atMs: 0,
+      decisionMs: 1500,
+      source: 'client' as const,
+    })),
+    board: hand.board,
+    shown,
+    awards: hand.result!.awards,
+    netBySeat: hand.result!.netBySeat,
+    showdown: true,
+  }
+  const reveal: Reveal = {
+    handNo: 1,
+    leaves: toBase64(leaves),
+    slots: await revealSlots(
+      deck,
+      secret,
+      publicSlots({ config: cfg, board: hand.board, shown }),
+    ),
+  }
+  const base = { seq: 9, matchId: MATCH }
+  const frames = {
+    start: {
+      ...base,
+      seq: 1,
+      t: 'hand_start',
+      handNo: 1,
+      commitment,
+      button: 0,
+      blinds: cfg.blinds,
+      stacks: [1990, 1980],
+    } as ServerMsg,
+    end: { ...base, t: 'hand_end', handNo: 1, record } as ServerMsg,
+    reveal: { ...base, t: 'reveal', ...reveal } as ServerMsg,
+  }
+  return { hand, record, reveal, commitment, frames }
+}

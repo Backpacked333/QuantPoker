@@ -4,10 +4,11 @@ Last updated: 2026-10-09
 
 ## Active features
 
-| Slug                     | Description                                            | Status                                                                                                                                                      |
-| ------------------------ | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multiplayer-platform`   | Phase 0 per the architect's ADR, 7 steps               | Steps 1–7 **done**; Step 7 **deployed** 2026-10-09 (`3cc9bd0`, launch evidence in `.10x/reviews/2026-10-09-launch-verification.md`); S7-11 closes after U-4 |
-| `rating-and-leaderboard` | Phase 1 rating model, ladder and profile (P1-11…P1-16) | P1-11 **done** 2026-10-09: Glicko-2 pure module, Glickman example reproduced, properties over 10k sequences                                                 |
+| Slug                        | Description                                                                                            | Status                                                                                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform`      | Phase 0 per the architect's ADR, 7 steps                                                               | Steps 1–7 **done**; Step 7 **deployed** 2026-10-09 (`3cc9bd0`, launch evidence in `.10x/reviews/2026-10-09-launch-verification.md`); S7-11 closes after U-4 |
+| `rating-and-leaderboard`    | Phase 1 rating model, ladder and profile (P1-11…P1-16)                                                 | P1-11 **done** 2026-10-09: Glicko-2 pure module, Glickman example reproduced, properties over 10k sequences                                                 |
+| `heads-up-duplicate-ladder` | Rated heads-up match: fresh decks with a luck adjustment (Q1 = B), lifecycle, end screen (P1-00…P1-04) | P1-02 engine module **done** 2026-10-09 (`src/engine/luck.ts`); table wiring with P1-01                                                                     |
 
 ## Cross-cutting notes
 

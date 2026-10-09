@@ -537,6 +537,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 **Q1 answered 2026-10-09: variant B.** Only the B goal, files and tests below apply.
 
+**Status 2026-10-09:** the engine module is **done** (`src/engine/luck.ts`; `.10x/decisions/sde/heads-up-duplicate-ladder.md`). A preflop all-in costs ≈ 475 ms of CPU, which is over the 100 ms guess below but inside the table's 3 s gap between hands, so the adjustment stays in the table server. The `table.ts` wiring and `worker/test/rated.test.ts` come with P1-01.
+
 - **Goal (A, same-pair duplicate).** Segment 2 hand _i_ deals a segment-1 deck with the button flipped. Flipping the button swaps the hole cards exactly, because `dealSlots` deals relative to the button. Each deal gets a fresh commitment secret. The mitigations Q1 chooses apply:
   - a secret random order π of the segment-2 decks, stored in DO storage;
   - no in-match review on rated tables (review unlocks at `match_end`);

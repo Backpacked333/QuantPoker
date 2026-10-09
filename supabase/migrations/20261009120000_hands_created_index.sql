@@ -1,0 +1,11 @@
+-- DBA review 2026-10-09, DB-1: /api/stats counts the hands archived on each
+-- UTC day, and of those the verified ones, through PostgREST with
+-- count=exact. Without an index on created_at every count reads the whole
+-- table, and the endpoint is public. With verified carried in the index both
+-- counts are index-only scans over one day's entries.
+--
+-- Built inside the migration's transaction (no CONCURRENTLY): hands is empty
+-- in production today. On a large table this would lock writes while it
+-- builds; see .10x/decisions/dba/phase1-schema.md for how later indexes ship.
+-- Rollback: drop index public.hands_created;
+create index hands_created on public.hands (created_at) include (verified);

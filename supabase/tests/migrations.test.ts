@@ -94,6 +94,7 @@ describe('migrations', () => {
       '20261008173914_record_match.sql',
       '20261008181317_record_match_no_show.sql',
       '20261009090000_verify_hand.sql',
+      '20261009120000_hands_created_index.sql',
     ])
   })
 })
@@ -242,6 +243,30 @@ describe('hand records', () => {
       'select count(*)::int as n from public.hands_private',
     )
     expect(audit).toEqual([{ n: 1 }])
+  })
+
+  it('are counted per UTC day from an index, not by reading every hand', async () => {
+    // The query /api/stats sends through PostgREST (worker/src/stats.ts),
+    // as the anon role it uses. Seq scans are priced out so the plan shows
+    // whether an index can answer it; on a few rows the planner would scan.
+    await db.exec('set enable_seqscan = off')
+    try {
+      for (const verified of ['', 'and verified is true']) {
+        const plan = await as<{ 'QUERY PLAN': string }>(
+          'anon',
+          `explain (costs off) select count(*) from public.hands
+           where created_at >= '2026-10-09T00:00:00Z'
+             and created_at < '2026-10-10T00:00:00Z' ${verified}`,
+        )
+        // Index-only or bitmap depends on the visibility map (vacuum), not
+        // on the schema; either reads one day's index entries.
+        const text = plan.map((r) => r['QUERY PLAN']).join('\n')
+        expect(text).toMatch(/Index (Only )?Scan (using|on) hands_created/)
+        expect(text).not.toMatch(/Seq Scan/)
+      }
+    } finally {
+      await db.exec('reset enable_seqscan')
+    }
   })
 
   it('reject malformed records', async () => {

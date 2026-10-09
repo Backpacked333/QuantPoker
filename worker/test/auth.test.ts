@@ -192,6 +192,7 @@ describe('Supabase access tokens', () => {
       SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
         headers: {
           Upgrade: 'websocket',
+          Origin: ORIGIN,
           'Sec-WebSocket-Protocol': `qp.v1, bearer.${jwt}`,
         },
       })

@@ -42,6 +42,7 @@ export async function connect(matchId: string, user: string): Promise<Client> {
   const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -122,6 +123,7 @@ export async function lobby(user: string): Promise<LobbyClient> {
   const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -157,6 +159,7 @@ export async function tryConnect(matchId: string, user: string) {
   const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })
@@ -176,6 +179,7 @@ export async function tryLobby(user: string) {
   const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
     headers: {
       Upgrade: 'websocket',
+      Origin: ORIGIN,
       'Sec-WebSocket-Protocol': `qp.v1, bearer.${token(user)}`,
     },
   })

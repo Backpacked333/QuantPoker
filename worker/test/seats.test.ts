@@ -96,6 +96,7 @@ describe('seat and session integrity', () => {
     const response = await SELF.fetch(`${ORIGIN}/ws/table/${matchId}`, {
       headers: {
         Upgrade: 'websocket',
+        Origin: ORIGIN,
         'Sec-WebSocket-Protocol': `qp.v1, bearer.${token('mallory')}`,
         // Spoofed: the Worker must not forward these to the table.
         'x-user-id': 'alice',
@@ -126,7 +127,11 @@ describe('seat and session integrity', () => {
     const response = await SELF.fetch(
       `${ORIGIN}/ws/table/${matchId}?token=${token('alice')}&access_token=${token('alice')}`,
       {
-        headers: { Upgrade: 'websocket', 'Sec-WebSocket-Protocol': 'qp.v1' },
+        headers: {
+          Upgrade: 'websocket',
+          Origin: ORIGIN,
+          'Sec-WebSocket-Protocol': 'qp.v1',
+        },
       },
     )
     expect(response.status).toBe(401)

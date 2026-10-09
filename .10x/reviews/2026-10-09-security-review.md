@@ -147,3 +147,17 @@ Final run on this branch, after the last code commit `8e209c7`:
 | `npm run e2e`              | **18 passed** (1.8 min)                  |
 
 Real runtime (`wrangler dev` on :8788, Node WebSocket clients): the lobby flooder closes `4429 Too many messages`; the bystander sees 22 frames during 200 junk frames (was 200); the reconnect is clean, with the queue row gone; a wrong dev secret is refused at upgrade.
+
+## Status after Step 7 (2026-10-09, SDE, Prompt 5)
+
+Built on the same branch; not deployed. Evidence in `.10x/decisions/sde/multiplayer-platform.md` §Step 7.
+
+| ID    | Now                                                                                                                                                                                                                                        |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| SR-06 | **Fixed**: 30 invite tables per account per UTC day (429 + `Retry-After`); unjoined invites expire after 24 h; finished tables delete their storage 10 min after the end (`worker/test/limits.test.ts`, `cleanup.test.ts`)                 |
+| SR-07 | **Fixed in the Worker** (per-account budget charged on connects too, so a reconnect does not refill it; per-address request rate via the rate-limit binding; usernames cached). The WAF rule (U-8d) remains the stronger, optional control |
+| SR-08 | **Fixed** (S7-12): each seat's reveal opens its own hole slots for that seat only; "Deck verified" requires them. The Fair play copy says board, shown hands and your own cards                                                            |
+| SR-09 | **Fixed**: an engine fault logs ids and the fixed invariant message; the full evidence goes to `incidents` through the outbox. The log sink test greps every event kind for card, deck, secret and token shapes                            |
+| SR-10 | Open (Low): the chaos pass uses UUID-shaped dev accounts to archive locally                                                                                                                                                                |
+| SR-11 | **Fixed**: every action pinned by SHA; workflows default to no permissions                                                                                                                                                                 |
+| New   | An Origin allowlist on socket upgrades (defence in depth), and a pre-existing robustness bug fixed: a deal the engine refuses no longer breaks the table object (it halts as `engine_fault`)                                               |

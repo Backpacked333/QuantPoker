@@ -1,6 +1,60 @@
 # Handoff
 
-## Current handoff: Security Engineer → User, DBA, SDE (Phase 0 security review)
+## Current handoff: SDE → User (Step 7 built; the launch gate is yours)
+
+Date: 2026-10-09 · Status: **Step 7 is built and tested on PR #9 and not deployed.** All gates are green: 668 unit, 120 worker, 19 e2e; entry 141.5 kB. The smoke ran 20 clients for 500 hands: p95 17 ms, 0 invariant failures, 0 leaks, 500/500 commitments verified. The chaos pass is 5/5 VERIFIED.
+
+### Read first
+
+- `.10x/decisions/sde/multiplayer-platform.md` §Step 7: what was built, verification, the chaos table, smoke numbers, deviations, seams.
+- `README.md` §Operations: log events, saved queries, how to find a failed hand, close codes, deploy order.
+- `.10x/tickets.md` §Step 7: status per ticket.
+- `.10x/reviews/2026-10-09-security-review.md` §Status after Step 7.
+
+### User actions (in this order, before the deploy)
+
+1. **Create the queues** (Cloudflare → Queues, or `npx wrangler queues create quantpoker-hands` and `npx wrangler queues create quantpoker-hands-dlq`). Without them the Workers Build of `main` fails.
+2. **Apply the migration** `supabase/migrations/20261009090000_verify_hand.sql`, or confirm the Supabase GitHub integration applies migrations on merge to `main`. Until it exists, verify messages retry and then dead-letter.
+3. **Report contact (U-6):** give an address for the Fair play page (`src/info/contact.ts`), or keep the interim wording ("keep them for the report form that comes with rated play").
+4. **DBA review (Prompt 4) has not run.** `.10x/prompts.md` makes it a gate before this deploy. Run it, or tell me to deploy without it.
+5. **U-8** (unchanged): the redirect allowlist; no `DEV_AUTH_SECRET` on the Worker; leaked-password protection. Optionally, a WAF rate-limit rule on `/ws/*` and `/api/*`.
+6. Still open from Prompt 1: `SUPABASE_SECRET_KEY` on the Worker, one real sign-in, one two-account match (U-4).
+7. **Say go.** I then merge PR #9 (production deploys from `main`), watch `deploy-check.yml`, and run S7-11's evidence rows. Merging also runs the scheduled soak from `main` from then on.
+
+### What to test
+
+- **Locally, two browsers:** `npm run worker:dev -- --var DEV_AUTH_SECRET:<16+ chars>`, then two profiles with `sessionStorage['qp.devToken']`. Play a hand where you fold pre-flop, open "Review hand n", and hover "Deck verified": it now covers your own two cards.
+- **Limits:** paste a 5,000-character message into a socket (DevTools) and get `too_large`, then close 4400 and a reconnect. Refresh a table rapidly: after ~20 refreshes in 5 s the page says "Too many messages, reconnecting…" and comes back.
+- **Pages:** `#fair-play` and `#terms` from the Online tab header. Read the copy: it is plain statements, not a lawyer's text.
+- **Smoke:** `npm run worker:dev -- --var DEV_AUTH_SECRET:smoke-local-secret-0001`, then `npm run smoke`.
+
+### What to review
+
+- `worker/src/verify.ts` `problemsWith`: the list of checks is the definition of a "verified" hand.
+- `worker/src/table.ts` `flushOutbox`: archive calls stop the flush at the first failure; queue sends and incident reports do not.
+- `worker/src/limits.ts` and the two `budget.spend(userId)` call sites, connects included.
+- `.github/workflows/deploy-check.yml`: it trusts the Workers Builds check run when present, else compares the site file by file for 15 minutes.
+- `src/info/InfoPages.tsx`: every claim on the Fair play page has a test or a log behind it; check you agree with the wording.
+
+### Noticed, not done
+
+- **S7-05** (queue-wait and ack-latency telemetry, two PM metrics) is not started. It was not in this step's build list.
+- **Lobby presence** is still one broadcast per accepted frame or connect, at most 4 per second per account under the budget. Coalescing would remove it.
+- **A replaced tab** learns it was replaced after about 2 s in Chromium (the close-handshake timeout); clicks in that window are dropped, never applied.
+- **SR-10** (UUID-shaped dev ids) stays open; the local chaos pass relies on it.
+- **CI actions** run Node 20 under GitHub's forced Node 24 (deprecation warning). Bump the pinned majors in a separate change.
+- **`hands.created_at` has no index;** `/api/stats` makes 14 head counts per 5 minutes per isolate. That is for the DBA review.
+- **Evidence:** PR #9 CI on `b1f14d4` is green: `check`; `e2e` with the live guard reporting `live: 3 passed, 0 skipped`; `soak` with seed 37906875949, 100k hands at each table size 2–6. `deploy-check` can only run after a push to `main`.
+
+### Next step
+
+You: the user actions above. Then me: merge on your go, `deploy-check` green, S7-11 launch verification. After that, Phase 1 from P1-00 once Q1 is answered.
+
+---
+
+## Handoff history
+
+### 2026-10-09 — Security Engineer → User, DBA, SDE (Phase 0 security review)
 
 Date: 2026-10-09 · Status: **no Critical or High open.** Fixed with red-then-green tests:
 
@@ -10,13 +64,13 @@ Date: 2026-10-09 · Status: **no Critical or High open.** Fixed with red-then-gr
 
 Three Mediums (SR-06 to SR-08) are Step 7 tickets with file:line. All gates green.
 
-### Read first
+#### Read first
 
 - `.10x/reviews/2026-10-09-security-review.md` (summary, findings table, a verdict per item 1–7, what was not tested)
 - `.10x/decisions/security/multiplayer-platform.md` (commits, numbers, deviations)
 - `.10x/tickets.md` §Review fold-in → "Security review results" (what changed in S7-01/02/03/04/07/10, plus new S7-12)
 
-### User actions
+#### User actions
 
 1. **U-8 dashboard checks** (none are readable from here):
    - **(a)** Supabase → Authentication → URL Configuration: only `https://quantpoker.bbcroysalman.workers.dev/**` and localhost entries, with no wildcard to a foreign host.
@@ -25,20 +79,20 @@ Three Mediums (SR-06 to SR-08) are Step 7 tickets with file:line. All gates gree
    - **(d)** Optional: a WAF rate-limiting rule on `/ws/*` and `/api/*` (SR-07).
 2. Unchanged: answer Q1–Q5; create the two queues before S7-03; secret key, sign-in and a two-account match (U-3, U-4).
 
-### What to test
+#### What to test
 
 - **Two browsers (local):** `npm run worker:dev -- --var DEV_AUTH_SECRET:<16+ chars>`. Play a hand; refresh one tab repeatedly. Nothing changes for honest play; e2e `live` 3/3 confirms it.
 - **Flood (local, scripted):** a Node script floods the lobby. Verified this session: the flooder closes with `4429 Too many messages`, the bystander sees 22 frames (was 200), and the reconnect is clean.
 - **The dev secret rule:** a secret under 16 characters now leaves dev tokens off. Update any local `.dev.vars` you keep.
 
-### What to review
+#### What to review
 
 - `worker/src/limits.ts` and its two call sites: applied moves are refunded, and a reconnect gets a fresh budget (residual SR-07, ticketed).
 - `src/engine/deck.ts` `verifyDeal`: every public slot is opened exactly once.
 - `worker/src/table.ts` `join()`: after the awaited claim it looks for the same account before releasing.
 - `supabase/tests/rls-matrix.test.ts`: the expected matrix is data at the top of the file. Read it as the access policy.
 
-### Noticed, not done
+#### Noticed, not done
 
 - **SR-06:** one account created 50/50 invite tables with no limit, and unjoined invites never expire (S7-01, S7-02).
 - **SR-07:** each upgrade does an uncached username lookup, and there is no per-account or per-IP cap (S7-02, U-8d).
@@ -49,13 +103,9 @@ Three Mediums (SR-06 to SR-08) are Step 7 tickets with file:line. All gates gree
 - **SR-12:** `npm audit` reports 4 dev-only highs (`sharp` via `miniflare`); none are in the bundle.
 - **Docs:** `.10x/prompts.md` (Prompt 5) still lists an Origin allowlist; R-2 in `.10x/tickets.md` explains why not.
 
-### Next step
+#### Next step
 
 Prompt 4 (DBA review), then Step 7 from S7-01. The S7-02 scope is smaller now: the budget ships here, so what remains is invite and connection limits, the illegal-move counter and the client message.
-
----
-
-## Handoff history
 
 ### 2026-10-09 — Staff Engineer / EM → User, Security, DBA (tickets for Step 7 and Phases 1–2)
 

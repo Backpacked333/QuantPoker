@@ -1,10 +1,23 @@
 # Project status
 
-Last updated: 2026-10-09 by Security Engineer (Phase 0 security review)
+Last updated: 2026-10-09 by SDE (Step 7 built; not deployed)
 
 ## Phase
 
-**Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
+**Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
+
+**Step 7 built, tested, not deployed (2026-10-09, PR #9).** The server now survives strangers and shows its failures:
+
+- per-account frame and connect limits, oversize and illegal-frame closes with documented codes, invite caps and expiry, an address rate limit, and an Origin allowlist;
+- every archived hand re-verified off the game path by a queue consumer, with incidents for anything that fails;
+- card-free JSON logs with a sink test, hands/day at `/api/stats`, and a runbook;
+- a CPU bench, pinned and least-privilege CI, a nightly seeded engine soak, a live-e2e guard and a deploy check;
+- a 20-client smoke: 500 hands, p95 17 ms, 0 breaks;
+- a chaos pass with 5/5 rows VERIFIED;
+- players can verify their own folded cards;
+- Fair play and Terms pages.
+
+Deploy waits for you: two queues, the new migration, the report contact, the DBA-review decision, U-8, and your go (see `.10x/handoff.md`).
 
 **Tickets 2026-10-09 (`.10x/tickets.md`):** the remaining plan is 49 tickets: Step 7 is 11, Phase 1 is 23, Phase 2 is 15. That is 134 half-days, about 90 session-hours at the measured Phase 0 pace. The ladder's critical path is 29.7 h; earliest ladder date 2026-10-13, planning date 2026-10-19. **Open finding (Q1 in tickets):** the PM's same-pair duplicate format lets a player see the opponent's segment-2 cards by recalling or reviewing their own segment-1 hands. The user decides the format before P1-02. Step 7 is not blocked.
 
@@ -64,7 +77,9 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 5 — turn clock + bank + auto check/fold + 3-timeout forfeit via one DO alarm; `hand_start` commitment, `hand_end` + `reveal`, in-browser "Deck verified" review; outbox → `record_match`/`record_hand` (new migration applied live, dry-run verified). 592 unit, 38 worker, 17 e2e; 20-hand smoke with a real 80 s timeout. (`.10x/decisions/sde/multiplayer-platform.md` §Step 5)
 - [ ] User: create a Supabase secret key and add it to the Worker as `SUPABASE_SECRET_KEY` (until then nothing is archived)
 - [x] SDE: Step 6 — `LobbyDO` quick-match (persisted queue, oldest-first pairing, ≤ 2 pairings per pair per day), one active table per account (queue resumes, invite 409/4409, self-healing), 30 s no-show (void match + abandonment; migration applied live), Find a match enabled with wait timer and 60 s bail-out. 605 unit, 52 worker, 18 e2e; real-time no-show smoke. (`.10x/decisions/sde/multiplayer-platform.md` §Step 6)
-- [ ] SDE: Step 7 per ADR (hardening, verify consumer, CI deploy, rate limits, Fair Play page)
+- [x] SDE: Step 7 build: limits, Origin allowlist, verify queue + DLQ, logs + sink test, bench, CI (pins, permissions, soak, live guard, deploy check), `/api/stats`, smoke, chaos pass, own-card verification, Fair play and Terms (`.10x/decisions/sde/multiplayer-platform.md` §Step 7). Not deployed
+- [ ] User: before the Step 7 deploy: create queues `quantpoker-hands` and `quantpoker-hands-dlq`; apply `20261009090000_verify_hand.sql` (or let the Supabase integration do it on merge); choose the report contact (U-6); decide on the DBA review; then say go to merge PR #9
+- [ ] SDE: S7-05 (queue-wait and ack-latency telemetry) and S7-11 (launch gate, after your go)
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.
 - [x] Security: Phase 0 review, items 1–7 (`.10x/reviews/2026-10-09-security-review.md`, `.10x/decisions/security/multiplayer-platform.md`). Fixed SR-01 to SR-05; SR-06 to SR-13 are tickets or user actions with file:line.
 - [ ] User: security dashboard checks U-8 in `.10x/tickets.md` (redirect allowlist, no `DEV_AUTH_SECRET` on the Worker, leaked-password protection, WAF rate limit)

@@ -1,12 +1,12 @@
 # SDE — index
 
-Last updated: 2026-10-08
+Last updated: 2026-10-09
 
 ## Active features
 
-| Slug                   | Description                              | Status                                                                                                                                                                              |
-| ---------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–6 **done** (engine, accounts, table server, live table, clocks/commitment/records, lobby quick-match); Step 7 next; dashboard actions pending (incl. `SUPABASE_SECRET_KEY`) |
+| Slug                   | Description                              | Status                                                                                                                                                                                                                                                      |
+| ---------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `multiplayer-platform` | Phase 0 per the architect's ADR, 7 steps | Steps 1–6 **done**; Step 7 **built, not deployed** (limits, Origin allowlist, verify queue, logs, bench, CI, smoke, chaos 5/5, own-card verification, Fair play/Terms); deploy waits for queues, migration, U-6, DBA-review decision, U-8 and the user's go |
 
 ## Cross-cutting notes
 
@@ -24,3 +24,6 @@ Last updated: 2026-10-08
 - **Dry-run SQL against production inside a transaction that raises.** It proves the real schema accepts the real payloads and leaves nothing behind.
 - **Ask the source of truth, not a cache, before refusing a user.** The lobby's active-table map is checked against the table itself, so a lost release cannot lock anyone out.
 - **Refusals the user must understand go over an accepted socket.** Browsers hide why an upgrade failed; accept and close with a code and reason instead.
+- **Make the sink the test.** Logging rules are only real if a test captures every console line of a full match (and of each failure path) and greps it for card, deck, secret and token shapes; the first run found a crash path nobody had logged before.
+- **Chaos with processes, not mocks.** SIGKILL a client process (no close frame), SIGSTOP the runtime past a deadline, SIGKILL the whole dev server's process group and restart on the same state: each exercises a path the unit harness cannot. Kill exact pids or process groups; `pkill -f` matches its own shell.
+- **A smoke must prove it can fail.** Disable redaction once and watch it report leaks; cut a CPU budget to 50 ms and watch the bench fail.

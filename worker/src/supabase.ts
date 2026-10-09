@@ -2,6 +2,7 @@
 // service-role functions (supabase/migrations/*record_*.sql). Both are
 // idempotent, so the outbox may retry any call.
 import type { WorkerEnv } from './env'
+import { describeError, logEvent } from './log'
 
 export type ArchiveCall = {
   rpc: 'record_match' | 'record_hand'
@@ -24,15 +25,32 @@ export async function archive(env: WorkerEnv, call: ArchiveCall) {
         body: JSON.stringify({ p: call.body }),
       },
     )
+    // Only the status and Postgres's error code: an error message can quote
+    // the failing row, and a hand's row holds its deck.
     if (!response.ok)
-      console.error(
-        `${call.rpc} failed`,
-        response.status,
-        (await response.text()).slice(0, 300),
-      )
+      logEvent('error', {
+        reason: 'archive',
+        rpc: call.rpc,
+        code: response.status,
+        detail: await errorCode(response),
+      })
     return response.ok
   } catch (error) {
-    console.error(`${call.rpc} failed`, error)
+    logEvent('error', {
+      reason: 'archive',
+      rpc: call.rpc,
+      detail: describeError(error),
+    })
     return false
+  }
+}
+
+/** PostgREST's error code (e.g. 23514), never its message or details. */
+async function errorCode(response: Response) {
+  try {
+    const body = (await response.json()) as { code?: unknown }
+    return typeof body.code === 'string' ? body.code.slice(0, 16) : undefined
+  } catch {
+    return undefined
   }
 }

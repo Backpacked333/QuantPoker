@@ -49,6 +49,7 @@ import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
 import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
+import { describeError, logEvent } from './log'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
 
@@ -237,8 +238,15 @@ export class TableDO extends DurableObject<WorkerEnv> {
     // Cleaned up (or never existed): say so, and store nothing.
     if (!match) return this.refuse(CLOSE_GONE, 'closed')
     // A connect costs a frame, so reconnecting does not refill a budget.
-    if (!this.budget.spend(userId))
+    if (!this.budget.spend(userId)) {
+      logEvent('limit_hit', {
+        matchId: match.id,
+        userId,
+        code: CLOSE_RATE_LIMITED,
+        reason: 'connects',
+      })
       return this.refuse(CLOSE_RATE_LIMITED, 'Too many connections')
+    }
     let player = match.players.find((p) => p.userId === userId)
     if (!player) {
       // Invite link: the first other account to open it takes the empty seat.
@@ -364,7 +372,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
   ) {
     this.reject(ws, error, message)
     ws.close(code, message)
+    this.limitHit(ws, code, error)
     this.broadcast('state', { gone: ws })
+  }
+
+  private limitHit(ws: WebSocket, code: number, reason: string) {
+    const { userId } = ws.deserializeAttachment() as Attachment
+    logEvent('limit_hit', { matchId: this.match?.id, userId, code, reason })
   }
 
   /**
@@ -385,6 +399,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     this.illegalCount.set(seat, { handNo, n })
     if (n > ILLEGAL_PER_HAND) {
       ws.close(CLOSE_ABUSE, 'Too many illegal messages')
+      this.limitHit(ws, CLOSE_ABUSE, 'illegal')
       this.broadcast('state', { gone: ws })
     }
   }
@@ -445,7 +460,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
       }
       await this.armAlarm()
     } catch (error) {
-      console.error('alarm failed', error)
+      logEvent('error', {
+        matchId: this.match?.id,
+        reason: 'alarm',
+        detail: describeError(error),
+      })
     }
   }
 
@@ -504,6 +523,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (isOver(next)) {
       for (const [s, net] of Object.entries(next.result!.netBySeat))
         match.net[Number(s)] += net
+      this.logHandEnd(next, t - current.startedAt)
       this.ended = await this.endOfHand(next, current, writes)
       writes.ended = this.ended
       this.setGameDeadline(
@@ -533,7 +553,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match!
     const plan = this.controller.nextHandPlan(match.handNo + 1, match.config)
     if (!plan) return this.finish('complete')
-    const hand = startHand(plan.config, plan.deck)
+    let hand: HandState
+    try {
+      hand = startHand(plan.config, plan.deck)
+    } catch (error) {
+      // A plan the engine refuses (a bad stored deck, in Phase 1): halt the
+      // match like any engine fault rather than break the object.
+      return this.engineFault(error, plan.config.handNo, plan)
+    }
     if (!this.invariantsHold(hand)) return
     const { commitment } = await commitDeck(plan.deck, plan.secret)
     const t = this.clock()
@@ -580,6 +607,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
         stacks: hand.players.map((p) => p.stack),
       })
     this.broadcast('state')
+    if (match.handNo === 1)
+      logEvent('match_start', {
+        matchId: match.id,
+        userIds: match.players.map((p) => p.userId),
+      })
     // A hand that is over at the deal (blinds all in) still needs its end.
     if (isOver(hand)) await this.applyEndAtDeal(hand)
     else if (match.handNo === 1) void this.flushOutbox()
@@ -590,6 +622,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match!
     for (const [s, net] of Object.entries(hand.result!.netBySeat))
       match.net[Number(s)] += net
+    this.logHandEnd(hand, 0)
     const writes: Record<string, unknown> = { match }
     this.ended = await this.endOfHand(hand, this.current!, writes)
     writes.ended = this.ended
@@ -604,6 +637,15 @@ export class TableDO extends DurableObject<WorkerEnv> {
     await this.armAlarm()
     for (const ws of this.openSockets()) this.sendEnded(ws)
     void this.flushOutbox()
+  }
+
+  private logHandEnd(hand: HandState, ms: number) {
+    logEvent('hand_end', {
+      matchId: this.match!.id,
+      handNo: hand.config.handNo,
+      reason: hand.result!.showdown ? 'showdown' : 'fold',
+      ms,
+    })
   }
 
   /** The public record and reveal of a finished hand; queues the archive. */
@@ -734,11 +776,25 @@ export class TableDO extends DurableObject<WorkerEnv> {
       )
       return true
     } catch (error) {
-      // Loud and final rather than a wrong payout.
-      console.error('engine invariant failed', error, JSON.stringify(state))
-      void this.finish('engine_fault')
+      this.engineFault(error, state.config.handNo, state)
       return false
     }
+  }
+
+  /**
+   * Loud and final rather than a wrong payout: the match ends as
+   * `engine_fault`. Ids only in the log: `evidence` (the state or plan) holds
+   * the deck and every hole card.
+   */
+  private engineFault(error: unknown, handNo: number, evidence: unknown) {
+    void evidence
+    logEvent('error', {
+      matchId: this.match?.id,
+      handNo,
+      reason: 'engine_fault',
+      detail: error instanceof Error ? error.message : describeError(error),
+    })
+    void this.finish('engine_fault')
   }
 
   /**
@@ -790,6 +846,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (forfeit !== undefined) match.forfeit = forfeit
     if (noShow) match.noShow = noShow
     this.seq++
+    this.logFinish(match, reason, forfeit, noShow)
     this.setGameDeadline({ kind: 'idle', at: this.clock() + IDLE_MS })
     const writes: Record<string, unknown> = {
       match,
@@ -822,8 +879,31 @@ export class TableDO extends DurableObject<WorkerEnv> {
         match.id,
       )
     } catch (error) {
-      console.error('lobby release failed', error)
+      logEvent('error', {
+        matchId: match.id,
+        reason: 'lobby_release',
+        detail: describeError(error),
+      })
     }
+  }
+
+  private logFinish(
+    match: Match,
+    reason: MatchEndReason,
+    forfeit?: SeatId,
+    noShow?: SeatId[],
+  ) {
+    const userOf = (seat: SeatId) =>
+      match.players.find((p) => p.seat === seat)?.userId
+    if (forfeit !== undefined)
+      logEvent('forfeit', {
+        matchId: match.id,
+        seat: forfeit,
+        userId: userOf(forfeit),
+      })
+    for (const seat of noShow ?? [])
+      logEvent('no_show', { matchId: match.id, seat, userId: userOf(seat) })
+    logEvent('match_end', { matchId: match.id, reason, handNo: match.handNo })
   }
 
   // ---- Archive ---------------------------------------------------------------
@@ -882,6 +962,12 @@ export class TableDO extends DurableObject<WorkerEnv> {
           continue
         }
         const attempts = call.attempts + 1
+        logEvent('outbox_retry', {
+          matchId: this.match?.id,
+          rpc: call.rpc,
+          attempt: attempts,
+          depth: queued.size,
+        })
         await this.ctx.storage.put(key, { ...call, attempts })
         this.deadlines = [
           ...this.deadlines.filter((d) => d.kind !== 'outbox'),

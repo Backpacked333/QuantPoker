@@ -18,6 +18,7 @@ import type { ErrorCode, LobbyMsg } from '../../src/shared/protocol'
 import { now } from './clock'
 import type { WorkerEnv } from './env'
 import { FrameBudget, MATCH_CREATES_PER_DAY } from './limits'
+import { logEvent } from './log'
 import type { InitBody, Liveness } from './table'
 
 /** The same two accounts meet at most this often per UTC day. */
@@ -82,6 +83,11 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     // A connect costs a frame: reconnecting in a loop is a flood too, and
     // a refused connect tells nobody anything.
     if (!this.budget.spend(userId)) {
+      logEvent('limit_hit', {
+        userId,
+        code: CLOSE_RATE_LIMITED,
+        reason: 'connects',
+      })
       const pair = new WebSocketPair()
       pair[1].accept()
       pair[1].close(CLOSE_RATE_LIMITED, 'Too many connections')
@@ -151,6 +157,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   ) {
     this.reject(ws, error, message)
     ws.close(code, message)
+    logEvent('limit_hit', { userId: this.who(ws).userId, code, reason: error })
     return this.leave(ws)
   }
 
@@ -231,7 +238,11 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       { method: 'POST', body: JSON.stringify(body) },
     )
     if (!created.ok) {
-      console.error('lobby: table init failed', created.status)
+      logEvent('error', {
+        matchId,
+        reason: 'table_init',
+        code: created.status,
+      })
       return false
     }
     await this.ctx.storage.put({

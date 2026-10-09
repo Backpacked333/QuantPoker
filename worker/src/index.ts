@@ -4,6 +4,7 @@ import { PROTOCOL } from '../../src/shared/protocol'
 import { bearerToken, identify, readSubprotocols } from './auth'
 import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
+import { logEvent } from './log'
 import type { InitBody } from './table'
 
 export { LobbyDO } from './lobby'
@@ -32,8 +33,11 @@ export default {
 
     // One address cannot make the server verify tokens and wake objects
     // without bound. Checked before any token work.
-    if (SIGNED_IN.test(pathname) && (await overAddressLimit(request, env)))
+    if (SIGNED_IN.test(pathname) && (await overAddressLimit(request, env))) {
+      // The address itself is never logged.
+      logEvent('limit_hit', { code: 429, reason: 'address' })
       return json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' })
+    }
 
     // Create a heads-up table and a link to share. The creator takes seat 0.
     if (pathname === '/api/matches' && request.method === 'POST') {
@@ -45,12 +49,18 @@ export default {
       const verdict = await lobbyStub(env).createMatch(who.userId, matchId)
       if (verdict.active)
         return json({ error: 'active', matchId: verdict.active }, 409)
-      if (verdict.retryAfter)
+      if (verdict.retryAfter) {
+        logEvent('limit_hit', {
+          userId: who.userId,
+          code: 429,
+          reason: 'creates',
+        })
         return json(
           { error: 'too_many_tables', retryAfter: verdict.retryAfter },
           429,
           { 'Retry-After': String(verdict.retryAfter) },
         )
+      }
       const body: InitBody = { matchId, creator: who }
       const created = await tableStub(env, matchId).fetch(
         'https://table/init',

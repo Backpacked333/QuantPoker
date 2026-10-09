@@ -1,25 +1,25 @@
 # 10x prompts for every remaining step
 
-Paste one prompt per fresh Claude Code session. Each prompt stands alone: it names the files to read first, the exact deliverable, the quality gates, what not to touch, and how to hand off. Run them in the order below; the order is the dependency order.
+Ordered exactly like the roadmap in `.10x/status.md` and the migration path in the architecture doc: **Phase 0 → Phase 1 → Phase 2 → Later.** Run them top to bottom, one per fresh Claude Code session. Each prompt stands alone: it names the files to read first, the deliverable, the quality gates, what not to touch, and how to hand off.
 
-| #   | Prompt                                      | Roles               | Blocks  |
-| --- | ------------------------------------------- | ------------------- | ------- |
-| 0   | Preamble (prepend to every prompt)          | all                 | —       |
-| 1   | Post-cleanup verification + ES256 sign-in   | SDE                 | 2, 3, 4 |
-| 2   | Security review before the Step 7 deploy    | Security Engineer   | 4       |
-| 3   | DBA review of the applied migrations        | DBA                 | 4       |
-| 4   | Tickets for Step 7 and Phase 1              | Staff Engineer / EM | 5, 6    |
-| 5   | Phase 0 Step 7: hardening, CI, launch       | SDE + DevOps + SRE  | 6       |
-| 6   | Phase 1a: heads-up duplicate engine         | Architect → SDE     | 7       |
-| 7   | Phase 1b: grading pipeline + accuracy       | SDE                 | 8       |
-| 8   | Phase 1c: rating, ladder, profile           | SDE + DBA           | 9       |
-| 9   | Phase 1d: integrity v1 + review→lesson loop | SDE + Security      | 10      |
-| 10  | Phase 2a: N-seat `Table` and 6-max casual   | SDE                 | 11      |
-| 11  | Phase 2b: arenas and 6-max rating           | SDE                 | —       |
-| 12  | Later: integrity v2 (only when triggered)   | Security Engineer   | —       |
-| 13  | Optional: port the AI coach to the Worker   | SDE                 | —       |
+| #   | Phase | Prompt                                    | Source spec                                | Roles              |
+| --- | ----- | ----------------------------------------- | ------------------------------------------ | ------------------ |
+| 0   | all   | Preamble (prepend to every prompt)        | —                                          | all                |
+| 1   | 0     | Post-cleanup verification + ES256 sign-in | status.md tasks, ADR day-5 check           | SDE                |
+| 2   | 0     | Tickets for Step 7 and Phases 1–2         | status.md task, ADR §Migration path        | Staff Eng / EM     |
+| 3   | 0     | Security review before the Step 7 deploy  | status.md task                             | Security Engineer  |
+| 4   | 0     | DBA review of applied migrations          | status.md task                             | DBA                |
+| 5   | 0     | **Step 7:** hardening, CI, launch         | ADR §Migration path row 7                  | SDE + DevOps + SRE |
+| 6   | 1     | Heads-up duplicate engine and match flow  | `heads-up-duplicate-ladder`                | Architect → SDE    |
+| 7   | 1     | Grading pipeline + accuracy               | `rating-and-leaderboard` §Accuracy         | SDE                |
+| 8   | 1     | Glicko-2 rating, ladder, public profile   | `rating-and-leaderboard`                   | SDE + DBA          |
+| 9   | 1     | Integrity v1 + review→lesson loop         | `integrity-and-trust` v1                   | SDE + Security     |
+| 10  | 2     | N-seat `Table` and casual 6-max           | `six-max-tables`                           | SDE                |
+| 11  | 2     | Arenas and 6-max rating                   | `six-max-tables`, `rating-and-leaderboard` | SDE                |
+| 12  | Later | Integrity v2 (only when triggered)        | `integrity-and-trust` v2                   | Security Engineer  |
+| 13  | Later | Optional: port the AI coach to the Worker | status.md §Repository                      | SDE                |
 
-Decisions only you can make (not prompts): the five open questions at the end of `.10x/decisions/architect/multiplayer-platform.md` (commitment scheme, invite-link visibility, domain, plan state), and the dashboard steps in `.10x/handoff.md`. Prompt 1 assumes you did them.
+Decisions only you can make (not prompts): the five open questions at the end of `.10x/decisions/architect/multiplayer-platform.md` (commitment scheme, invite-link visibility, domain, plan state), and the dashboard steps in `.10x/handoff.md`. Prompt 1 assumes you did them. The security and DBA reviews (3, 4) are gates: run both before Prompt 5 deploys.
 
 ---
 
@@ -53,6 +53,8 @@ Report outcomes faithfully: failing tests, skipped steps and unverified claims a
 
 ---
 
+# PHASE 0: Foundation (finish `multiplayer-platform`)
+
 ## 1. Post-cleanup verification and first real ES256 sign-in
 
 Role: SDE.
@@ -75,7 +77,29 @@ Out of scope: new features, dashboard changes, schema changes.
 
 ---
 
-## 2. Security review before the Step 7 deploy
+## 2. Tickets for Step 7 and Phase 1
+
+Role: Staff Engineer / Engineering Manager.
+
+```
+Task: turn the remaining plan into tickets an AI-assisted solo builder can execute without ambiguity.
+
+Read: .10x/status.md, the ADR §Migration path and §Out of scope, all four PM feature files, and the deploy verification from Prompt 1. The security and DBA reviews (Prompts 3 and 4) run after you; leave a "fold in review findings" line in the Step 7 and Phase 1 tickets and list which tickets they are likely to change.
+
+Produce .10x/tickets.md with, for Step 7, Phase 1 and Phase 2:
+- Ticket id, one-line goal, files to create/change, dependencies, effort in half-days (be honest; use the ADR's 15 days + 3 reserve as the calibration for Phase 0 and say where Phase 1/2 estimates are weaker).
+- Acceptance tests written as concrete test names and assertions, not prose ("segment 2 deals segment 1's decks with seats swapped, card-for-card equality" becomes an exact test file and case).
+- A risk line per ticket and the cut line: what ships if time runs out.
+- A critical path and what can run in parallel as separate sessions.
+Confirm or correct the success metrics and exit criteria in status.md so each is measurable from data we actually record.
+Resolve contradictions between PM files and the ADR yourself where the answer is clear; list the rest as questions for the user (max 5, each with your recommendation).
+
+Do not write product code. Deliver the file and a three-bullet summary.
+```
+
+---
+
+## 3. Security review before the Step 7 deploy
 
 Role: Security Engineer.
 
@@ -93,12 +117,12 @@ Threat model to work through, with a concrete exploit attempt or test for each:
 6. Abuse and DoS: frame size and rate limits (table and lobby have none yet), queue flooding, match creation spam, alarm abuse, unbounded DO storage growth.
 7. Supply chain and CI: workflow permissions, secrets exposure to forks, pinned actions.
 
-Deliverable: .10x/reviews/<date>-security-review.md with a table (finding, severity, exploit steps, fix, status). Fix the High/Medium findings that are small and local with tests that fail before the fix and pass after; list the rest as tickets for Prompt 5 with exact file:line. Do not weaken any existing test. Do not touch Phase 1 designs.
+Deliverable: .10x/reviews/<date>-security-review.md with a table (finding, severity, exploit steps, fix, status). Fix the High/Medium findings that are small and local with tests that fail before the fix and pass after; list the rest as tickets for Prompt 5 (Step 7) with exact file:line. Do not weaken any existing test. Do not touch Phase 1 designs.
 ```
 
 ---
 
-## 3. DBA review of the applied migrations
+## 4. DBA review of the applied migrations
 
 Role: DBA.
 
@@ -120,29 +144,6 @@ Deliverable: .10x/reviews/<date>-dba-review.md + the proposed Phase 1 schema doc
 
 ---
 
-## 4. Tickets for Step 7 and Phase 1
-
-Role: Staff Engineer / Engineering Manager.
-
-```
-Task: turn the remaining plan into tickets an AI-assisted solo builder can execute without ambiguity.
-
-Read: .10x/status.md, the ADR §Migration path and §Out of scope, all four PM feature files, and the reviews from Prompts 1-3 (security, DBA, deploy verification).
-
-Produce .10x/tickets.md with, for Step 7, Phase 1 and Phase 2:
-- Ticket id, one-line goal, files to create/change, dependencies, effort in half-days (be honest; use the ADR's 15 days + 3 reserve as the calibration for Phase 0 and say where Phase 1/2 estimates are weaker).
-- Acceptance tests written as concrete test names and assertions, not prose ("segment 2 deals segment 1's decks with seats swapped, card-for-card equality" becomes an exact test file and case).
-- A risk line per ticket and the cut line: what ships if time runs out.
-- A critical path and what can run in parallel as separate sessions.
-- Fold in every High/Medium finding from the security and DBA reviews.
-Confirm or correct the success metrics and exit criteria in status.md so each is measurable from data we actually record.
-Resolve contradictions between PM files and the ADR yourself where the answer is clear; list the rest as questions for the user (max 5, each with your recommendation).
-
-Do not write product code. Deliver the file and a three-bullet summary.
-```
-
----
-
 ## 5. Phase 0 Step 7: hardening, CI, launch
 
 Role: SDE with DevOps and SRE hats.
@@ -150,7 +151,7 @@ Role: SDE with DevOps and SRE hats.
 ```
 Task: ADR Step 7 (day 15). Make Phase 0 safe to put in front of strangers.
 
-Read: ADR §Migration path row 7, §Failure modes, §Local development/testing/CI, §Post-hand grading placement, §Verified assumptions rows 2, 5, 6; .10x/decisions/sde/multiplayer-platform.md (Steps 5-6); the security review (Prompt 2) and tickets (Prompt 4) if they exist.
+Read: ADR §Migration path row 7, §Failure modes, §Local development/testing/CI, §Post-hand grading placement, §Verified assumptions rows 2, 5, 6; .10x/decisions/sde/multiplayer-platform.md (Steps 5-6); the security review (Prompt 3) and tickets (Prompt 2) if they exist.
 
 Build, each with tests that fail before and pass after:
 1. Rate limits and frame caps: per-socket token bucket and max frame size for TableDO and LobbyDO, with a clean error then close; match-creation limit per account.
@@ -168,6 +169,8 @@ Out of scope: rating, duplicate, 6-max, spectating, anything in the ADR §Out of
 
 ---
 
+# PHASE 1: HU ladder (`heads-up-duplicate-ladder`, `rating-and-leaderboard` v1, `integrity-and-trust` v1, review→lesson loop)
+
 ## 6. Phase 1a: heads-up duplicate engine
 
 Role: Principal Architect first (short design addendum), then SDE.
@@ -175,7 +178,7 @@ Role: Principal Architect first (short design addendum), then SDE.
 ```
 Task: heads-up duplicate matches, the format the whole ladder rests on.
 
-Read: .10x/decisions/product-manager/heads-up-duplicate-ladder.md in full, ADR §Durable Objects and §Randomness and deck commitment (the Phase 1 seams: DuplicateController, deck:<n> retention, fresh secrets), src/engine/, worker/src/table.ts, the tickets from Prompt 4.
+Read: .10x/decisions/product-manager/heads-up-duplicate-ladder.md in full, ADR §Durable Objects and §Randomness and deck commitment (the Phase 1 seams: DuplicateController, deck:<n> retention, fresh secrets), src/engine/, worker/src/table.ts, the tickets from Prompt 2.
 
 Step 1 (architect, <= 1 page appended to the ADR as an Amendment): how a match of 2 segments x N hands is stored in the TableDO, how segment 2 reuses segment 1's decks with seats swapped WITHOUT leaking segment 2's cards during segment 1 (the opponent must not learn upcoming cards: commitments per deck, reveal rules for reused decks, fresh per-use secrets), and how fixed 100 bb stack resets, the +-2 bb draw band, the 20 s / 60 s clock, and 60 s reconnect grace map onto the existing clock and forfeit code.
 
@@ -221,7 +224,7 @@ Role: SDE with DBA review.
 ```
 Task: the number people climb and recruiters read.
 
-Read: PM rating-and-leaderboard.md in full, the DBA Phase 1 schema proposal (Prompt 3), heads-up-duplicate-ladder.md acceptance criteria 4, grading output from Prompt 7.
+Read: PM rating-and-leaderboard.md in full, the DBA Phase 1 schema proposal (Prompt 4), heads-up-duplicate-ladder.md acceptance criteria 4, grading output from Prompt 7.
 
 Build:
 1. Glicko-2 as a pure, fully unit-tested module (src/shared or worker/, no I/O), per format (hu-duplicate now; 6-max later). Test against the published Glickman worked example to the digits. Draw handling and the rating period convention are named constants with comments.
@@ -262,6 +265,8 @@ Finish with a short security pass on reports and sanctions endpoints.
 ```
 
 ---
+
+# PHASE 2: 6-max (`six-max-tables` casual, then rated arenas)
 
 ## 10. Phase 2a: N-seat `Table` and casual 6-max
 
@@ -309,6 +314,8 @@ Out of scope: collusion detection (growth-triggered, Prompt 12).
 ```
 
 ---
+
+# LATER (triggered)
 
 ## 12. Later: integrity v2 (run only when a trigger fires)
 

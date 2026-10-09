@@ -4,7 +4,7 @@ import { PROTOCOL } from '../../src/shared/protocol'
 import { bearerToken, identify, readSubprotocols } from './auth'
 import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
-import { logEvent } from './log'
+import { describeError, logEvent } from './log'
 import type { InitBody } from './table'
 import { HANDS_DLQ } from './queues'
 import { handsPerDay } from './stats'
@@ -141,11 +141,17 @@ export default {
  * sets CF-Connecting-IP on every request it serves; a request without it is
  * local (tests, `wrangler dev` tools) and is not counted.
  */
-async function overAddressLimit(request: Request, env: WorkerEnv) {
+export async function overAddressLimit(request: Request, env: WorkerEnv) {
   const ip = request.headers.get('CF-Connecting-IP')
   if (!ip) return false
-  const { success } = await env.IP_LIMITER.limit({ key: ip })
-  return !success
+  try {
+    const { success } = await env.IP_LIMITER.limit({ key: ip })
+    return !success
+  } catch (error) {
+    // A backstop that fails must not lock everyone out: let it through.
+    logEvent('error', { reason: 'ip_limiter', detail: describeError(error) })
+    return false
+  }
 }
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)$/

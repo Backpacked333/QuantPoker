@@ -18,6 +18,8 @@ import {
   MATCH_CREATES_PER_DAY,
   UPGRADES_PER_IP_PER_MINUTE,
 } from '../src/limits'
+import type { WorkerEnv } from '../src/env'
+import { overAddressLimit } from '../src/index'
 import { NEXT_HAND_MS } from '../src/table'
 import {
   connect,
@@ -369,6 +371,20 @@ describe('new tables', () => {
 })
 
 describe('one address', () => {
+  it('is let through when the rate limiter itself fails (a backstop never blocks sign-in)', async () => {
+    const request = new Request(`${ORIGIN}/api/me`, {
+      headers: { 'CF-Connecting-IP': '203.0.113.9' },
+    })
+    const broken = {
+      IP_LIMITER: {
+        limit: async () => {
+          throw new Error('limiter unavailable')
+        },
+      },
+    } as unknown as WorkerEnv
+    expect(await overAddressLimit(request, broken)).toBe(false)
+  })
+
   it(`gets ${UPGRADES_PER_IP_PER_MINUTE} sign-in requests a minute, then 429 before any token check`, async () => {
     const from = { 'CF-Connecting-IP': '203.0.113.7' }
     const statuses: number[] = []

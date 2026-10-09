@@ -1,12 +1,17 @@
 # Project status
 
-Last updated: 2026-10-09 by DBA (Prompt 4 done; deploy prerequisites done except U-4, U-8 and your go)
+Last updated: 2026-10-09 by SDE (Step 7 deployed; Phase 1 started; S7-11 waits on U-4)
+
+**Standing instructions from the user (2026-10-09):**
+
+- **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
+- **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
 
 ## Phase
 
 **Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
 
-**Step 7 built, tested, not deployed (2026-10-09, PR #9).** The server now survives strangers and shows its failures:
+**Step 7 deployed 2026-10-09 23:31 UTC (PR #9 merged as `3cc9bd0` on your go).** Production serves the build, verified file by file, and both GitHub checks on `main` are green. Launch evidence: `.10x/reviews/2026-10-09-launch-verification.md`. The server now survives strangers and shows its failures:
 
 - per-account frame and connect limits, oversize and illegal-frame closes with documented codes, invite caps and expiry, an address rate limit, and an Origin allowlist;
 - every archived hand re-verified off the game path by a queue consumer, with incidents for anything that fails;
@@ -24,7 +29,10 @@ Last updated: 2026-10-09 by DBA (Prompt 4 done; deploy prerequisites done except
 - `wrangler deploy` now creates both queues itself;
 - the Fair play report wording stays as written.
 
-Still yours: U-4 (the Worker's `SUPABASE_SECRET_KEY` and one real sign-in), U-8 (dashboard checks), and your go to merge PR #9 (see `.10x/handoff.md`).
+Still yours:
+
+- **U-4:** the Worker's `SUPABASE_SECRET_KEY`, one real sign-in and one two-account match. Until then nothing is archived, and S7-11's last four rows stay open.
+- **U-8:** the dashboard checks.
 
 **DBA review 2026-10-09 (`.10x/reviews/2026-10-09-dba-review.md`):** no Critical or High open.
 
@@ -98,7 +106,8 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
   - `verify_hand` and `hands_created_index` applied to production;
   - report contact: interim wording;
   - DBA review: done.
-- [ ] User: U-4 and U-8, then say go to merge PR #9
+- [x] Step 7 deployed (PR #9 → `3cc9bd0`, 2026-10-09); `verify:deploy`, endpoints and the Origin allowlist VERIFIED in production
+- [ ] User: U-4 (key, sign-in, one two-account match) to close S7-11; U-8 dashboard checks
 - [ ] SDE: S7-05 (queue-wait and ack-latency telemetry) and S7-11 (launch gate, after your go)
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.
 - [x] Security: Phase 0 review, items 1–7 (`.10x/reviews/2026-10-09-security-review.md`, `.10x/decisions/security/multiplayer-platform.md`). Fixed SR-01 to SR-05; SR-06 to SR-13 are tickets or user actions with file:line.

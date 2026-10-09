@@ -167,7 +167,7 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 | S7-08  | Done: 500 hands, p95 17 ms, 0 failures (local)                                                                                                                                                                                                                |
 | S7-09  | Done: 5 rows VERIFIED, no server bug found                                                                                                                                                                                                                    |
 | S7-10  | Done. Report contact (U-6): the interim wording stays ("keep them for the report form that comes with rated play"); an address can replace it in `src/info/contact.ts`                                                                                        |
-| S7-11  | Open: needs U-4, U-8 and your go (U-5). Done since: DBA review (U-2), migrations applied, queues created by the deploy itself (U-3), report contact (U-6)                                                                                                     |
+| S7-11  | Deployed 2026-10-09 (`3cc9bd0`). Verified: deploy matches, queues, endpoints, Origin 403. Open until U-4: ES256 token, an archived match, disjoint `hand_holes`, `verified` hands; smoke p95 waits on Q4                                                      |
 | S7-12  | Done                                                                                                                                                                                                                                                          |
 | S7-13  | Open (new, DBA review DB-4): park an archive call that can never succeed                                                                                                                                                                                      |
 
@@ -535,6 +535,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-02 · Segment decks: variant A (duplicate) or variant B (fresh decks, luck-adjusted). Q1 picks one.
 
+**Q1 answered 2026-10-09: variant B.** Only the B goal, files and tests below apply.
+
 - **Goal (A, same-pair duplicate).** Segment 2 hand _i_ deals a segment-1 deck with the button flipped. Flipping the button swaps the hole cards exactly, because `dealSlots` deals relative to the button. Each deal gets a fresh commitment secret. The mitigations Q1 chooses apply:
   - a secret random order π of the segment-2 decks, stored in DO storage;
   - no in-match review on rated tables (review unlocks at `match_end`);
@@ -719,6 +721,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** DBA (query cost).
 
 ### P1-11 · Glicko-2 as a pure, versioned module
+
+**Status 2026-10-09: done** (`src/rating/glicko2.ts`; `.10x/decisions/sde/rating-and-leaderboard.md`). "RD shrinks with play" is tested as "lower than sitting the period out"; see the log.
 
 - **Goal.** `src/rating/glicko2.ts`: pure, no I/O, `VERSION = 'glicko2.v1'`, named and commented constants. τ = 0.5. One match is one rating period. Inactivity grows φ once per 30 days without a rated match. A draw scores 0.5.
 - **User-visible outcome.** None.
@@ -1257,7 +1261,7 @@ More sessions mostly add merge work: every W ticket rebases over `table.ts`.
 
 ## Questions for you (7)
 
-1. **Same-pair duplicate leaks segment 2. Which format should rated HU use?**
+1. **Same-pair duplicate leaks segment 2. Which format should rated HU use?** **Answered 2026-10-09: (B)**, fresh decks every hand with a luck-adjusted result. P1-02 builds variant B; the variant A parts of P1-02 and the deck-reuse questions in P1-00 are dropped.
    - **What happens today.** Segment-2 hand _i_ is segment-1 deck _i_ with the button flipped. Each player therefore holds the opponent's segment-1 cards under the same board. The live table already lets you reopen every finished hand of the match, with your own cards and the board.
    - **Effect.** From the flop on, a player who looks back, or keeps notes, knows the opponent's cards, the turn and the river. Fresh commitment secrets don't change that.
    - **(A)** Keep duplicate with mitigations: secret segment-2 order, no in-match review, an asymmetry statistic for later review, and an honest Fair Play line. Note-takers still win segment 2.

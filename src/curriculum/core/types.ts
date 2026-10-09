@@ -341,7 +341,7 @@ export interface ExperimentController<I, O> {
   reflect(text: string): void
   archive(): void
   resetControls(): void
-  saveProtocolState(next: JsonObject): void
+  saveProtocolState(next: JsonObject, searchSummary?: JsonObject): void
   recordSearchSummary(summary: JsonObject): void
   subscribe(listener: () => void): () => void
   getRevision(): number

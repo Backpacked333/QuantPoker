@@ -3,7 +3,7 @@
   overflow-wrap: anywhere;
 }
 body:has(.curriculum-workspace) {
-  min-width: 320px;
+  min-width: 0;
 }
 .curriculum-workspace select {
   min-width: 0;

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { evaluateCase } from '../core/assessment'
 import { hashText } from '../core/seededRandom'
 import type { LearningSession } from '../core/session'
@@ -131,6 +131,8 @@ export function CasePlayer({
   caseRecord: CaseRecord
   session: LearningSession
 }) {
+  const feedbackRef = useRef<HTMLHeadingElement>(null)
+  const focusFeedback = useRef(false)
   const [attempt, setAttempt] = useState<AttemptSnapshot>(() => {
     const prior = [...session.store.attempts]
       .reverse()
@@ -158,6 +160,12 @@ export function CasePlayer({
           phase: 'draft',
         }
   })
+  useEffect(() => {
+    if (attempt.submittedAt && focusFeedback.current) {
+      focusFeedback.current = false
+      feedbackRef.current?.focus()
+    }
+  }, [attempt.submittedAt])
   function save(next: AttemptSnapshot) {
     session.recordAttempt(next)
     setAttempt(next)
@@ -268,6 +276,7 @@ export function CasePlayer({
                 session.clock,
                 session.store.exposedVariants,
               )
+              focusFeedback.current = true
               save({
                 ...attempt,
                 evaluation,
@@ -345,7 +354,9 @@ export function CasePlayer({
       )}
       {attempt.evaluation ? (
         <section role="status">
-          <h4>Structured feedback</h4>
+          <h4 ref={feedbackRef} tabIndex={-1}>
+            Structured feedback
+          </h4>
           <p>
             {attempt.evaluation.earned}/{attempt.evaluation.max};{' '}
             {attempt.evaluation.eligible

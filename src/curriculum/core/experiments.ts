@@ -38,6 +38,7 @@ export interface ControllerOptions<I, O> {
 export class RunController<I, O> implements ExperimentController<I, O> {
   readonly mode: 'explore' | 'assess'
   private current: AttemptSnapshot
+  private currentSnapshot: Readonly<AttemptSnapshot> | null = null
   private input: Readonly<I>
   private output: ModelResult<O> | null = null
   private protocol: JsonObject = {}
@@ -69,7 +70,7 @@ export class RunController<I, O> implements ExperimentController<I, O> {
       throw new RangeError(decoded.errors.map((e) => e.message).join(' '))
     this.input = immutable(decoded.value)
     this.current = draft ? safeClone(draft.attempt) : this.makeDraft(this.input)
-    this.protocol = draft ? safeClone(draft.protocol) : {}
+    this.protocol = immutable(draft?.protocol ?? {})
     if (this.current.phase === 'running') {
       this.current.phase = 'prediction_committed'
       this.message =
@@ -129,10 +130,10 @@ export class RunController<I, O> implements ExperimentController<I, O> {
     return this.output
   }
   get attempt() {
-    return immutable(this.current)
+    return (this.currentSnapshot ??= immutable(this.current))
   }
   get protocolState() {
-    return immutable(this.protocol)
+    return this.protocol
   }
   get status() {
     return this.message
@@ -148,22 +149,17 @@ export class RunController<I, O> implements ExperimentController<I, O> {
   }
   getRevision = () => this.revision
   private notify() {
+    this.currentSnapshot = null
     this.revision++
     this.listeners.forEach((l) => l())
   }
   private persist() {
+    this.currentSnapshot = null
     this.syncAssistance()
-    this.options.session.recordAttempt(this.current)
-    this.options.session.update((store) => ({
-      ...store,
-      drafts: {
-        ...store.drafts,
-        [this.key]: {
-          attempt: safeClone(this.current),
-          protocol: safeClone(this.protocol),
-        },
-      },
-    }))
+    this.options.session.recordAttempt(this.current, {
+      key: this.key,
+      protocol: this.protocol,
+    })
     this.notify()
   }
   private syncAssistance() {
@@ -241,7 +237,7 @@ export class RunController<I, O> implements ExperimentController<I, O> {
       this.current.phase = 'archived'
       this.options.session.recordAttempt(this.current)
       this.current = this.makeDraft(decoded.value, prior)
-      this.protocol = {}
+      this.protocol = immutable({})
     }
     this.input = immutable(decoded.value)
     this.current.inputs = safeClone(
@@ -399,8 +395,9 @@ export class RunController<I, O> implements ExperimentController<I, O> {
   resetControls() {
     this.requestInputChange(this.options.manifest.defaultInputs as I)
   }
-  saveProtocolState(next: JsonObject) {
-    this.protocol = safeClone(next)
+  saveProtocolState(next: JsonObject, searchSummary?: JsonObject) {
+    this.protocol = immutable(next)
+    if (searchSummary) this.current.searchSummary = safeClone(searchSummary)
     this.persist()
   }
   recordSearchSummary(summary: JsonObject) {

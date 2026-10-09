@@ -66,6 +66,37 @@ class FakeWorker implements WorkerPort {
   }
 }
 describe('immutable prediction experiment lifecycle', () => {
+  it('publishes and saves the attempt and resumable protocol together once per transition', () => {
+    const storage = new MemoryStorage()
+    const session = new LearningSession(storage, fixedClock)
+    const c = controller('assess', session)
+    const listener = vi.fn(() => {
+      expect(session.store.drafts[c.key].attempt).toEqual(
+        session.store.attempts.find((a) => a.id === c.attempt.id),
+      )
+    })
+    session.subscribe(listener)
+    const before = storage.writes.length
+    c.saveProtocolState({ stage: 'registered' }, { totalSearchCount: 20 })
+    expect(storage.writes.length - before).toBe(1)
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(session.store.drafts[c.key].protocol).toEqual({
+      stage: 'registered',
+    })
+    expect(c.attempt.searchSummary).toEqual({ totalSearchCount: 20 })
+    const a = c.attempt
+    const p = c.protocolState
+    expect(c.attempt).toBe(a)
+    expect(c.protocolState).toBe(p)
+    expect(Object.isFrozen(p)).toBe(true)
+    c.saveProtocolState({ stage: 'frozen' })
+    expect(c.attempt).not.toBe(a)
+    expect(c.protocolState).not.toBe(p)
+    expect(p).toEqual({ stage: 'registered' })
+    expect(
+      new LearningSession(storage, fixedClock).store.drafts[c.key].protocol,
+    ).toEqual({ stage: 'frozen' })
+  })
   it('runs the compiled manifest only after assessment commitment and preserves its snapshot', async () => {
     const c = controller()
     await expect(c.run()).rejects.toThrow('Commit')

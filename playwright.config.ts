@@ -11,7 +11,11 @@ export default defineConfig({
   timeout: 90_000,
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  // In CI the JSON report lets scripts/check-e2e.ts prove the live
+  // two-browser project ran rather than silently dropped out.
+  reporter: process.env.CI
+    ? [['github'], ['json', { outputFile: 'playwright-report/results.json' }]]
+    : 'list',
   use: { baseURL: 'http://localhost:4174', trace: 'retain-on-failure' },
   projects: [
     {

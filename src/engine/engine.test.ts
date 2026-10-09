@@ -20,6 +20,23 @@ import type { HandState, PlayerAction, SeatId } from './types'
 const SOAK = !!process.env.ENGINE_SOAK
 const HANDS_PER_N = SOAK ? 100_000 : 10_000
 const WALK_TIMEOUT = SOAK ? 3_600_000 : 180_000
+/**
+ * Seeds the random hands. The scheduled soak passes a fresh one each night
+ * (.github/workflows/engine-soak.yml); a failure names it so it can be
+ * replayed exactly.
+ */
+const SEED = Number(process.env.ENGINE_SEED ?? 1000)
+if (SOAK)
+  console.log(
+    `engine soak: seed ${SEED}, ${HANDS_PER_N.toLocaleString()} hands per table size`,
+  )
+
+/** Names the seed and hand, so any failure can be replayed exactly. */
+function atHand(error: unknown, n: number, h: number) {
+  const where = `seed ${SEED}, ${n} players, hand ${h + 1} (replay: ENGINE_SEED=${SEED} npm run engine:soak)`
+  if (error instanceof Error) error.message = `${where}: ${error.message}`
+  return error
+}
 
 const seatOf = (state: HandState, seat: SeatId) =>
   state.players.find((p) => p.seat === seat)!
@@ -88,44 +105,47 @@ describe('engine invariants over random hands', () => {
     it(
       `holds for ${HANDS_PER_N.toLocaleString()} hands at ${n} players`,
       () => {
-        const random = lcg(1000 + n)
+        const random = lcg(SEED + n)
         let showdowns = 0
         let sidePots = 0
-        for (let h = 0; h < HANDS_PER_N; h++) {
-          const { config: cfg, deck } = randomTable(n, random, h + 1)
-          const chips = cfg.seats.reduce((s, p) => s + p.stack, 0)
-          let state = startHand(cfg, deck)
-          assertInvariants(state, chips)
-          const taken: { seat: SeatId; action: PlayerAction }[] = []
-          while (!isOver(state)) {
-            if (random() < 0.1) {
-              const bad = illegalAction(state, random)
-              if (bad) {
-                const before = JSON.stringify(state)
-                expect(() => act(state, bad.seat, bad.action)).toThrow(
-                  EngineError,
-                )
-                expect(JSON.stringify(state)).toBe(before)
-              }
-            }
-            const seat = state.toAct!
-            const action = randomAction(state, random)
-            state = act(state, seat, action)
-            taken.push({ seat, action })
+        for (let h = 0; h < HANDS_PER_N; h++)
+          try {
+            const { config: cfg, deck } = randomTable(n, random, h + 1)
+            const chips = cfg.seats.reduce((s, p) => s + p.stack, 0)
+            let state = startHand(cfg, deck)
             assertInvariants(state, chips)
-            // The chip-by-chip oracle is slow; sample it.
-            if (h % 10 === 0 && state.players.every((p) => p.bet === 0))
-              expect(state.pots).toEqual(referencePots(state.players))
-            if (taken.length >= 200) throw new Error('Hand did not terminate')
+            const taken: { seat: SeatId; action: PlayerAction }[] = []
+            while (!isOver(state)) {
+              if (random() < 0.1) {
+                const bad = illegalAction(state, random)
+                if (bad) {
+                  const before = JSON.stringify(state)
+                  expect(() => act(state, bad.seat, bad.action)).toThrow(
+                    EngineError,
+                  )
+                  expect(JSON.stringify(state)).toBe(before)
+                }
+              }
+              const seat = state.toAct!
+              const action = randomAction(state, random)
+              state = act(state, seat, action)
+              taken.push({ seat, action })
+              assertInvariants(state, chips)
+              // The chip-by-chip oracle is slow; sample it.
+              if (h % 10 === 0 && state.players.every((p) => p.bet === 0))
+                expect(state.pots).toEqual(referencePots(state.players))
+              if (taken.length >= 200) throw new Error('Hand did not terminate')
+            }
+            checkShowdown(state)
+            if (state.result!.showdown) showdowns++
+            if (state.pots.length > 1) sidePots++
+            const replayed = replayHand(cfg, deck, taken)
+            expect(JSON.stringify(replayed[replayed.length - 1])).toBe(
+              JSON.stringify(state),
+            )
+          } catch (error) {
+            throw atHand(error, n, h)
           }
-          checkShowdown(state)
-          if (state.result!.showdown) showdowns++
-          if (state.pots.length > 1) sidePots++
-          const replayed = replayHand(cfg, deck, taken)
-          expect(JSON.stringify(replayed[replayed.length - 1])).toBe(
-            JSON.stringify(state),
-          )
-        }
         // The walk must actually exercise showdowns and side pots.
         expect(showdowns).toBeGreaterThan(HANDS_PER_N / 20)
         if (n > 2) expect(sidePots).toBeGreaterThan(HANDS_PER_N / 100)

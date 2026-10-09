@@ -93,8 +93,8 @@ describe('migrations', () => {
       '20261008134345_abandonments_match_index.sql',
       '20261008173914_record_match.sql',
       '20261008181317_record_match_no_show.sql',
-      '20261009090000_verify_hand.sql',
-      '20261009120000_hands_created_index.sql',
+      '20261009213919_verify_hand.sql',
+      '20261009213923_hands_created_index.sql',
     ])
   })
 })

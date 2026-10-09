@@ -2,40 +2,23 @@
 // Applies supabase/migrations to an in-process Postgres (PGlite) with a stub of
 // Supabase's auth schema and API roles, then checks the access rules as the
 // browser (anon / authenticated) and the table server (service_role) see them.
-import { readdirSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { migrationFiles, MIGRATIONS_DIR, SUPABASE_STUB } from './harness'
 
-const dir = new URL('../migrations/', import.meta.url)
+const dir = MIGRATIONS_DIR
 // The learning_cloud migration (an earlier app version's tables, kept in the
-// repo so it matches the live migration history) needs more of Supabase than
-// this stub provides; the multiplayer migrations only depend on auth.users.
-const MIGRATIONS = readdirSync(dir)
-  .filter(
-    (f) => f.endsWith('.sql') && !f.startsWith('20261007192620_learning_cloud'),
-  )
-  .sort()
+// repo so it matches the live migration history) is applied and checked in
+// rls-matrix.test.ts; this suite is about the multiplayer migrations.
+const MIGRATIONS = migrationFiles().filter(
+  (f) => !f.startsWith('20261007192620_learning_cloud'),
+)
 
 const ALICE = '11111111-1111-4111-8111-111111111111'
 const BOB = '22222222-2222-4222-8222-222222222222'
 const EARLY = '00000000-0000-4000-8000-000000000000'
 const MATCH = '33333333-3333-4333-8333-333333333333'
-
-// What Supabase provides before any project migration runs.
-const SUPABASE_STUB = `
-  create role anon nologin;
-  create role authenticated nologin;
-  create role service_role nologin bypassrls;
-  create schema auth;
-  create table auth.users (id uuid primary key, email text);
-  create function auth.uid() returns uuid language sql stable as
-    $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
-  grant usage on schema auth to anon, authenticated, service_role;
-  grant usage on schema public to anon, authenticated, service_role;
-  -- Supabase's permissive defaults, which the migrations must narrow.
-  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
-`
 
 let db: PGlite
 

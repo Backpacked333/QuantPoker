@@ -7,6 +7,7 @@ import { lobbyStub, tableStub } from './lobby'
 import { logEvent } from './log'
 import type { InitBody } from './table'
 import { HANDS_DLQ } from './queues'
+import { handsPerDay } from './stats'
 import { consumeDeadLetters, consumeHands } from './verify'
 
 export { LobbyDO } from './lobby'
@@ -32,6 +33,9 @@ export default {
         supabaseUrl: env.SUPABASE_URL,
         supabaseKey: env.SUPABASE_PUBLISHABLE_KEY,
       })
+
+    // Hands per day from the archive, for the operator (README §Operations).
+    if (pathname === '/api/stats') return handsPerDay(env)
 
     // One address cannot make the server verify tokens and wake objects
     // without bound. Checked before any token work.

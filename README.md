@@ -243,6 +243,37 @@ Practice against Atlas is client-side. The trainer makes no analytics, AI or net
 
 These do not replace testing with real learners, screen-reader users and a range of devices.
 
+## Operations (online play)
+
+Production is the Worker `quantpoker` on Cloudflare (site, `/api/*`, `/ws/*`, Durable Objects, queues) and the Supabase project `quantpoker` (accounts and the hand archive). Nothing below needs SQL.
+
+**Hands per day.** Open [`/api/stats`](https://quantpoker.bbcroysalman.workers.dev/api/stats): archived and verified hands for each of the last 7 UTC days, from the archive, cached for 5 minutes. `hands` minus `verified` is the backlog still being checked (normally zero within a minute).
+
+**Logs.** Cloudflare → Workers & Pages → `quantpoker` → Observability → Logs. Every event is one JSON line with an `evt` field and ids only (`worker/src/log.ts`; never cards, decks, secrets, tokens or addresses):
+
+| `evt`                                  | When                                                                | Useful fields                                               |
+| -------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `match_start`, `hand_end`, `match_end` | a table deals hand 1, finishes a hand, ends                         | `matchId`, `handNo`, `reason` (`complete`, `forfeit`, …)    |
+| `forfeit`, `no_show`                   | three timeouts in a row; a paired player who never came             | `matchId`, `seat`, `userId`                                 |
+| `limit_hit`                            | a socket or request cut off (codes below)                           | `userId`, `code`, `reason` (`rate_limited`, `too_large`, …) |
+| `outbox_retry`                         | an archive call or queue send failed and will be retried            | `matchId`, `rpc`, `attempt`, `depth` (calls waiting)        |
+| `verified`, `verify_failed`, `dlq`     | the verify consumer's verdict; a hand it gave up on after 5 retries | `matchId`, `handNo`, `detail` (problem words)               |
+| `error`                                | anything unexpected (engine fault, alarm, archive, consumer)        | `reason`, `detail`                                          |
+
+Queries worth saving in the Logs view: `evt = hand_end` grouped by day (hands/day from the live side); `evt = error`; `evt = verify_failed or evt = dlq`; `evt = outbox_retry` with `depth > 20` (Supabase is down or refusing calls); `evt = limit_hit` grouped by `reason`. Check them weekly until there is an alert for each.
+
+**Find a failed hand, end to end.**
+
+1. Start from what you have: a player's match link (`#play/<matchId>`), a `verify_failed`, `dlq` or `error` line, or an `incidents` row.
+2. Logs, filtered by `matchId = <id>`: the match's story in order (`match_start`, one `hand_end` per hand, any `limit_hit`, `outbox_retry` or `error`, then `match_end` with its reason).
+3. Supabase → Table Editor → `hands`, filter `id` = `<matchId>:<handNo>`: `verified` true means the server replayed it from the full deck and it matched its record and commitment. `incidents`, filter `match_id`: `kind` is `verify_failed` (with the `problems` that disagreed: `commitment`, `result`, `board`, `shown`, `reveal`, `holes`, `replay`, `chips`), `dlq`, or `engine_fault` (with the full state as evidence; this table is service-role only).
+4. `verified` still false and no incident: look for `outbox_retry` (the archive is behind; it retries with backoff and catches up on its own) or `error reason=verify` (the consumer is retrying).
+5. The player's own view: they can open "Review hand n" during the match; its "Deck verified" check runs in their browser against the commitment they were sent before the deal.
+
+**Close codes and limits** (`src/shared/protocol.ts`, `worker/src/limits.ts`): `4001` another tab took the seat; `4400` an oversized frame or more than 5 illegal frames in one hand (the seat may reconnect); `4404` the table has closed (finished tables delete themselves 10 minutes after the end, unjoined invites after 24 hours); `4409` playing at another table; `4429` more than 20 frames or connects per 5 s from one account. HTTP `403 origin` for a socket from another site; `429` for more than 30 new invite tables per account per UTC day, or 300 signed-in requests per minute from one address (approximate, per Cloudflare location; a WAF rate-limiting rule on `/ws/*` and `/api/*` is the stronger control).
+
+**Deploys.** Cloudflare builds and deploys `main` on every push; `.github/workflows/deploy-check.yml` then waits for that build and compares production with the commit, file by file (`npm run verify:deploy` does the same by hand). Before a deploy that adds queues or migrations: create the queues (`npx wrangler queues create quantpoker-hands` and `quantpoker-hands-dlq`) and apply the new `supabase/migrations/*` first, or the deploy or the verify consumer fails.
+
 ## Deliberate boundaries
 
 - **The trainer is not money-safe:** practice against Atlas runs entirely in the browser with `Math.random`, and its state is inspectable in developer tools. Online play is designed to be server-authoritative instead, and is still play money only.

@@ -226,19 +226,22 @@ export class TableDO extends DurableObject<WorkerEnv> {
       // Invite link: the first other account to open it takes the empty seat.
       if (match.status !== 'waiting' || match.players.length >= 2)
         return json({ error: 'table full' }, 403)
-      if (match.status !== 'waiting' || match.players.length >= 2)
-        return json({ error: 'table full' }, 403)
       // One table per account: someone playing elsewhere is sent back there.
       const elsewhere = await lobbyStub(this.env).claim(userId, match.id)
       if (elsewhere) return this.refuse(4409, elsewhere)
-      // The claim awaited: another account may have taken the seat meanwhile.
-      if (match.players.length >= 2) {
-        await lobbyStub(this.env).release([userId], match.id)
-        return json({ error: 'table full' }, 403)
+      // The claim awaited, so another join may have run meanwhile. If it
+      // seated this same account (a second tab), join as that seat: releasing
+      // here would free an account that is now playing at this table.
+      player = match.players.find((p) => p.userId === userId)
+      if (!player) {
+        if (match.players.length >= 2) {
+          await lobbyStub(this.env).release([userId], match.id)
+          return json({ error: 'table full' }, 403)
+        }
+        player = this.newPlayer(1, { userId, username })
+        match.players.push(player)
+        await this.ctx.storage.put('match', match)
       }
-      player = this.newPlayer(1, { userId, username })
-      match.players.push(player)
-      await this.ctx.storage.put('match', match)
     }
     // One socket per account: a second tab replaces the first.
     for (const old of this.ctx.getWebSockets(userId))

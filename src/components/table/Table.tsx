@@ -61,6 +61,7 @@ export function Table({
   onSettings,
   onSkipGuided,
   runout,
+  versus,
 }: {
   game: Game
   style: AtlasStyle
@@ -74,7 +75,13 @@ export function Table({
   onSettings: () => void
   onSkipGuided: () => void
   runout: Runout
+  /**
+   * A table against a real opponent: their name replaces Atlas, and the
+   * practice-only controls (pause, history, settings) are hidden.
+   */
+  versus?: { opponent: string }
 }) {
+  const opponent = versus?.opponent ?? 'Atlas'
   const [flights, setFlights] = useState<Flight[]>([])
   const previous = useRef(game)
   const flightId = useRef(0)
@@ -176,38 +183,42 @@ export function Table({
       <div className="table-top">
         <span className="table-title">
           <span className="live-dot" />
-          {guided ? 'Guided path' : 'Practice table'}
+          {versus ? 'Live table' : guided ? 'Guided path' : 'Practice table'}
           <span className="table-sep">/</span>
           <span className="table-sub">
-            Heads-up · 10/20 · Atlas plays {STYLES[style].label.toLowerCase()}
+            {versus
+              ? `Heads-up · 10/20 · vs ${opponent}`
+              : `Heads-up · 10/20 · Atlas plays ${STYLES[style].label.toLowerCase()}`}
           </span>
         </span>
-        <span className="table-tools">
-          <button
-            className="icon-btn on-dark"
-            onClick={onTogglePause}
-            aria-label={paused ? 'Resume table (P)' : 'Pause table (P)'}
-            title={paused ? 'Resume (P)' : 'Pause (P)'}
-          >
-            {paused ? <Play size={15} /> : <Pause size={15} />}
-          </button>
-          <button
-            className="icon-btn on-dark"
-            onClick={onHistory}
-            aria-label="Hand history"
-            title="Hand history"
-          >
-            <History size={15} />
-          </button>
-          <button
-            className="icon-btn on-dark"
-            onClick={onSettings}
-            aria-label="Table settings"
-            title="Settings"
-          >
-            <Settings2 size={15} />
-          </button>
-        </span>
+        {!versus && (
+          <span className="table-tools">
+            <button
+              className="icon-btn on-dark"
+              onClick={onTogglePause}
+              aria-label={paused ? 'Resume table (P)' : 'Pause table (P)'}
+              title={paused ? 'Resume (P)' : 'Pause (P)'}
+            >
+              {paused ? <Play size={15} /> : <Pause size={15} />}
+            </button>
+            <button
+              className="icon-btn on-dark"
+              onClick={onHistory}
+              aria-label="Hand history"
+              title="Hand history"
+            >
+              <History size={15} />
+            </button>
+            <button
+              className="icon-btn on-dark"
+              onClick={onSettings}
+              aria-label="Table settings"
+              title="Settings"
+            >
+              <Settings2 size={15} />
+            </button>
+          </span>
+        )}
       </div>
       {guided && (
         <div className="guided-banner">
@@ -235,7 +246,7 @@ export function Table({
         <div className="deck-stack" aria-hidden />
 
         <div
-          className={`seat seat-atlas ${thinking ? 'seat-active' : ''} ${result && result.winner === 1 ? 'seat-won' : ''} ${result?.text.startsWith('Atlas fold') ? 'seat-folded' : ''}`}
+          className={`seat seat-atlas ${thinking ? 'seat-active' : ''} ${result && result.winner === 1 ? 'seat-won' : ''} ${result?.text.startsWith(`${opponent} fold`) ? 'seat-folded' : ''}`}
         >
           <div className="seat-cards">
             {game.cards[1].map((card, i) => (
@@ -253,10 +264,19 @@ export function Table({
             ))}
           </div>
           <div className="seat-plate">
-            <AtlasAvatar thinking={thinking} />
+            {versus ? (
+              <span className="avatar avatar-player" aria-hidden>
+                {opponent.slice(0, 1).toUpperCase()}
+              </span>
+            ) : (
+              <AtlasAvatar thinking={thinking} />
+            )}
             <span className="seat-text">
               <strong>
-                Atlas <em className="seat-badge">{STYLES[style].label}</em>
+                {opponent}{' '}
+                {!versus && (
+                  <em className="seat-badge">{STYLES[style].label}</em>
+                )}
               </strong>
               <span>
                 <AnimatedNumber value={stacks[1]} /> chips
@@ -275,7 +295,7 @@ export function Table({
                 <span
                   className="thinking-dots"
                   role="img"
-                  aria-label="Atlas is thinking"
+                  aria-label={`${opponent} is thinking`}
                 >
                   <i />
                   <i />
@@ -402,7 +422,7 @@ export function Table({
                 <em>{Math.round(live.hero * 100)}%</em>
               </span>
               <span className="runout-row">
-                <b>Atlas</b>
+                <b>{opponent}</b>
                 <span className="runout-track">
                   <i
                     className="atlas"

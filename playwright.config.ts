@@ -20,7 +20,17 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 960 },
       },
-      testIgnore: [/mobile/, /visual/],
+      testIgnore: [/mobile/, /visual/, /live/],
+    },
+    // Two browsers against the real Worker (site + table server).
+    {
+      name: 'live',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 900 },
+        baseURL: 'http://localhost:8787',
+      },
+      testMatch: /live/,
     },
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: /mobile/ },
     ...(visual
@@ -45,10 +55,22 @@ export default defineConfig({
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: 'disabled' },
   },
-  webServer: {
-    command: 'npm run build && npx vite preview --port 4174 --strictPort',
-    url: 'http://localhost:4174',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'npm run build && npx vite preview --port 4174 --strictPort',
+      url: 'http://localhost:4174',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      // Serves the same dist/ once the build above is up, plus the table
+      // server, with dev tokens enabled for the two test players.
+      command:
+        "sh -c 'until curl -sf http://localhost:4174 >/dev/null; do sleep 1; done; npx wrangler dev --port 8787 --var DEV_AUTH_SECRET:e2e'",
+      url: 'http://localhost:8787/api/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 180_000,
+      env: { WRANGLER_SEND_METRICS: 'false' },
+    },
+  ],
 })

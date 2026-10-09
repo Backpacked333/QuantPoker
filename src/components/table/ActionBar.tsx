@@ -7,13 +7,15 @@ import {
 } from 'lucide-react'
 import type { Game } from '../../lib/poker'
 import type { legalActions } from '../../lib/poker'
+import type { Preset } from '../../lib/presets'
+
+export type { Preset }
 
 const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 const signed = (n: number) =>
   `${n < 0 ? '−' : '+'}${Math.abs(n).toFixed(Math.abs(n) < 10 ? 1 : 0)}`
 const pct = (n: number) => `${Math.round(n * 100)}%`
 
-export type Preset = { label: string; key: string; to: number; ev?: number }
 export type ActionMath = {
   revealed: boolean
   ready: boolean
@@ -156,6 +158,7 @@ export function ActionBar({
   onDeal,
   onReview,
   revealing = false,
+  versus,
 }: {
   game: Game
   legal: ReturnType<typeof legalActions>
@@ -174,6 +177,11 @@ export function ActionBar({
   onReview: () => void
   /** An all-in runout is still being revealed; hold the result. */
   revealing?: boolean
+  /**
+   * A table against a real opponent: their name in the status, and the
+   * server deals, so a finished hand shows `next` instead of deal buttons.
+   */
+  versus?: { opponent: string; next: string }
 }) {
   const result = game.result
   if (result && revealing)
@@ -200,20 +208,23 @@ export function ActionBar({
           </span>
         </div>
         <p className="action-caption">
-          One outcome is a data point, not a verdict. Review the decision, not
-          the result.
+          {versus
+            ? versus.next
+            : 'One outcome is a data point, not a verdict. Review the decision, not the result.'}
         </p>
-        <div className="done-buttons">
-          <button className="btn btn-outline" onClick={onReview}>
-            Review hand
-          </button>
-          <button className="btn btn-accent btn-lg" onClick={onDeal}>
-            {game.stacks.some((s) => s === 0)
-              ? 'Refill & deal next hand'
-              : 'Deal next hand'}
-            {shortcuts ? <kbd>↵</kbd> : <ArrowRight size={16} />}
-          </button>
-        </div>
+        {!versus && (
+          <div className="done-buttons">
+            <button className="btn btn-outline" onClick={onReview}>
+              Review hand
+            </button>
+            <button className="btn btn-accent btn-lg" onClick={onDeal}>
+              {game.stacks.some((s) => s === 0)
+                ? 'Refill & deal next hand'
+                : 'Deal next hand'}
+              {shortcuts ? <kbd>↵</kbd> : <ArrowRight size={16} />}
+            </button>
+          </div>
+        )}
       </div>
     )
   const facing = legal.toCall > 0
@@ -225,7 +236,11 @@ export function ActionBar({
       <div className="action-status" aria-live="polite">
         <span className={`status-dot ${canAct ? 'live' : 'wait'}`} />
         <strong>
-          {paused ? 'Table paused' : canAct ? 'Your move' : 'Atlas to act'}
+          {paused
+            ? 'Table paused'
+            : canAct
+              ? 'Your move'
+              : `${versus?.opponent ?? 'Atlas'} to act`}
         </strong>
         <span className="muted">
           {canAct

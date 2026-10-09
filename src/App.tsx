@@ -16,6 +16,7 @@ import {
   Coins,
   Diamond,
   Gauge,
+  Globe,
   GraduationCap,
   Lightbulb,
   Lock,
@@ -63,7 +64,8 @@ import { LazyMotion, useReducedMotionConfig } from 'motion/react'
 import type { FinishedHand } from './state/trainer'
 import { Table } from './components/table/Table'
 import { ActionBar } from './components/table/ActionBar'
-import type { Preset } from './components/table/ActionBar'
+import { buildPresets } from './lib/presets'
+import type { Preset } from './lib/presets'
 import { LabSkeleton } from './components/lab/LabSkeleton'
 import { LabSheet } from './components/LabSheet'
 import { SplitHandle } from './components/SplitHandle'
@@ -80,15 +82,20 @@ import { Tour } from './components/Tour'
 import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
 
-type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery'
+type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery' | 'live'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
+const LiveApp = lazy(() => import('./net/LiveApp'))
 const Gallery = lazy(() => import('./dev/Gallery'))
 // The lab is the heaviest view; it loads in parallel with the first paint.
 const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
-/** Hash routes: #table (default), #progress, #learn/... and #learn/quick[/id]. */
+/**
+ * Hash routes: #table (default), #progress, #lobby[/find] and #play/<id>
+ * (online play), #learn/...
+ * and #learn/quick[/id].
+ */
 function parseRoute(hash: string): Route {
   const quick = hash.match(/^#learn\/quick(?:\/([\w-]+))?$/)
   if (quick) {
@@ -97,6 +104,8 @@ function parseRoute(hash: string): Route {
   }
   if (isLearningRoute(hash)) return { view: 'curriculum', lesson: null }
   if (hash === '#progress') return { view: 'progress', lesson: null }
+  if (/^#lobby(?:\/find)?$/.test(hash) || /^#play\/[0-9a-f-]{36}$/.test(hash))
+    return { view: 'live', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }
   return { view: 'play', lesson: null }
@@ -251,7 +260,8 @@ export default function App() {
   const reducedMotion = useReducedMotionConfig()
   const style = trainer.style
   const model = settings.opponentModel
-  const welcome = !progress.onboarded
+  // Not over an invite link: a friend opening #play/<id> goes straight in.
+  const welcome = !progress.onboarded && view !== 'live'
   // Atlas waits while you are away from the table.
   const blocked = welcome || tour || view !== 'play'
   const legal = legalActions(game.turn === 0 ? game : { ...game, turn: 0 })
@@ -388,51 +398,49 @@ export default function App() {
   // ---- Bet sizing and live action math ---------------------------------------
   const decisionId = `${game.id}:${game.history.length}`
   const context = heroContext(game)
-  const presets: Preset[] = useMemo(() => {
-    if (!legal.canRaise) return []
-    const current = Math.max(...game.bets)
-    const base = context.pot + context.toCall
-    return [
-      { label: '½ pot', key: '1', to: Math.round(current + base / 2) },
-      { label: '¾ pot', key: '2', to: Math.round(current + (base * 3) / 4) },
-      { label: 'Pot', key: '3', to: Math.round(current + base) },
-      { label: 'All-in', key: '4', to: legal.maxRaiseTo },
-    ].map((preset) => {
-      const to = Math.min(
-        legal.maxRaiseTo,
-        Math.max(legal.minRaiseTo, preset.to),
-      )
-      return liveFull
-        ? {
-            ...preset,
-            to,
-            ev: raiseAnalysis(
-              liveFull,
-              model,
-              {
-                pot: context.pot,
-                heroBet: context.heroBet,
-                atlasBet: context.atlasBet,
-                raiseTo: to,
-              },
-              style,
-            ).ev,
-          }
-        : { ...preset, to }
-    })
-  }, [
-    legal.canRaise,
-    legal.maxRaiseTo,
-    legal.minRaiseTo,
-    game.bets,
-    context.pot,
-    context.toCall,
-    context.heroBet,
-    context.atlasBet,
-    liveFull,
-    model,
-    style,
-  ])
+  const presets: Preset[] = useMemo(
+    () =>
+      buildPresets(
+        {
+          canRaise: legal.canRaise,
+          minRaiseTo: legal.minRaiseTo,
+          maxRaiseTo: legal.maxRaiseTo,
+        },
+        context.pot,
+        context.toCall,
+        game.bets,
+      ).map((preset) =>
+        liveFull
+          ? {
+              ...preset,
+              ev: raiseAnalysis(
+                liveFull,
+                model,
+                {
+                  pot: context.pot,
+                  heroBet: context.heroBet,
+                  atlasBet: context.atlasBet,
+                  raiseTo: preset.to,
+                },
+                style,
+              ).ev,
+            }
+          : preset,
+      ),
+    [
+      legal.canRaise,
+      legal.maxRaiseTo,
+      legal.minRaiseTo,
+      game.bets,
+      context.pot,
+      context.toCall,
+      context.heroBet,
+      context.atlasBet,
+      liveFull,
+      model,
+      style,
+    ],
+  )
   const defaultRaise = presets[0]?.to ?? legal.minRaiseTo
   const raiseTo = Math.min(
     legal.maxRaiseTo,
@@ -798,6 +806,7 @@ export default function App() {
           {(
             [
               ['play', 'Play', Diamond, 'table'],
+              ['live', 'Online', Globe, 'lobby'],
               ['learn', 'Learn', BookOpen, 'learn/path'],
               ['progress', 'Progress', ChartNoAxesCombined, 'progress'],
             ] as const
@@ -1059,6 +1068,17 @@ export default function App() {
             }
             onPlay={() => go('table')}
           />
+        )}
+        {view === 'live' && (
+          <Suspense
+            fallback={
+              <div className="curriculum-loading" role="status">
+                Opening online play… Your hand is paused.
+              </div>
+            }
+          >
+            <LiveApp />
+          </Suspense>
         )}
         {view === 'gallery' && (
           <Suspense fallback={null}>

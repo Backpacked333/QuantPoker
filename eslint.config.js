@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  { ignores: ['dist', '.wrangler', 'worker/worker-configuration.d.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -17,6 +17,34 @@ export default tseslint.config(
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },
+      ],
+    },
+  },
+  {
+    // The engine and the table server are deterministic: randomness and time
+    // are injected (CSPRNG deck, Durable Object alarms), never ambient.
+    files: ['src/engine/**/*.ts', 'worker/src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        {
+          name: 'setTimeout',
+          message: 'Use an injected deadline or a DO alarm.',
+        },
+        {
+          name: 'setInterval',
+          message: 'Use an injected deadline or a DO alarm.',
+        },
+      ],
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'Math',
+          property: 'random',
+          message: 'Inject randomness (shuffleWith).',
+        },
+        { object: 'Date', property: 'now', message: 'Inject the clock.' },
       ],
     },
   },

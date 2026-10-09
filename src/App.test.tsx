@@ -18,6 +18,9 @@ import { analyzeSpot, quickOutcome } from './lib/range'
 import type { SpotRequest } from './lib/range'
 import { lcg } from './lib/sim'
 
+// Online play is configured per deployment; tests never reach the network.
+vi.mock('./net/supabase', () => ({ loadOnline: async () => null }))
+
 vi.mock('./components/lab/Surface3D', () => ({
   default: () => <div data-testid="surface">Interactive terrain</div>,
 }))
@@ -285,6 +288,30 @@ describe('table and curriculum integration', () => {
     expect(
       screen.getByRole('link', { name: /Full curriculum/ }),
     ).toHaveAttribute('href', '#learn/path')
+  })
+})
+
+describe('online play', () => {
+  it('opens from the nav, keeps the hand, and comes back to it', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await user.click(
+      await screen.findByRole('button', { name: 'Reveal without guessing' }),
+    )
+    const hand = screen.getByRole('region', { name: 'Poker table' }).textContent
+    await user.click(screen.getByRole('button', { name: 'Online' }))
+    expect(window.location.hash).toBe('#lobby')
+    expect(
+      await screen.findByText('Online play is not set up on this site yet.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Online' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await user.click(screen.getByRole('link', { name: 'Practice vs Atlas' }))
+    expect(
+      (await screen.findByRole('region', { name: 'Poker table' })).textContent,
+    ).toBe(hand)
   })
 })
 

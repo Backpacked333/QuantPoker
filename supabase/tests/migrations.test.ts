@@ -7,10 +7,13 @@ import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 const dir = new URL('../migrations/', import.meta.url)
-// The learning_cloud migration predates this repo's history and is applied in
-// production already; these migrations only depend on auth.users.
+// The learning_cloud migration (an earlier app version's tables, kept in the
+// repo so it matches the live migration history) needs more of Supabase than
+// this stub provides; the multiplayer migrations only depend on auth.users.
 const MIGRATIONS = readdirSync(dir)
-  .filter((f) => f.endsWith('.sql') && f > '20261007192620')
+  .filter(
+    (f) => f.endsWith('.sql') && !f.startsWith('20261007192620_learning_cloud'),
+  )
   .sort()
 
 const ALICE = '11111111-1111-4111-8111-111111111111'

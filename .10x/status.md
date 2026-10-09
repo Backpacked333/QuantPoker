@@ -1,12 +1,21 @@
 # Project status
 
-Last updated: 2026-10-08 by SDE
+Last updated: 2026-10-09 by SDE (repo cleanup)
 
 ## Phase
 
 **Phase 0 milestone reached: two browsers play each other through the Worker.** Steps 1–6 of 7 done: quick-match lobby, shot clock with time bank and forfeit, provably fair deals ("Deck verified" in the browser), every hand archived to Postgres. Next Step 7 (hardening, CI, launch). Hosting is one Cloudflare Worker for site + game server; see the ADR amendment.
 
-Supabase project `quantpoker` also carries an earlier, unmerged line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage). Multiplayer tables are additive beside it; see `.10x/decisions/sde/multiplayer-platform.md` §Step 2.
+Supabase project `quantpoker` also carries an earlier line of work's schema (`20261007192620_learning_cloud`: `profiles`, `hand_results`, learning tables, AI-coach usage; all tables empty). Its migration file is now in the repo, byte-identical to production, so the repo and the live database have the same 7 migrations. Multiplayer tables are additive beside it.
+
+## Repository (cleanup 2026-10-09)
+
+- Default branch becomes **`main`** (the old default `devin/1791351254-quantpoker-learning-table` is renamed in GitHub settings, keeping its history). Cloudflare Workers Builds and the Supabase GitHub integration deploy from `main`. Vercel is retired.
+- PR #8 (multiplayer Phase 0) lands as **one squash commit**; its 20 step commits stay readable on the PR page (`refs/pull/8/head`).
+- PR #2 (Devin's earlier app line: AI coach, older learning studio, Vercel cloud saves) is **closed, not merged**; superseded by PR #7 and #8. Kept as `archive/context-aware-coach`, `archive/cinematic-poker`, `archive/supabase-vercel` and `refs/pull/{2,3,6}/head`. Pieces that exist only there, for a possible later port to the Worker: the AI coach (`server/coach.ts`, `src/lib/coach.ts`, `coach-stream.ts`) and the 3D terrain frontier/slice/camera (`Surface.tsx`, `terrain-camera.ts`).
+- PR #5 (curriculum focus, atomic-save and memo fixes) is merged into `main`.
+- All other branches had their content in the default branch already (checked by ancestry, patch equivalence and file content) and are deleted; tips archived as `archive/*` tags. A full mirror bundle of the repo before the cleanup was given to the user.
+- Devin stays installed with PR monitoring turned off.
 
 Note: `.10x/` was created this session. Discovery of the codebase was done inline by the PM (`[DISCOVERED]` entries in `.10x/decisions/product-manager/_index.md`) and verified by the Architect's design workflow. CTO strategic review has not run; the one build-vs-buy call (Cloudflare Durable Objects vs. a Node server vs. Supabase-only) was made by the user directly.
 
@@ -36,7 +45,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: Step 1 — `src/engine/` + invariant, differential, redaction, commitment tests; `src/shared/protocol.ts`; `src/lib/presets.ts` (`.10x/decisions/sde/multiplayer-platform.md`). All gates green.
 - [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
 - [x] User: Cloudflare Workers Paid + Git-connected Worker; Supabase Pro org
-- [ ] User: production branches in Cloudflare and Supabase are already the repo's default branch (no `main` exists) — nothing to change; set Supabase Auth Site URL / redirect URLs to the workers.dev address (values in the SDE log §Step 3); optionally enable Google/GitHub
+- [ ] User: repo cleanup dashboard steps (rename default branch to `main`; Cloudflare and Supabase production branch → `main`; Cloudflare preview builds off; delete the Vercel project; Supabase Auth Site URL → workers.dev; optionally enable Google/GitHub) — see `.10x/handoff.md`
 - [ ] SDE: first real sign-in on the deployed site, then decode the access token header and confirm `alg: ES256` (ADR day-5 check)
 - [x] SDE: Step 3 — `worker/` + root `wrangler.jsonc`: `TableDO`, ES256 auth, invite-by-link matches, runtime `/api/config`; 9 Workers-runtime tests + a real two-client smoke run. All gates green.
 - [x] SDE: Step 4 — live table in the browser (`src/net/client.ts`, `LiveTable`, `#play/<id>`, Play a friend by link); two-browser e2e against `wrangler dev`; full 20-hand match verified. All gates green.
@@ -47,4 +56,3 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] QA: gap review of Steps 1–4 (`.10x/decisions/qa/multiplayer-platform.md`, `.10x/reviews/2026-10-08-qa-report.md`): 27 tests added (real ES256 auth, engine side pots at N=3–4, rejoin presence, live captions and offline states); 1 bug fixed (opponent shown disconnected after a rejoin). Gates: 577 unit, 25 worker, 17 e2e, all green. Release-ready for the invite-link beta; no blocking bugs.
 - [ ] Security: light review of auth upgrade path, redaction tests and `hands_private` RLS before Step 7 deploy
 - [ ] DBA: post-hoc review of the four applied migrations (`supabase/migrations/202610081*`); RLS behaviour is covered by `supabase/tests/migrations.test.ts`
-- [ ] User: disconnect the leftover Vercel project `quantpoker` from the GitHub repo (it still builds previews and posts reviews on PRs; nothing in the code uses it)

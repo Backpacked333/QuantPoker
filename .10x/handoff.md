@@ -1,38 +1,66 @@
 # Handoff
 
-## Current handoff: SDE (Step 6) → QA Engineer + Security Engineer
+## Current handoff: SDE → User (repo cleanup: one `main` branch)
+
+Date: 2026-10-09 · Decisions (user): squash PR #8; close and archive PR #2; merge PR #5; keep Devin with PR monitoring off. Summary in `.10x/status.md` §Repository.
+
+Done by Claude: full mirror backup bundle sent to the user; PR #2 closed (no comment, so Devin's monitor has nothing to react to); PR #8 gains the live `learning_cloud` migration file (byte-identical, md5 `170f50fbda835ec89c4148d8fce80b9b`) and the matching test-filter fix. Claude's session can only push its own branch, so tags and branch deletions run from the user's machine (script below).
+
+### User steps, in this order
+
+1. **Devin:** in Devin's first comment on PR #5 (and #2), tick "Disable automatic comment, CI, and merge conflict monitoring".
+2. **Vercel:** project `quantpoker` → Settings → Environment Variables: note the variable names (only matter if the AI coach is ever ported) → Settings → Advanced → Delete Project. Do not uninstall the Vercel GitHub app: other Vercel projects use it.
+3. **Cloudflare** (Workers & Pages → `quantpoker` → Settings): Build → Branch control → turn off "Enable Preview Builds"; confirm build `npm run build`, deploy `npx wrangler deploy`, root `/`. Variables and Secrets → add secret `SUPABASE_SECRET_KEY` (Supabase → Project Settings → API Keys → create a secret key).
+4. **GitHub** (repo Settings → General): Pull Requests → tick "Automatically delete head branches". Default branch → rename `devin/1791351254-quantpoker-learning-table` to `main`.
+5. **Right after the rename:** Cloudflare Branch control → Production branch = `main`. Supabase → Project Settings → Integrations → GitHub → Production branch = `main`. Supabase → Authentication → URL Configuration → Site URL `https://quantpoker.bbcroysalman.workers.dev`, redirect URL `https://quantpoker.bbcroysalman.workers.dev/**`; remove any `vercel.app` entries.
+6. **Tell Claude "done".** Claude then squash-merges PR #8 (this deploys production), checks the live site, retargets PR #5 to `main`, updates its branch so CI runs on it, and squash-merges it.
+7. **Paste the cleanup script** (Claude posts it after step 6) on your computer: it pushes the `archive/*` tags and deletes every branch except `main`, refusing any branch whose work is neither in `main` nor tagged.
+8. Optional: Settings → Rules → protect `main` (require `check` and `e2e`, block force-push and deletion).
+
+### Branch fates
+
+| Branch                                                                                                                      | Fate                                                 |
+| --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `devin/1791351254-quantpoker-learning-table`                                                                                | renamed to `main`                                    |
+| `claude/beautiful-thompson-k0b5bl` (PR #8)                                                                                  | squash-merged, auto-deleted                          |
+| `devin/1791401023-r1-acceptance-fixes` (PR #5)                                                                              | squash-merged, auto-deleted                          |
+| `devin/1791354563-context-aware-coach`, `devin/1791358830-cinematic-poker`, `devin/1791400999-supabase-vercel` (PR #2 line) | tagged `archive/*`, deleted                          |
+| `devin/1791351737-interactive-curriculum`, six `devin/quantpoker-r1-*-4673c0d0`                                             | content already in main; tagged `archive/*`, deleted |
+| `claude/blissful-planck-wrb5my`, `devin/1791353078-integrate-curriculum`, `devin/1791357371-quantpoker-r1`                  | fully merged; deleted                                |
+
+---
+
+## Handoff history
+
+### 2026-10-08 — SDE (Step 6) → QA Engineer + Security Engineer
 
 Date: 2026-10-08 · Status: **Phase 0 Steps 1–6 done.** "Find a match" pairs two waiting players at a new heads-up table; each account plays one table at a time; the same two accounts meet at most twice a day; a paired player who does not open the table within 30 s is a no-show. Live with PR https://github.com/Backpacked333/QuantPoker/pull/8.
 
-### Read first
+#### Read first
 
 - `.10x/decisions/sde/multiplayer-platform.md` §Step 6
 
-### User actions (unchanged)
+#### User actions (unchanged)
 
 1. Add the Supabase secret key as Worker secret `SUPABASE_SECRET_KEY` (archive).
 2. Supabase Auth Site URL `https://quantpoker.bbcroysalman.workers.dev`; merge PR #8.
 
-### What to test (QA)
+#### What to test (QA)
 
 - Two accounts (two browsers or a private window): both Find a match → same table. Cancel; close the tab while waiting (the other sees the count drop). Wait alone for 60 s → the Atlas offer.
 - Open a second tab on the lobby while queued (the first stops: replaced). Queue while at a table → you are sent back to it. Open someone's invite link while playing → "already playing" with a link to your table.
 - Pair, then do not open the table in one browser → after 30 s the other sees "did not show up" and can find another match.
 - Not covered: many players queuing at once (pairing is sequential in one object; fine at launch scale), the UTC-midnight edge of the pair limit.
 
-### What to review (Security)
+#### What to review (Security)
 
 - `worker/src/lobby.ts`: identity only from the Worker's verified headers; one socket per account; queue rows only for connected sockets.
 - `worker/src/table.ts` `join`: invite seat claim order (full check → claim → recheck → release on a lost race); the `4409` reason carries only the caller's own match id.
 - No lobby frame rate limit yet (Step 7).
 
-### Next implementation step (SDE)
+#### Next implementation step (SDE)
 
 Step 7 — Hardening, CI, launch (ADR day 15): `HAND_QUEUE` verify consumer + DLQ, `bench.test.ts`, deploy workflow, engine-soak workflow, Origin allowlist, frame rate limits (table and lobby), Workers Logs, 20-client smoke against production, Fair Play stub page, play-money ToS copy, README, Phase 1 hand-off notes.
-
----
-
-## Handoff history
 
 ### 2026-10-08 — SDE (Step 5) → QA Engineer + Security Engineer (+ user action)
 

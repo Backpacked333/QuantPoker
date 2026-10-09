@@ -82,10 +82,18 @@ import { Tour } from './components/Tour'
 import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
 
-type View = 'play' | 'curriculum' | 'quick' | 'progress' | 'gallery' | 'live'
+type View =
+  | 'play'
+  | 'curriculum'
+  | 'quick'
+  | 'progress'
+  | 'gallery'
+  | 'live'
+  | 'info'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
 const LiveApp = lazy(() => import('./net/LiveApp'))
+const InfoPage = lazy(() => import('./info/InfoPages'))
 const Gallery = lazy(() => import('./dev/Gallery'))
 // The lab is the heaviest view; it loads in parallel with the first paint.
 const labModule = import('./components/lab/Lab')
@@ -93,7 +101,7 @@ const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
  * Hash routes: #table (default), #progress, #lobby[/find] and #play/<id>
- * (online play), #learn/...
+ * (online play), #fair-play and #terms, #learn/...
  * and #learn/quick[/id].
  */
 function parseRoute(hash: string): Route {
@@ -106,6 +114,8 @@ function parseRoute(hash: string): Route {
   if (hash === '#progress') return { view: 'progress', lesson: null }
   if (/^#lobby(?:\/find)?$/.test(hash) || /^#play\/[0-9a-f-]{36}$/.test(hash))
     return { view: 'live', lesson: null }
+  if (hash === '#fair-play' || hash === '#terms')
+    return { view: 'info', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }
   return { view: 'play', lesson: null }
@@ -230,7 +240,8 @@ export default function App() {
     initialTrainer(!progress.guidedComplete, progress.settings.atlasStyle),
   )
   const { spots, request } = useSpots()
-  const { view, lesson } = parseRoute(useHash())
+  const hash = useHash()
+  const { view, lesson } = parseRoute(hash)
   const learningSession = useRef<LearningSession | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [paused, setPaused] = useState(false)
@@ -261,7 +272,7 @@ export default function App() {
   const style = trainer.style
   const model = settings.opponentModel
   // Not over an invite link: a friend opening #play/<id> goes straight in.
-  const welcome = !progress.onboarded && view !== 'live'
+  const welcome = !progress.onboarded && view !== 'live' && view !== 'info'
   // Atlas waits while you are away from the table.
   const blocked = welcome || tour || view !== 'play'
   const legal = legalActions(game.turn === 0 ? game : { ...game, turn: 0 })
@@ -1078,6 +1089,11 @@ export default function App() {
             }
           >
             <LiveApp />
+          </Suspense>
+        )}
+        {view === 'info' && (
+          <Suspense fallback={null}>
+            <InfoPage page={hash === '#terms' ? 'terms' : 'fair-play'} />
           </Suspense>
         )}
         {view === 'gallery' && (

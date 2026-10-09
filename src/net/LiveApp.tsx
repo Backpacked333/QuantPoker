@@ -51,6 +51,9 @@ export default function LiveApp() {
         <header className="page-head">
           <h1>Play online</h1>
           <p>Real opponents, play money, every hand reviewable afterwards.</p>
+          <p className="live-muted">
+            <a href="#fair-play">Fair play</a> · <a href="#terms">Terms</a>
+          </p>
         </header>
       )}
       {dev ? (

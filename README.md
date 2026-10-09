@@ -4,7 +4,7 @@
 
 QuantPoker is a decision trainer disguised as a poker game. You play heads-up Texas Hold’em for play money against **Atlas**, a transparent practice bot. Before the math appears you commit to a read, then a live quant lab prices every option. After each hand you get chess-style grades on the decisions, with luck shown separately from skill.
 
-This is an **educational web app played for play money only**, not a gambling service, trading tool or source of investment advice. Online play against other people is being built (see [Online play](#online-play-in-progress)); the trainer works fully offline without it.
+This is an **educational web app played for play money only**, not a gambling service, trading tool or source of investment advice. Casual heads-up play against other people runs online (see [Online play](#online-play)); the trainer works fully offline without it.
 
 ## Run locally
 
@@ -17,14 +17,25 @@ npm run dev          # http://localhost:5173
 
 No API keys, database, account or environment variables are needed for the trainer. Online play is optional: `.env.example` lists the two browser-safe values that turn on sign-in.
 
-### Online play (in progress)
+### Online play
 
-`#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. You can open a heads-up table and send a friend the link (**Play a friend by link**); both of you play on the same table UI as the trainer, with the quant lab switched off during play. The server deals, checks every move and shows each player only their own cards. Matchmaking, the shot clock and hand reviews are the next build steps. The plan and its decisions live in `.10x/decisions/architect/multiplayer-platform.md`.
+`#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. **Find a match** pairs you with the next player waiting; **Play a friend by link** opens a table and gives you a link to send. A match is 20 hands of heads-up no-limit hold'em for play money, on the same table UI as the trainer, with the quant lab switched off during play. Each decision has a 20-second clock plus a 60-second bank for the match; three missed decisions in a row forfeit. After each hand you can open its review; **Deck verified** means your browser checked the board, the shown hands and your own two cards against the deck commitment it received before the deal. [Fair play](https://quantpoker.bbcroysalman.workers.dev/#fair-play) and [Terms](https://quantpoker.bbcroysalman.workers.dev/#terms) (in the app: `#fair-play`, `#terms`) say what is and is not guaranteed.
+
+How it is built (decisions in `.10x/decisions/architect/multiplayer-platform.md`):
 
 - `src/engine/`: the server-authoritative N-player engine (2–6 seats, side pots, deck commitment, per-seat redaction). It is not used by the trainer, which keeps `src/lib/poker.ts`.
-- `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules.
-- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`). `npm run worker:dev` runs both locally on :8787 (add `-- --var DEV_AUTH_SECRET:<s>` with `<s>` at least 16 characters, letters, digits or `-`, and set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` to play without an account; shorter secrets leave dev tokens off); `npm run worker:test` runs its tests inside Cloudflare's runtime. Deploys come from Cloudflare's Git integration.
-- `supabase/migrations/`: players, matches and the hand archive with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project manually; CI never touches the database.
+- `src/net/`: the online area, lazy-loaded. The account client never reaches the entry chunk (`scripts/check-bundle.mjs` fails the build if it does), and `src/net` may not import the trainer's analysis modules. `src/info/` holds the Fair play and Terms pages, also lazy.
+- `worker/` + `wrangler.jsonc`: one Cloudflare Worker serves the built site and the table server (`/api/*`, `/ws/*`): a `TableDO` Durable Object per match and one `LobbyDO`. Every finished hand is archived to Postgres through an outbox, then re-verified off the game path by a queue consumer (`worker/src/verify.ts`). Limits, close codes and the operator's runbook are in [Operations](#operations-online-play).
+- `supabase/migrations/`: players, matches, the hand archive and the verify functions, with row-level security, tested against a real Postgres (PGlite) in `supabase/tests/`. Apply new migrations to the project before deploying the code that calls them; CI never touches the database.
+
+Run it locally: `npm run worker:dev -- --var DEV_AUTH_SECRET:<s>` serves the site and the table server on :8787 (`<s>` at least 16 characters, letters, digits or `-`; shorter secrets leave dev tokens off). Set `sessionStorage['qp.devToken'] = 'dev.<name>.<s>'` in each browser to play without an account, or open two browsers with different names. `npm run worker:test` runs the server's tests inside Cloudflare's runtime. `npm run smoke` (with the server running and `<s>` = `smoke-local-secret-0001`) plays 500 hands with 20 clients and prints ack latency percentiles and the integrity checks; it refuses to touch production unless a person types its confirmation phrase.
+
+Built for Phase 1 (rated heads-up ladder) to plug into without changing the protocol:
+
+- **The hand queue.** `HAND_QUEUE` already carries `{ matchId, handNo }` for every archived hand, one per consumer invocation. Grading adds to `worker/src/verify.ts` after the verify step; `src/engine/bench.test.ts` pins the cost at under 500 ms CPU per decision.
+- **`src/engine/project.ts`.** `stateToHeroGame` and `toHeroGame` project a live hand into the trainer's `Game`, which `gradeDecision` already grades (equality tested in `differential.test.ts`).
+- **The controller seam.** `worker/src/controller.ts` decides each hand's deck, button and stacks; Phase 1's duplicate controller replaces `LocalController`. It is synchronous today and Durable Object storage is not, so reading a stored deck means making `nextHandPlan` async (or having the table pass the deck in).
+- **`deck:<n>`.** Every hand's deck and secret stay in the table's storage for the whole match (the table deletes everything 10 minutes after it ends), so a later segment can deal deck _n_ again under a fresh secret. The duplicate format has an open product question first (Q1 in `.10x/tickets.md`).
 
 ```sh
 npm run typecheck    # strict TypeScript, including e2e specs

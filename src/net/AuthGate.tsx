@@ -163,8 +163,8 @@ function SignIn({
     <section className="panel live-signin" aria-labelledby="signin-title">
       <h2 id="signin-title">Sign in to play real opponents</h2>
       <p className="live-muted">
-        Play money only. Your username and finished hands are public; your email
-        is not.
+        Play money only. No prizes, no deposits. 18+. Your username and finished
+        hands are public; your email is not.
       </p>
       {providers === null ? (
         <p className="live-status" role="status">

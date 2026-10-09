@@ -92,9 +92,9 @@ describe('migrations', () => {
       '20261008134322_record_hand.sql',
       '20261008134345_abandonments_match_index.sql',
       '20261008173914_record_match.sql',
-      MIGRATIONS.at(-1),
+      '20261008181317_record_match_no_show.sql',
+      '20261009090000_verify_hand.sql',
     ])
-    expect(MIGRATIONS.at(-1)).toMatch(/^\d{14}_record_match_no_show\.sql$/)
   })
 })
 

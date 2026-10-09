@@ -318,11 +318,14 @@ describe('functions', () => {
   it('pin search_path and keep every security definer away from browsers', async () => {
     const all = await fns()
     expect(all.map((f) => f.name)).toEqual([
+      'public.audit_hand',
       'public.clear_learning_progress',
       'public.handle_new_player',
       'public.record_hand',
+      'public.record_incident',
       'public.record_match',
       'public.reserve_coach_request',
+      'public.verify_hand',
     ])
     for (const f of all) {
       expect(f.config, f.name).toContain('search_path=""')

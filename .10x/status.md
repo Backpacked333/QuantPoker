@@ -1,6 +1,11 @@
 # Project status
 
-Last updated: 2026-10-09 by SDE (Step 7 deployed; S7-11 waits on U-4)
+Last updated: 2026-10-09 by SDE (Step 7 deployed; Phase 1 started; S7-11 waits on U-4)
+
+**Standing instructions from the user (2026-10-09):**
+
+- **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
+- **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
 
 ## Phase
 

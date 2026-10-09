@@ -535,6 +535,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-02 · Segment decks: variant A (duplicate) or variant B (fresh decks, luck-adjusted). Q1 picks one.
 
+**Q1 answered 2026-10-09: variant B.** Only the B goal, files and tests below apply.
+
 - **Goal (A, same-pair duplicate).** Segment 2 hand _i_ deals a segment-1 deck with the button flipped. Flipping the button swaps the hole cards exactly, because `dealSlots` deals relative to the button. Each deal gets a fresh commitment secret. The mitigations Q1 chooses apply:
   - a secret random order π of the segment-2 decks, stored in DO storage;
   - no in-match review on rated tables (review unlocks at `match_end`);
@@ -1259,7 +1261,7 @@ More sessions mostly add merge work: every W ticket rebases over `table.ts`.
 
 ## Questions for you (7)
 
-1. **Same-pair duplicate leaks segment 2. Which format should rated HU use?**
+1. **Same-pair duplicate leaks segment 2. Which format should rated HU use?** **Answered 2026-10-09: (B)**, fresh decks every hand with a luck-adjusted result. P1-02 builds variant B; the variant A parts of P1-02 and the deck-reuse questions in P1-00 are dropped.
    - **What happens today.** Segment-2 hand _i_ is segment-1 deck _i_ with the button flipped. Each player therefore holds the opponent's segment-1 cards under the same board. The live table already lets you reopen every finished hand of the match, with your own cards and the board.
    - **Effect.** From the flop on, a player who looks back, or keeps notes, knows the opponent's cards, the turn and the river. Fresh commitment secrets don't change that.
    - **(A)** Keep duplicate with mitigations: secret segment-2 order, no in-match review, an asymmetry statistic for later review, and an honest Fair Play line. Note-takers still win segment 2.

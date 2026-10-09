@@ -39,7 +39,10 @@ describe('wrangler.jsonc', () => {
 
   it('sends archived hands to the verify queue one per batch, with a dead-letter queue the Worker also consumes', () => {
     const { producers, consumers } = config.queues
-    expect(producers).toEqual([{ binding: 'HAND_QUEUE', queue: HANDS_QUEUE }])
+    expect(producers).toEqual([
+      { binding: 'HAND_QUEUE', queue: HANDS_QUEUE },
+      { binding: 'HAND_DLQ', queue: HANDS_DLQ },
+    ])
     expect(consumers).toEqual([
       {
         queue: HANDS_QUEUE,
@@ -50,5 +53,16 @@ describe('wrangler.jsonc', () => {
       },
       { queue: HANDS_DLQ, max_batch_size: 10 },
     ])
+  })
+
+  it('names every queue in a producer, so wrangler deploy creates any that are missing', () => {
+    // wrangler (4.148) provisions queues named by producer bindings at deploy
+    // and refuses a consumer or dead-letter queue that is not one.
+    const produced = new Set(config.queues.producers.map((p) => p.queue))
+    for (const consumer of config.queues.consumers) {
+      expect(produced).toContain(consumer.queue)
+      if (consumer.dead_letter_queue)
+        expect(produced).toContain(consumer.dead_letter_queue)
+    }
   })
 })

@@ -38,6 +38,7 @@ import {
 } from './deadlines'
 import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
+import { CLOSE_RATE_LIMITED, FrameBudget } from './limits'
 import { lobbyStub } from './lobby'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
@@ -125,6 +126,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
   controller: TableController = new LocalController()
   /** The table's clock; tests move it instead of waiting. */
   clock: () => number = now
+  /** Frames that do not move the game are metered per socket. */
+  private budget = new FrameBudget(() => this.clock())
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env)
@@ -278,6 +281,12 @@ export class TableDO extends DurableObject<WorkerEnv> {
   // ---- Socket events (hibernation API) ------------------------------------
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    // Frames still in flight from a socket we already closed do nothing.
+    if (ws.readyState !== OPEN) return
+    if (!this.budget.spend(ws)) {
+      ws.close(CLOSE_RATE_LIMITED, 'Too many messages')
+      return this.broadcast('state', { gone: ws })
+    }
     const { seat } = ws.deserializeAttachment() as Attachment
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
     if (!msg) return this.reject(ws, 'illegal', 'Malformed message')
@@ -313,6 +322,9 @@ export class TableDO extends DurableObject<WorkerEnv> {
       throw error
     }
     await this.applyAction(seat, next, 'client', msg.reqId)
+    // A move the table applied is play, not noise: it costs nothing. Moves
+    // are paced by the opponent, so they cannot flood.
+    this.budget.refund(ws)
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string) {

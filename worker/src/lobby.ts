@@ -10,6 +10,7 @@ import { parseClientMsg, PROTOCOL } from '../../src/shared/protocol'
 import type { ErrorCode, LobbyMsg } from '../../src/shared/protocol'
 import { now } from './clock'
 import type { WorkerEnv } from './env'
+import { CLOSE_RATE_LIMITED, FrameBudget } from './limits'
 import type { InitBody, Liveness } from './table'
 
 /** The same two accounts meet at most this often per UTC day. */
@@ -41,6 +42,8 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   private seq = 0
   /** The lobby's clock; tests move it. */
   clock: () => number = now
+  /** Every player shares this object: each socket gets a frame budget. */
+  private budget = new FrameBudget(() => this.clock())
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env)
@@ -84,6 +87,12 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
+    // Frames still in flight from a socket we already closed do nothing.
+    if (ws.readyState !== OPEN) return
+    if (!this.budget.spend(ws)) {
+      ws.close(CLOSE_RATE_LIMITED, 'Too many messages')
+      return this.leave(ws)
+    }
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
     if (msg?.t === 'queue') return this.enqueue(ws)
     if (msg?.t === 'dequeue') {

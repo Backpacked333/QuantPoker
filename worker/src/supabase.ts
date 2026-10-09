@@ -1,12 +1,38 @@
-// The archive: finished matches and hands go to Postgres through two
-// service-role functions (supabase/migrations/*record_*.sql). Both are
-// idempotent, so the outbox may retry any call.
+// The archive and the audit: finished matches, hands and incidents go to
+// Postgres through service-role functions (supabase/migrations/*record_*.sql,
+// *verify_hand.sql), all idempotent, so the outbox and the queue consumer may
+// retry any call. The secret key goes in `apikey` and nowhere else.
 import type { WorkerEnv } from './env'
 import { describeError, logEvent } from './log'
 
 export type ArchiveCall = {
-  rpc: 'record_match' | 'record_hand'
+  rpc: 'record_match' | 'record_hand' | 'record_incident'
   body: Record<string, unknown>
+}
+
+/** The service-role functions the Worker may call (secret key only). */
+type ServiceFn = ArchiveCall['rpc'] | 'audit_hand' | 'verify_hand'
+
+/** A call that must succeed: throws on any failure, returns the JSON result. */
+export async function rpc<T = unknown>(
+  env: WorkerEnv,
+  fn: ServiceFn,
+  body: Record<string, unknown>,
+): Promise<T | null> {
+  const response = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SECRET_KEY ?? '',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p: body }),
+  })
+  if (!response.ok)
+    throw new Error(
+      `${fn} ${response.status} ${(await errorCode(response)) ?? ''}`.trim(),
+    )
+  const text = await response.text()
+  return text ? (JSON.parse(text) as T) : null
 }
 
 /** True when Postgres accepted the call. Never throws. */

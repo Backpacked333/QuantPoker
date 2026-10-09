@@ -52,6 +52,7 @@ import { lobbyStub } from './lobby'
 import { describeError, logEvent } from './log'
 import { archive } from './supabase'
 import type { ArchiveCall } from './supabase'
+import type { HandMessage } from './verify'
 
 export const DEFAULT_CONFIG: MatchConfig = {
   kind: 'hu-casual',
@@ -100,7 +101,14 @@ type Current = {
 type Ended = { record: HandRecordV1; reveal: Reveal }
 type Attachment = { userId: string; seat: SeatId }
 type Ack = { reqId: string; seq: number }
-export type Outbox = ArchiveCall & { attempts: number }
+/**
+ * A queued call: an archive function, or a hand for the verify queue. Hands
+ * and the match must reach Postgres in order, so an archive failure stops the
+ * flush; a verify send or an incident report never holds up what follows.
+ */
+export type Outbox = (ArchiveCall | { send: HandMessage }) & {
+  attempts: number
+}
 export type InitBody = {
   matchId: string
   creator: { userId: string; username: string }
@@ -559,7 +567,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } catch (error) {
       // A plan the engine refuses (a bad stored deck, in Phase 1): halt the
       // match like any engine fault rather than break the object.
-      return this.engineFault(error, plan.config.handNo, plan)
+      return this.engineFault(error, plan.config.handNo, {
+        config: plan.config,
+        deck: plan.deck,
+        secret: toBase64(plan.secret),
+      })
     }
     if (!this.invariantsHold(hand)) return
     const { commitment } = await commitDeck(plan.deck, plan.secret)
@@ -731,6 +743,12 @@ export class TableDO extends DurableObject<WorkerEnv> {
           ),
         },
       } satisfies Outbox
+      // Sorts after this hand's archive call, so it is sent only once
+      // Postgres has the hand: the consumer never races the archive.
+      writes[outboxKey(match.handNo, 'verify')] = {
+        send: { matchId: match.id, handNo: match.handNo },
+        attempts: 0,
+      } satisfies Outbox
     }
     return { record, reveal }
   }
@@ -787,13 +805,26 @@ export class TableDO extends DurableObject<WorkerEnv> {
    * the deck and every hole card.
    */
   private engineFault(error: unknown, handNo: number, evidence: unknown) {
-    void evidence
+    const detail = error instanceof Error ? error.message : describeError(error)
     logEvent('error', {
       matchId: this.match?.id,
       handNo,
       reason: 'engine_fault',
-      detail: error instanceof Error ? error.message : describeError(error),
+      detail,
     })
+    // The evidence goes where only the service role can read it. Written
+    // before finish() so its flush sends it.
+    if (this.recordable())
+      void this.ctx.storage.put(outboxKey(handNo, 'incident'), {
+        rpc: 'record_incident',
+        attempts: 0,
+        body: {
+          matchId: this.match!.id,
+          handNo,
+          kind: 'engine_fault',
+          detail: { error: detail, evidence },
+        },
+      } satisfies Outbox)
     void this.finish('engine_fault')
   }
 
@@ -956,32 +987,56 @@ export class TableDO extends DurableObject<WorkerEnv> {
     this.flushing = true
     try {
       const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
+      // The most attempts among calls that failed without stopping the flush.
+      let behind = 0
       for (const [key, call] of queued) {
-        if (await archive(this.env, call)) {
+        const done =
+          'send' in call
+            ? await this.enqueue(call.send)
+            : await archive(this.env, call)
+        if (done) {
           await this.ctx.storage.delete(key)
           continue
         }
         const attempts = call.attempts + 1
         logEvent('outbox_retry', {
           matchId: this.match?.id,
-          rpc: call.rpc,
+          rpc: 'send' in call ? 'hand_queue' : call.rpc,
           attempt: attempts,
           depth: queued.size,
         })
         await this.ctx.storage.put(key, { ...call, attempts })
-        this.deadlines = [
-          ...this.deadlines.filter((d) => d.kind !== 'outbox'),
-          { kind: 'outbox', at: this.clock() + outboxBackoff(attempts) },
-        ]
-        await this.armAlarm()
-        return
+        if ('send' in call || call.rpc === 'record_incident') {
+          behind = Math.max(behind, attempts)
+          continue
+        }
+        return this.retryOutbox(attempts)
       }
+      if (behind) return this.retryOutbox(behind)
       if (this.deadlines.some((d) => d.kind === 'outbox')) {
         this.deadlines = this.deadlines.filter((d) => d.kind !== 'outbox')
         await this.armAlarm()
       }
     } finally {
       this.flushing = false
+    }
+  }
+
+  private async retryOutbox(attempts: number) {
+    this.deadlines = [
+      ...this.deadlines.filter((d) => d.kind !== 'outbox'),
+      { kind: 'outbox', at: this.clock() + outboxBackoff(attempts) },
+    ]
+    await this.armAlarm()
+  }
+
+  /** Hands a finished hand to the verify queue. Never throws. */
+  private async enqueue(message: HandMessage) {
+    try {
+      await this.env.HAND_QUEUE.send(message)
+      return true
+    } catch {
+      return false
     }
   }
 

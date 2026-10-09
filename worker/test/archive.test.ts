@@ -65,6 +65,10 @@ beforeAll(() => {
       if (url.pathname.startsWith('/rest/v1/rpc/')) {
         expect(new Headers(init?.headers).get('apikey')).toBe('sb_secret_test')
         if (failing) return new Response('down', { status: 503 })
+        // The verify consumer reads hands back; verification itself is
+        // verify.test.ts. Here every hand reads as verified already.
+        if (url.pathname.endsWith('/audit_hand'))
+          return Response.json({ verified: true })
         calls.push({
           rpc: url.pathname.slice('/rest/v1/rpc/'.length),
           p: JSON.parse(String(init!.body)).p,
@@ -120,7 +124,7 @@ const outbox = (matchId: string) =>
   })
 
 describe('the archive', () => {
-  it('sends the secret key only to the two archive functions', async () => {
+  it('sends the secret key only to the service functions', async () => {
     const { matchId, seats } = await table(1)
     await foldHand(matchId, seats)
     await elapse(matchId, NEXT_HAND_MS)
@@ -132,10 +136,15 @@ describe('the archive', () => {
         r.body.includes(secret) ||
         [...r.headers.values()].some((v) => v.includes(secret)),
     )
-    expect(carrying.length).toBe(3)
+    // The three archive calls, plus the verify consumer's reads.
+    expect(
+      carrying.filter((r) => /record_(match|hand)$/.test(r.url)),
+    ).toHaveLength(3)
     for (const r of carrying)
       expect(r.url).toMatch(
-        new RegExp(`^${env.SUPABASE_URL}/rest/v1/rpc/record_(match|hand)$`),
+        new RegExp(
+          `^${env.SUPABASE_URL}/rest/v1/rpc/(record_(match|hand|incident)|audit_hand|verify_hand)$`,
+        ),
       )
     // Username lookups go out with the publishable key, never the secret.
     const lookups = sent.filter((r) => r.url.includes('/rest/v1/players'))
@@ -219,6 +228,7 @@ describe('the archive', () => {
     expect(queued.map(([key]) => key)).toEqual([
       'outbox:0000:match',
       'outbox:0001:hand',
+      'outbox:0001:verify',
     ])
     expect(queued[0][1].attempts).toBeGreaterThanOrEqual(1)
     expect(queued[1][1].attempts).toBe(0)
@@ -247,6 +257,7 @@ describe('the archive', () => {
     await foldHand(matchId, seats)
     expect((await outbox(matchId)).map(([key]) => key)).toEqual([
       'outbox:0001:hand',
+      'outbox:0001:verify',
     ])
     await abortAllDurableObjects()
     await freezeClock(matchId) // the fresh object starts on the real clock
@@ -293,6 +304,7 @@ describe('the archive', () => {
     expect((await outbox(matchId)).map(([key]) => key)).toEqual([
       'outbox:0000:match',
       'outbox:0001:hand',
+      'outbox:0001:verify',
       'outbox:9999:end',
     ])
     expect((await peek(matchId)).match?.status).toBe('finished')

@@ -17,6 +17,9 @@ export default defineConfig({
           // Matches DEV_SECRET in test/helpers.ts; at least MIN_DEV_SECRET long.
           DEV_AUTH_SECRET: 'worker-test-secret-0001',
           SUPABASE_SECRET_KEY: 'sb_secret_test',
+          // Never the real project: a request a stub misses fails here
+          // instead of reaching production.
+          SUPABASE_URL: 'https://supabase.test',
         },
       },
     }),

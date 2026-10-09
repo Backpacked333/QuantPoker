@@ -6,6 +6,8 @@ import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
 import { logEvent } from './log'
 import type { InitBody } from './table'
+import { HANDS_DLQ } from './queues'
+import { consumeDeadLetters, consumeHands } from './verify'
 
 export { LobbyDO } from './lobby'
 export { TableDO } from './table'
@@ -121,6 +123,12 @@ export default {
     if (pathname.startsWith('/api/') || pathname.startsWith('/ws/'))
       return json({ error: 'not found' }, 404)
     return env.ASSETS.fetch(request)
+  },
+
+  // Archived hands to re-verify, and those that could not be.
+  async queue(batch: MessageBatch, env: WorkerEnv) {
+    if (batch.queue === HANDS_DLQ) await consumeDeadLetters(batch, env)
+    else await consumeHands(batch, env)
   },
 } satisfies ExportedHandler<WorkerEnv>
 

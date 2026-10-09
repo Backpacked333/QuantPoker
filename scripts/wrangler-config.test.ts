@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import { UPGRADES_PER_IP_PER_MINUTE } from '../worker/src/limits'
+import { HANDS_DLQ, HANDS_QUEUE } from '../worker/src/queues'
 
 type RateLimit = {
   name: string
@@ -12,10 +13,20 @@ type RateLimit = {
   simple: { limit: number; period: number }
 }
 
+type Queues = {
+  producers: { binding: string; queue: string }[]
+  consumers: {
+    queue: string
+    max_batch_size?: number
+    max_retries?: number
+    dead_letter_queue?: string
+  }[]
+}
+
 const config = ts.parseConfigFileTextToJson(
   'wrangler.jsonc',
   readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'),
-).config as { ratelimits: RateLimit[] }
+).config as { ratelimits: RateLimit[]; queues: Queues }
 
 describe('wrangler.jsonc', () => {
   it('limits each client address to UPGRADES_PER_IP_PER_MINUTE signed-in requests a minute', () => {
@@ -24,5 +35,20 @@ describe('wrangler.jsonc', () => {
       limit: UPGRADES_PER_IP_PER_MINUTE,
       period: 60,
     })
+  })
+
+  it('sends archived hands to the verify queue one per batch, with a dead-letter queue the Worker also consumes', () => {
+    const { producers, consumers } = config.queues
+    expect(producers).toEqual([{ binding: 'HAND_QUEUE', queue: HANDS_QUEUE }])
+    expect(consumers).toEqual([
+      {
+        queue: HANDS_QUEUE,
+        // The CPU limit is per invocation: one hand each.
+        max_batch_size: 1,
+        max_retries: 5,
+        dead_letter_queue: HANDS_DLQ,
+      },
+      { queue: HANDS_DLQ, max_batch_size: 10 },
+    ])
   })
 })

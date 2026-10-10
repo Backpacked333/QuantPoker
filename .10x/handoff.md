@@ -1,6 +1,46 @@
 # Handoff
 
-## Current handoff: SDE → User (P1-03 live; P1-04 next)
+## Current handoff: SDE → User (P1-04 live; P1-12 next)
+
+Date: 2026-10-10 · Status: **P1-04 is merged and live.**
+
+- **Database:** PR #18 (`cfd0bd0`). Production recorded `20261010043000_rematch`; checked read-only.
+- **Table, lobby and screen:** PR #19 (`6a79a93`). `verify-deploy` passed, and a search of the deployed Worker code found the new code.
+
+### What changed
+
+- **After a rated match** each player sees "+12.5 bb · Win" (the luck-adjusted total) and the chips actually won.
+- **The Rematch button.**
+  - Both press within 60 s and a new rated match starts, with seats swapped and linked in the archive (`matches.rematch_of`).
+  - A rematch counts toward the cap of 2 pairings per pair per day. At the cap the button reads "Rematch limit reached (2 per day)".
+  - The offer survives a restart, a late alarm and the table's cleanup (review fold-ins).
+- **A reload after the end** shows the result and the offer again.
+- **Gates:**
+  - typecheck, worker typecheck and lint are clean;
+  - 728 unit, 154 worker, 60 SQL and 21 e2e tests pass;
+  - plans 12/12;
+  - the entry bundle is 141.5 kB.
+- Details: `.10x/decisions/sde/heads-up-duplicate-ladder.md` §P1-04.
+
+### Decisions I took (reversible)
+
+- **The headline is the luck-adjusted total** under B, with the actual chips beside it. The rating change waits for P1-12 and the swings for P1-20, with no placeholder.
+- **A rematch does not repeat the email check.** Both players passed it minutes earlier.
+
+### User actions
+
+- **New:** decide the open Devin finding on #19. A rematch stays unlinked when the earlier match's archive is delayed past the rematch's finish, which takes an outage of about 15 minutes or more. Recommendation: leave it. Fixing it is a `rematch_request` column plus a v6 migration.
+- **Unchanged:** U-4, U-8, Q6 before P1-09, Q7.
+
+### Next step
+
+Me: P1-12, the rating update at match end (the `ratings` migration, Glicko-2 through the outbox), then the ladder.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (P1-03 live; P1-04 next)
 
 Date: 2026-10-10 · Status: **P1-03 is merged (PR #17, `d042683`) and live.** `verify-deploy` confirmed production serves the merged build file by file.
 
@@ -31,10 +71,6 @@ Unchanged: U-4, U-8, Q6 before P1-09, Q7 whenever you like.
 ### Next step
 
 Me: P1-04 (end of match and rematch, on your "build P1-04 and merge when green"). It includes resending `match_end` to a socket that reconnects after the end, which P1-03 found missing.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (P1-01 database live; rated match in the table server)
 

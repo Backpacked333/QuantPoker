@@ -251,13 +251,13 @@ export function VarianceWidget() {
 
 export function RangeWidget() {
   const [style, setStyle] = useState<AtlasStyle>('balanced')
-  const grids = useMemo(() => {
-    const random = lcg(42)
-    return {
-      raise: preflopRangeAfter('raise', style, random),
-      passive: preflopRangeAfter('passive', style, random),
-    }
-  }, [style])
+  const grids = useMemo(
+    () => ({
+      raise: preflopRangeAfter('raise', style),
+      passive: preflopRangeAfter('passive', style),
+    }),
+    [style],
+  )
   const grid = (weights: number[], title: string) => (
     <div>
       <span className="label">{title}</span>

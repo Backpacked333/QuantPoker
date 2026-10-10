@@ -197,6 +197,13 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
   - the rating change, which comes with P1-12;
   - the swings, which come with P1-20. There is no placeholder; the panel grows when they exist.
 - **Accepted edge.** A rematch does not repeat the lobby's email check. Both players passed it when they queued, minutes earlier.
+- **Review fold-ins on #19**, each with a red-then-green test:
+  - An offer lost to a restart between storing the result and making the offer is now made on the next join, resync or press. `offerRematch` is idempotent and checks again after its lobby call.
+  - A second press after the minute declines, even if the expiry alarm is late.
+  - A press near cleanup moves the cleanup past the minute.
+  - The forfeit panel shows the chips actually won.
+- **Open, for the user.** A rematch stays unlinked if the earlier match is archived only after the rematch finishes, which needs an outage of about 15 minutes or more. Fixing it needs a `rematch_request` column and a v6 migration. Declined for now; the thread on #19 stays open.
+- **Merged** as `6a79a93`. `verify-deploy` passed. The deployed Worker code (Cloudflare connector) was searched for the P1-04 markers, the review fixes included, and all were found.
 
 ### Evidence
 

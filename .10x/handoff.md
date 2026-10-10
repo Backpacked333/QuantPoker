@@ -1,6 +1,53 @@
 # Handoff
 
-## Current handoff: DBA → User, SDE (deploy prerequisites done; U-4, U-8 and your go remain)
+## Current handoff: SDE → User (P1-01 database live; rated match in the table server)
+
+Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10, #11 and #12 are merged, and each deploy was verified in production. The rated match now runs in the table server; its PR comes next.
+
+### What changed
+
+- **PR #12 (`6d1bad4`, live), the rated-match archive.**
+  - Production recorded `20261010010000 rated_matches` through the Supabase integration on merge. A read-only check confirmed the final `record_match` v4: the kind check, the 3 new columns, both new rules, and grants for the service role only.
+  - Review fold-ins: a rated finish missing a seat's result is refused, so it is retried and then parked rather than archived half done; the lock comment is corrected.
+  - The flaky address-limit test is fixed at its cause.
+- **On the branch: the rated match in `TableDO`** (`.10x/decisions/sde/heads-up-duplicate-ladder.md` §P1-01):
+  - 40 hands; the 60 s bank refills at hand 21;
+  - the luck is settled after each hand and archived in the record;
+  - the outcome comes from the luck-adjusted total with the ±2 bb band; a forfeit is a loss;
+  - it also fixes a pre-existing outbox race that could leave a match's result unarchived forever.
+- Gates at `da44318`:
+  - typecheck, worker typecheck and lint are clean;
+  - 697 unit, 132 worker and 19 e2e tests pass;
+  - the entry bundle is 141.5 kB gzip of 150;
+  - SQL: 53 tests, 12/12 self-checks and 8/8 real-Postgres races.
+
+### Decisions I took (reversible)
+
+- **Q2: the third timeout in a row forfeits immediately.** This was the tickets' recommendation; you had not answered. It is one rule in `deadlines.ts`.
+- **"Segments" are halves under B.** They exist only for the clock, and the match bar will read "Hand 7 of 40".
+
+### User actions
+
+Unchanged:
+
+- **U-4:** the Worker's `SUPABASE_SECRET_KEY`, one real sign-in and one two-account match. Until then nothing is archived.
+- **U-8:** the dashboard checks.
+- Q6 before P1-09, and Q7 whenever you like.
+
+### Next step
+
+Me:
+
+1. P1-01b-1's PR, merged when green;
+2. P1-01b-2, the 60 s disconnect grace and the both-gone void;
+3. P1-01b-3, the rated queue with the confirmed-email gate (checked against Supabase Auth, not a token claim);
+4. P1-01c, the UI.
+
+---
+
+## Handoff history
+
+### 2026-10-09 — DBA → User, SDE (deploy prerequisites done; U-4, U-8 and your go remain)
 
 Date: 2026-10-09 · Status: **the DBA review (Prompt 4) is done and no Critical or High is open.** On your "you need to do that stuff" I did every pre-deploy item that can be done from here:
 
@@ -11,14 +58,14 @@ Date: 2026-10-09 · Status: **the DBA review (Prompt 4) is done and no Critical 
 
 Gates: typecheck, worker typecheck and lint clean; 675 unit (65 files), 120 worker (13 files), 19 e2e; entry 141.5 kB gzip of 150. Phase 1 self-checks: 12/12 at 10k, 11/11 at 100k and 1M. Concurrency: 8/8 on PostgreSQL 16.15.
 
-### Read first
+#### Read first
 
 - `.10x/reviews/2026-10-09-dba-review.md`: findings DB-1 to DB-16, advisor triage, plans at 100k and 1M, the retry-safety matrix, the access matrix, the growth model, and the production log with rollback.
 - `.10x/decisions/dba/phase1-schema.md`: Phase 1 decisions D1–D10, the per-ticket migration plan, and what Prompts 7–9 get.
 - `supabase/proposed/phase1.sql`: the proposed SQL. Not a migration; nothing applied.
 - `.10x/tickets.md`: S7-13 (new), the DBA fold-in under §Review fold-in, Q6 and Q7.
 
-### User actions (in this order)
+#### User actions (in this order)
 
 1. **U-4.** Add `SUPABASE_SECRET_KEY` to the Worker: Cloudflare → Workers & Pages → `quantpoker` → Settings → Variables and Secrets, type **Secret**.
    - Then sign in once on the site and play one two-account match.
@@ -38,13 +85,13 @@ Gates: typecheck, worker typecheck and lint clean; 675 unit (65 files), 120 work
 4. **No rush:** Q6 (per-decision grades after a match: everyone, or the two players?) before P1-09; Q7 (delete `hands_private` after 90 days?) whenever you like.
 5. **Optional,** so a future session can check U-4 and U-8 itself: add a Cloudflare API token and a Supabase access token as environment secrets (claude.ai/code → environment → Edit). Never in chat.
 
-### What to test
+#### What to test
 
 - `npx vitest run supabase/tests`: the SQL suites, including the new `retry.test.ts` and the DB-1 plan test.
 - `node supabase/bench/plans.ts 10000`: about a minute. It prints plans for 22 queries and **12/12 PASS** for the Phase 1 self-checks.
 - `node supabase/bench/concurrency.ts`: needs PostgreSQL server binaries (`PG_BIN`). It prints **8/8 PASS** for two real sessions racing each write.
 
-### What to review
+#### What to review
 
 - `supabase/proposed/phase1.sql` §Access, especially:
   - the `reports_file` policy (who may report what);
@@ -53,7 +100,7 @@ Gates: typecheck, worker typecheck and lint clean; 675 unit (65 files), 120 work
 - The review's DB-7 and DB-8: two High defects in **my own first draft**. Missing access rules, and grades readable mid-match. Caught before anyone built on them; worth a second pair of eyes.
 - `supabase/bench/concurrency.ts`: the race helper holds session A's transaction open while B runs, so every "two at once" row is a real overlap. B waited ≈ 1.2 s where it should.
 
-### Noticed, not done
+#### Noticed, not done
 
 - **S7-13 (Low):** an archive call that can never succeed retries every 5 min forever and holds back its match's later calls.
 - **PGlite times are relative.** Production has no rows, so its plans can't be checked yet. Re-run the ladder and profile `EXPLAIN`s on production once Phase 1 has real data (P1-14's riskiest assumption).
@@ -61,13 +108,9 @@ Gates: typecheck, worker typecheck and lint clean; 675 unit (65 files), 120 work
 - **Supabase Auth's connection cap** is absolute (10). Switch it to a percentage when you upgrade compute.
 - **Bench data cost:** the 1M run needs about 8 GB of memory and stores 1-byte `leaves` (row width only).
 
-### Next step
+#### Next step
 
 You: U-4, U-8, then go. Me: merge, `deploy-check`, S7-11. After that, Phase 1 from P1-00 once Q1 is answered, building each migration from `phase1-schema.md`.
-
----
-
-## Handoff history
 
 ### 2026-10-09 — SDE → User (Step 7 built; the launch gate is yours)
 

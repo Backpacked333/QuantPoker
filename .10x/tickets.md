@@ -500,7 +500,11 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-01 · Rated queue and the rated match lifecycle
 
-**Status 2026-10-10:** the database part is **done** (`supabase/migrations/*_rated_matches.sql`, `supabase/tests/rated.test.ts`); the Worker and UI parts are next. It went first because S7-05 is not started, so this `record_match` is v4 and S7-05 will define the next version.
+**Status 2026-10-10:**
+
+- **Database: done and live** (PR #12, `6d1bad4`; `20261010010000 rated_matches` recorded in production). `record_match` v4 also refuses a rated finish missing a seat's result, and voids a match both players left (`abandoned`, one `leave_mid_hand` row each). It went first because S7-05 is not started, so this `record_match` is v4 and S7-05 defines the next version.
+- **Table server: done** (P1-01b-1). Under B the "segments" below are halves that exist only for the clock: 40 hands, the bank refills at hand 21, and the match bar reads "Hand 7 of 40". The acceptance tests are in `worker/test/rated.test.ts` with that wording.
+- **Next:** the 60 s grace and the both-gone void (P1-01b-2); the rated queue with the email gate (P1-01b-3); then the UI (P1-01c).
 
 - **Goal.** A signed-in player with a confirmed email can queue for a rated HU match and play 2 segments × 20 hands, with a 60 s bank per segment, a 60 s reconnect grace, the forfeit rule and a W/D/L result archived.
 - **User-visible outcome.**

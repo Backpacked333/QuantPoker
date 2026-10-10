@@ -44,3 +44,40 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
 - add the adjusted nets to the match's running totals;
 - store `allInAt` and `equity` with the hand, so the review and the end screen can show "luck-adjusted +3.5 bb (actual +11 bb)";
 - apply the draw band (`DRAW_BAND_BB` = 2, inclusive) to the adjusted total.
+
+## P1-01 · Rated match: the archive and the table server (2026-10-10)
+
+### Database (PR #12, live)
+
+`record_match` v4 stores each seat's `outcome` and `adjusted_chips` for a finished rated match, and copies `finished_at` to every seat. Review fold-ins before it shipped:
+
+- **A rated finish missing a seat's result is refused (23502).** Otherwise it would archive as finished with NULLs, and the outbox would drop it. Refused, it is retried and then parked with an incident (S7-13), so it can be replayed.
+- **`abandoned` voids the match** with a `leave_mid_hand` row for each seat in `result.abandoned`. This is the amendment's "both gone" rule; adding it to v4 saved a v5.
+
+### Table server (P1-01b-1)
+
+- **Kind comes from the lobby** (`InitBody.kind`). A rated table plays `RATED_CONFIG` and ignores `handsTotal`. Nothing can create one until P1-01b-3 opens the queue.
+- **The luck is settled one step late, on purpose.** `settleLuck` runs as the next hand starts and at the finish, never between the last action and the showdown frames: a preflop all-in costs about 0.5 s of CPU. It is idempotent (`adjustedThrough`), and after a restart the alarm recomputes it from the stored hand.
+- **A rated hand's archive calls wait under `held:<n>:*`.** `settleLuck` adds `record.luck` and moves them to `outbox:`, deleting `held:` in the same commit (no await between the two writes), then flushes. Holding them is what lets the archived record carry the luck, as the amendment wants.
+- **Outcome.** Decided once from the lead (half the difference), so floating-point noise can never give both seats a win. A forfeit is a loss whatever the chips say. Void endings (`no_show`, `engine_fault`, `abandoned`) have no outcome.
+- **The bank** refills to `bankMs` at hands `1 + k·bankRefillEvery`; what is left does not carry over.
+- **Frames:** `match_end.result` gains `adjustedBySeat` and `outcomeBySeat`. Both are derived from shown cards only. The per-hand equity never reaches a frame (`leaks.test.ts`: result-key allowlist and a rated run).
+
+### A pre-existing bug found on the way
+
+`flushOutbox` returned at once while a pass was running, and that pass then removed the safety deadline. So a call queued during it (the match result, when a flush outlives the 3 s gap) was stranded for good: idle cleanup only re-arms itself. Reproduced in `archive.test.ts` by holding `record_hand` while the match ends. Now a call made during a pass makes the pass go again.
+
+### Evidence
+
+- `worker/test/rated.test.ts` (6 tests, red first):
+  - 40 hands end complete with win/loss;
+  - the bank per half;
+  - an all-in on the flop is held, then archived with `luck` and added to the total;
+  - three timeouts are a loss even 560 chips ahead;
+  - the draw band at +40/+41;
+  - a casual match is archived exactly as before.
+- The draw band was written before its test. Mutating `<=` to `<` turns it red.
+- Gates at `da44318`:
+  - typecheck 0, typecheck:worker 0, lint 0;
+  - 697 unit, 132 worker and 19 e2e tests;
+  - entry bundle 141.5 kB.

@@ -42,6 +42,12 @@ export type HandSeen = {
   reveal?: Reveal
 }
 
+/** A finished rated match's rematch offer, as the server last sent it. */
+export type RematchView = Omit<
+  Extract<ServerMsg, { t: 'rematch_state' }>,
+  't' | 'seq' | 'matchId'
+>
+
 export type TableState = {
   status: ConnectionStatus
   seat: SeatId | null
@@ -51,6 +57,7 @@ export type TableState = {
   pending: string | null
   error: { code: ErrorCode; message: string } | null
   ended: Extract<ServerMsg, { t: 'match_end' }>['result'] | null
+  rematch: RematchView | null
   /** The table this account is already playing at, when refused here. */
   elsewhere: string | null
   /** Server time minus this device's time, from the latest snapshot. */
@@ -71,6 +78,7 @@ export const INITIAL_STATE: TableState = {
   pending: null,
   error: null,
   ended: null,
+  rematch: null,
   elsewhere: null,
   clockOffset: 0,
   hands: {},
@@ -163,6 +171,13 @@ export class TableConnection {
     return true
   }
 
+  /** Asks for a rematch at a finished rated table. */
+  rematch(): boolean {
+    if (this.state.status !== 'open' || !this.state.rematch) return false
+    this.socket!.send(JSON.stringify({ t: 'rematch' }))
+    return true
+  }
+
   private set(patch: Partial<TableState>) {
     this.state = { ...this.state, ...patch }
     for (const listener of this.listeners) listener()
@@ -244,6 +259,18 @@ export class TableConnection {
     }
     if (msg.t === 'match_end') {
       this.set({ ended: msg.result })
+      return
+    }
+    if (msg.t === 'rematch_state') {
+      const { state, pressed, until, next } = msg
+      this.set({
+        rematch: {
+          state,
+          pressed,
+          ...(until !== undefined ? { until } : {}),
+          ...(next ? { next } : {}),
+        },
+      })
       return
     }
     if (msg.t === 'hand_start') {

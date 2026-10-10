@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { matchOverText } from './matchResult'
+import { matchHeadline, matchOverText } from './matchResult'
 
 describe('the match-over text', () => {
   it('reads the rated outcome, not the chips: a forfeit while ahead is a loss', () => {
@@ -87,5 +87,47 @@ describe('the match-over text', () => {
     expect(matchOverText(result, 1, 20)).toBe(
       'Match over: you lost 1,240 chips.',
     )
+  })
+
+  it('heads the end screen with the luck-adjusted bb and the outcome', () => {
+    const rated = {
+      netBySeat: { 0: 220, 1: -220 },
+      reason: 'complete' as const,
+      adjustedBySeat: { 0: 250, 1: -250 },
+      outcomeBySeat: { 0: 'win' as const, 1: 'loss' as const },
+    }
+    expect(matchHeadline(rated, 0, 20)).toBe('+12.5 bb · Win')
+    expect(matchHeadline(rated, 1, 20)).toBe('-12.5 bb · Loss')
+    expect(matchHeadline(rated, 0)).toBe('Win')
+    expect(
+      matchHeadline(
+        {
+          ...rated,
+          adjustedBySeat: { 0: -30, 1: 30 },
+          outcomeBySeat: { 0: 'draw', 1: 'draw' },
+        },
+        1,
+        20,
+      ),
+    ).toBe('+1.5 bb · Draw')
+    expect(
+      matchHeadline({ ...rated, reason: 'forfeit', forfeit: 0 }, 0, 20),
+    ).toBe('Win by forfeit')
+    // Casual, and void rated matches, have no headline.
+    expect(
+      matchHeadline({ netBySeat: { 0: 1, 1: -1 }, reason: 'complete' }, 0, 20),
+    ).toBeNull()
+    expect(
+      matchHeadline(
+        {
+          netBySeat: { 0: 0, 1: 0 },
+          reason: 'abandoned',
+          abandoned: [0, 1],
+          adjustedBySeat: { 0: 0, 1: 0 },
+        },
+        0,
+        20,
+      ),
+    ).toBeNull()
   })
 })

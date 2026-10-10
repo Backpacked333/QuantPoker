@@ -15,6 +15,12 @@ export const RATED_CONFIG: MatchConfig = {
   bankRefillEvery: 20,
 }
 
+/**
+ * How long a seat may be gone before its turns are played for it at once
+ * (check if possible, else fold; each counts as a timeout).
+ */
+export const GRACE_MS = 60_000
+
 /** A luck-adjusted lead of at most this many big blinds is a draw (R-8). */
 export const DRAW_BAND_BB = 2
 

@@ -1,6 +1,8 @@
 // @vitest-environment node
 // Live tables must never carry analysis: the online code may not import the
-// trainer's model, range, grading or bot modules, nor the lab.
+// trainer's model, range, grading or bot modules, nor the lab. Nor may it
+// read the `?seed` and `?motion` debug switches (src/env.ts) or draw from
+// the seedable random source: the server deals every live card.
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
@@ -15,6 +17,8 @@ const FORBIDDEN = [
   /components\/lab\//,
   /LabSheet/,
   /equity\.worker/,
+  /lib\/random/,
+  /(^|\/)env$/,
 ]
 
 const dir = new URL('./', import.meta.url)

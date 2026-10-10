@@ -32,7 +32,7 @@ export async function createTable(creator: string, handsTotal?: number) {
 export type Client = {
   ws: WebSocket
   frames: ServerMsg[]
-  closed: { code: number } | null
+  closed: { code: number; reason: string } | null
   send(msg: ClientMsg): void
   /** Resolves with the first frame (from `from` on) matching `test`. */
   next(test: (f: ServerMsg) => boolean, from?: number): Promise<ServerMsg>
@@ -67,7 +67,7 @@ export async function connect(matchId: string, user: string): Promise<Client> {
     client.frames.push(JSON.parse(e.data as string) as ServerMsg)
   })
   ws.addEventListener('close', (e) => {
-    client.closed = { code: e.code }
+    client.closed = { code: e.code, reason: e.reason }
   })
   ws.accept()
   return client

@@ -180,8 +180,10 @@ export function ActionBar({
   /**
    * A table against a real opponent: their name in the status, and the
    * server deals, so a finished hand shows `next` instead of deal buttons.
+   * `rated`: nothing to analyse while the hand is live, so no equity ring
+   * and no break-even figure (integrity v1, HU AC6).
    */
-  versus?: { opponent: string; next: string }
+  versus?: { opponent: string; next: string; rated?: boolean }
 }) {
   const result = game.result
   if (result && revealing)
@@ -245,7 +247,9 @@ export function ActionBar({
         <span className="muted">
           {canAct
             ? facing
-              ? `${chips(legal.toCall)} to call into ${chips(game.pot)} · break-even ${pct(math.breakEven)}`
+              ? versus?.rated
+                ? `${chips(legal.toCall)} to call into ${chips(game.pot)}`
+                : `${chips(legal.toCall)} to call into ${chips(game.pot)} · break-even ${pct(math.breakEven)}`
               : 'You can check for free'
             : 'No rush. Think in probabilities.'}
         </span>
@@ -265,11 +269,13 @@ export function ActionBar({
           disabled={!canAct}
           onClick={() => onAct('continue')}
         >
-          <EquityRing
-            equity={math.equity}
-            breakEven={facing ? math.breakEven : 0}
-            revealed={show}
-          />
+          {!versus?.rated && (
+            <EquityRing
+              equity={math.equity}
+              breakEven={facing ? math.breakEven : 0}
+              revealed={show}
+            />
+          )}
           <span className="act-text">
             <span className="act-main">
               {facing ? `Call ${chips(legal.toCall)}` : 'Check'}{' '}

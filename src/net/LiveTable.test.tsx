@@ -1,7 +1,9 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MotionConfig } from 'motion/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act as engineAct } from '../engine/hand'
+import { seedRandom } from '../lib/random'
 import type { Identity } from './api'
 import { Lobby } from './Lobby'
 import { LiveTable } from './LiveTable'
@@ -28,6 +30,14 @@ async function opened() {
   const socket = FakeSocket.last()
   act(() => socket.open())
   return socket
+}
+
+/** The welcome to hand 1 at a rated table, as the server sends it. */
+function ratedWelcome() {
+  const f = frame('welcome', 1, 0, firstHand())
+  if (f.t !== 'welcome' || !f.view) throw new Error('fixture')
+  const rated = { ...f.table, kind: 'hu-rated' as const, handsTotal: 40 }
+  return { ...f, table: rated, view: { ...f.view, match: rated } }
 }
 
 describe('LiveTable', () => {
@@ -135,6 +145,77 @@ describe('LiveTable', () => {
     const view = { ...welcome.view, match: rated }
     act(() => socket.emit({ ...welcome, table: rated, view }))
     expect(screen.getByText('Rated · Hand 1 of 40')).toBeInTheDocument()
+  })
+
+  it('a rated table renders no equity value, EV label, lab button or guess bar', async () => {
+    // The same decision at a casual table shows the pot-odds ring and the
+    // break-even figure, so the checks below are not vacuous.
+    const casual = render(<LiveTable matchId={MATCH} identity={alice} />)
+    let socket = await opened()
+    act(() => socket.emit(frame('welcome', 1, 0, firstHand())))
+    expect(casual.container.querySelector('.ring')).not.toBeNull()
+    expect(screen.getByText(/break-even \d+%/)).toBeInTheDocument()
+    casual.unmount()
+
+    const { container } = render(<LiveTable matchId={MATCH} identity={alice} />)
+    socket = await opened()
+    act(() => socket.emit(ratedWelcome()))
+    expect(screen.getByText('Rated · Hand 1 of 40')).toBeInTheDocument()
+    expect(screen.getByText('Your move')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Call 10/ })).toBeEnabled()
+    expect(container.querySelector('.ring')).toBeNull()
+    expect(container.textContent).not.toMatch(/%|break-even|equity|\bEV\b/i)
+    expect(screen.queryByRole('slider', { name: /equity/i })).toBeNull()
+    for (const name of [
+      /lab/i,
+      /lock in/i,
+      /skip/i,
+      /Pause table/,
+      'Hand history',
+      'Table settings',
+    ])
+      expect(screen.queryByRole('button', { name })).toBeNull()
+  })
+
+  it('?seed=3&motion=off does not change a rated table', async () => {
+    // What the two switches do at boot (src/env.ts, src/main.tsx): seed the
+    // trainer's random source, and freeze every animation.
+    const seen = async (switches: boolean) => {
+      if (switches) {
+        seedRandom(3)
+        document.documentElement.classList.add('no-motion')
+      }
+      const table = <LiveTable matchId={MATCH} identity={alice} />
+      const { container, unmount } = render(
+        switches ? (
+          <MotionConfig reducedMotion="always">{table}</MotionConfig>
+        ) : (
+          table
+        ),
+      )
+      try {
+        const socket = await opened()
+        act(() => socket.emit(ratedWelcome()))
+        return {
+          text: container.textContent,
+          buttons: screen
+            .getAllByRole('button')
+            .map(
+              (b) => `${b.textContent}|${(b as HTMLButtonElement).disabled}`,
+            ),
+          sliders: screen
+            .queryAllByRole('slider')
+            .map((i) => i.getAttribute('aria-label') ?? i.id),
+        }
+      } finally {
+        unmount()
+        seedRandom(null)
+        document.documentElement.classList.remove('no-motion')
+      }
+    }
+    const plain = await seen(false)
+    expect(plain.text).toContain('Rated · Hand 1 of 40')
+    expect(await seen(true)).toEqual(plain)
   })
 
   it('flags a dropped opponent and its own reconnects, and disables moves', async () => {

@@ -343,7 +343,7 @@ function LiveHand({
         onDeal={noop}
         onReview={noop}
         revealing={runout.revealing}
-        versus={{ opponent, next }}
+        versus={{ opponent, next, rated: view.match.kind === 'hu-rated' }}
       />
       {ended && (
         <div className="live-ended" role="status">

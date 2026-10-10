@@ -118,3 +118,48 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
 - **A refusal (`unverified`)** stops looking and shows the server's reason on the Rated card. Retrying rated reopens the lobby socket, because the Worker checks once per socket; this was the third review finding on #15. Casual stays open to the player.
 - **The match bar** reads "Rated · Hand 7 of 40". Casual is unchanged.
 - **E2E:** two players find a rated match and both see "Rated · Hand 1 of 40", against `wrangler dev`, where dev accounts are eligible.
+
+## P1-03 · Nothing to analyse during a rated match (2026-10-10, PR #17)
+
+### What changed
+
+- **A rated table draws no equity ring and no break-even figure** (HU AC6).
+  - The live table used to draw the ring locked, with a break-even tick, and printed "break-even 33%" beside the call.
+  - `ActionBar`'s `versus` prop gains `rated`, set from `view.match.kind`, which drops both.
+  - Casual live tables and the trainer are unchanged.
+- **The live code cannot read the debug switches.** `src/net/imports.test.ts` forbids importing `src/env.ts` and `src/lib/random.ts`. Only the trainer's dealer and Atlas draw from that source, and the server deals every live card.
+
+### Proof
+
+- **`worker/test/rated-leak.test.ts`** plays one 40-hand rated match, covering:
+  - an all-in settled at equity;
+  - a timeout;
+  - a second tab;
+  - a disconnect past the grace, then the return;
+  - a junk frame and a stale one;
+  - a reconnect after the end.
+
+  Every frame has exactly its keys, with no analysis key at any depth. The opponent's cards appear only after that hand's showdown, and no close reason names a card. Two injected server leaks, cards in every view and an `equity` field, each turn it red.
+
+- **`worker/test/frames.ts`** holds the allowlists, shared with `leaks.test.ts`. `keysOf<T>()` makes `typecheck:worker` fail when a protocol field is missing from a list or a list names a field that does not exist. Both were checked. This answers the ticket's riskiest assumption ("the allowlist must list every current field") with the compiler rather than a one-off review.
+- **`src/net/LiveTable.test.tsx`** has two tests:
+  - the rated table renders no ring, `%`, EV, read prompt or lab control, while the same decision at a casual table shows the ring;
+  - `?seed=3` plus `motion=off` leave its text and controls identical. A mutation that read the `no-motion` class turned this red.
+- **`e2e/live.spec.ts`:** two browsers pair through the rated queue and call down hand 1. Both the UI at each decision and every frame received are checked. Red with the flag off, green with it on.
+
+### Decisions (reversible)
+
+- **`?motion=off` still freezes animation on a rated table.** It hides nothing and changes no decision, and it does the same as the OS reduced-motion setting, which must keep working. The integrity spec's "ignored on rated tables" is met as "changes nothing a rated player sees or can do", which the test checks.
+- **The face-up all-in equity during a runout stays** (`Table`, `faceUpEquity`). It appears only once both players are all in and the server has decided the hand, and it is the equity the luck adjustment settles at.
+
+### Noticed
+
+- A socket opened after `match_end` gets the welcome and the last hand, but not `match_end` again (`sendEnded`). After a reload, the rated outcome text is missing. For P1-04's end screen.
+- `supabase/bench/payloads.json` fails `prettier --check` on `main`. It predates this work, and CI does not run Prettier.
+
+### Gates
+
+- typecheck 0, typecheck:worker 0, lint 0.
+- 713 unit tests (69 files) and 143 worker tests (15 files).
+- Entry bundle 141.5 kB.
+- 21 e2e tests.

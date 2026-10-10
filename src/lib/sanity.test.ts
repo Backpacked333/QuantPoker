@@ -62,6 +62,42 @@ function mirrored(game: Game): Game {
 const atlasPolicy: Script = (game, random) =>
   atlasDecision(mirrored(game), 'balanced', random).action
 
+/** Any legal move, uniformly: fold (when facing a bet), call, or a raise. */
+const randomMoves: Script = (game, random) => {
+  const legal = legalActions(game)
+  const options: Action[] = [legal.canCheck ? check : call]
+  if (!legal.canCheck) options.push(fold)
+  if (legal.canRaise)
+    options.push(
+      { type: 'raise', to: legal.minRaiseTo },
+      raiseTo(game, potRaise(game)),
+      { type: 'raise', to: legal.maxRaiseTo },
+    )
+  return options[Math.floor(random() * options.length)]
+}
+const raiseTo = (game: Game, to: number): Action => {
+  const legal = legalActions(game)
+  return {
+    type: 'raise',
+    to: Math.min(legal.maxRaiseTo, Math.max(legal.minRaiseTo, Math.round(to))),
+  }
+}
+const potRaise = (game: Game) =>
+  Math.max(...game.bets) + game.pot + legalActions(game).toCall
+/** The tight-aggressive script, but half its moves are random. */
+const halfRandom: Script = (game, random) =>
+  random() < 0.5 ? randomMoves(game, random) : tightAggressive(game, random)
+/** Raises the pot every time it can, calls otherwise. */
+const potRaiser: Script = (game) =>
+  legalActions(game).canRaise
+    ? raiseTo(game, potRaise(game))
+    : alwaysCall(game, () => 0)
+/** Moves all in every time it can. */
+const maniac: Script = (game) => {
+  const legal = legalActions(game)
+  return legal.canRaise ? { type: 'raise', to: legal.maxRaiseTo } : call
+}
+
 /**
  * Mean accuracy of the script's first `count` decisions against Atlas, from
  * each seed. Several seeds, because a folder's score depends on how many
@@ -91,13 +127,19 @@ const SEEDS = [23, 37, 51]
 const PER_SEED = 60
 const DECISIONS = SEEDS.length * PER_SEED
 
+const scored = new Map<Script, number>()
+const score = (script: Script) => {
+  if (!scored.has(script)) scored.set(script, accuracy(script, PER_SEED))
+  return scored.get(script)!
+}
+
 describe('accuracy against the population model', () => {
   it(`ranks a thinking player above a calling station above a folder, over ${DECISIONS} decisions each`, () => {
     const scores = {
-      alwaysFold: accuracy(alwaysFold, PER_SEED),
-      alwaysCall: accuracy(alwaysCall, PER_SEED),
-      tightAggressive: accuracy(tightAggressive, PER_SEED),
-      atlas: accuracy(atlasPolicy, PER_SEED),
+      alwaysFold: score(alwaysFold),
+      alwaysCall: score(alwaysCall),
+      tightAggressive: score(tightAggressive),
+      atlas: score(atlasPolicy),
     }
     console.log(
       `sanity: ${Object.entries(scores)
@@ -111,6 +153,29 @@ describe('accuracy against the population model', () => {
     expect(scores.tightAggressive).toBeGreaterThan(scores.atlas)
     expect(scores.atlas).toBeGreaterThan(scores.alwaysCall)
     expect(scores.alwaysCall).toBeGreaterThan(scores.alwaysFold + 5)
+  }, 240_000)
+
+  // The QA attack (.10x/decisions/qa/accuracy.md): accuracy must fall as a
+  // player's moves get worse, and must not reward raising for its own sake.
+  it('ranks a player above itself making random moves, and raising every street below a thinking player', () => {
+    const scores = {
+      tightAggressive: score(tightAggressive),
+      halfRandom: score(halfRandom),
+      random: score(randomMoves),
+      potRaiser: score(potRaiser),
+      maniac: score(maniac),
+      alwaysFold: score(alwaysFold),
+    }
+    console.log(
+      `attack: ${Object.entries(scores)
+        .map(([who, s]) => `${who} ${s.toFixed(1)}`)
+        .join(', ')}`,
+    )
+    // This sample: 79.4, 69.4, 59.7, 72.3, 46.4, 55.1.
+    expect(scores.tightAggressive).toBeGreaterThan(scores.halfRandom + 5)
+    expect(scores.halfRandom).toBeGreaterThan(scores.random + 5)
+    expect(scores.tightAggressive).toBeGreaterThan(scores.potRaiser + 3)
+    expect(scores.maniac).toBeLessThan(scores.alwaysFold)
   }, 240_000)
 
   it('grades the same decisions identically every time', () => {

@@ -2,7 +2,7 @@
 // 40 fresh-deck hands, a 60 s bank for each half, the result from the
 // luck-adjusted total with a draw band, and the forfeit rule. Players are
 // real account ids, so every call reaches the (stubbed) archive.
-import { env } from 'cloudflare:test'
+import { env, runInDurableObject } from 'cloudflare:test'
 import {
   afterAll,
   beforeAll,
@@ -17,9 +17,9 @@ import { luckAdjusted } from '../../src/engine/luck'
 import type { HandState, PlayerAction, SeatId } from '../../src/engine/types'
 import type { HandRecordV1, ServerMsg } from '../../src/shared/protocol'
 import { forgetUsernames } from '../src/auth'
-import { DRAW_BAND_BB, outcomes, RATED_CONFIG } from '../src/rated'
+import { DRAW_BAND_BB, GRACE_MS, outcomes, RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
-import type { InitBody } from '../src/table'
+import type { InitBody, TableDO } from '../src/table'
 import {
   connect,
   createTable,
@@ -274,6 +274,130 @@ describe('a rated match', () => {
     // The last hand was held for its luck; the finish releases it.
     await until(() => handCalls().length === 4)
     expect(handCalls().map((h) => h.handNo)).toEqual([1, 2, 3, 4])
+  })
+})
+
+/** Closes a seat's socket and waits until the table has seen it go. */
+async function leave(matchId: string, c: Client) {
+  c.ws.close(1000, 'gone')
+  for (let i = 0; i < 400; i++) {
+    const open = await runInDurableObject(
+      stub(matchId),
+      (t: TableDO) =>
+        (t as unknown as { ctx: DurableObjectState }).ctx
+          .getWebSockets()
+          .filter((ws) => ws.readyState === 1).length,
+    )
+    const graces = await runInDurableObject(
+      stub(matchId),
+      (t: TableDO) =>
+        (t as unknown as { deadlines: { kind: string }[] }).deadlines.filter(
+          (d) => d.kind === 'grace',
+        ).length,
+    )
+    if (graces > 0 && open < 2) return graces
+    await new Promise((r) => setTimeout(r, 5))
+  }
+  throw new Error('the table never saw the socket close')
+}
+
+const actionsOf = async (matchId: string) =>
+  (await peek(matchId)).hand!.actions.length
+
+describe('a player who leaves a rated match', () => {
+  it('has each turn played at once after 60 s away, and three in a row forfeit', async () => {
+    const { matchId, alice, seats } = await rated()
+    await move(matchId, seats, passive) // hand 1: Alice limps; Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS - 1)
+    expect(await actionsOf(matchId)).toBe(1) // still Bob's to make
+    await elapse(matchId, 1) // the grace ends: his turn is played for him
+    expect(await actionsOf(matchId)).toBe(2)
+    // The flop: Bob acts first, and his turn is played with no clock at all.
+    await elapse(matchId, 0)
+    expect(await actionsOf(matchId)).toBe(3)
+    await move(matchId, seats, passive) // Alice checks
+    await elapse(matchId, 0) // the turn: Bob's third timeout in a row
+    await alice.next((f) => f.t === 'match_end')
+    expect(matchEnd(alice)!.result).toMatchObject({
+      reason: 'forfeit',
+      forfeit: 1,
+      outcomeBySeat: { 0: 'win', 1: 'loss' },
+    })
+  })
+
+  it('keeps the normal clock if they are back within the grace', async () => {
+    const { matchId, seats } = await rated()
+    await move(matchId, seats, passive) // Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, 30_000)
+    const back = await connect(matchId, BOB)
+    await back.next((f) => f.t === 'welcome')
+    await elapse(matchId, 30_001) // past where the grace would have ended
+    expect(await actionsOf(matchId)).toBe(1)
+    // His own clock still runs: 20 s plus the 60 s bank from his turn.
+    await elapse(matchId, 20_000)
+    expect(await actionsOf(matchId)).toBe(2)
+    const { match } = await peek(matchId)
+    expect(
+      (match as unknown as { players: { timeouts: number }[] }).players[1]
+        .timeouts,
+    ).toBe(1)
+  })
+
+  it('gives a player back from away a fresh clock for a turn still pending', async () => {
+    const { matchId, seats } = await rated()
+    await move(matchId, seats, passive) // Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS) // away; his preflop turn played for him
+    // The flop is his to act, due at once, but the alarm is 30 s late and
+    // he is back first.
+    await setClock(matchId, T0 + GRACE_MS + 30_000)
+    const back = await connect(matchId, BOB)
+    await back.next((f) => f.t === 'welcome')
+    // 20 s + his 20 s of bank left, from now: not from when the turn began.
+    await elapse(matchId, 39_999)
+    expect(await actionsOf(matchId)).toBe(2)
+    await elapse(matchId, 1)
+    expect(await actionsOf(matchId)).toBe(3)
+  })
+
+  it('charges no bank for a turn played while away, even when the alarm is late', async () => {
+    const { matchId, seats } = await rated()
+    await move(matchId, seats, passive) // Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS)
+    const bank = async () =>
+      (
+        (await peek(matchId)).match as unknown as {
+          players: { bankMs: number }[]
+        }
+      ).players[1].bankMs
+    // The turn he left on ran 60 s of his normal clock: 40 s of bank.
+    expect(await bank()).toBe(20_000)
+    // The flop turn began while he was away; its alarm runs 45 s late.
+    await setClock(matchId, T0 + GRACE_MS + 45_000)
+    await elapse(matchId, 0)
+    expect(await actionsOf(matchId)).toBe(3)
+    expect(await bank()).toBe(20_000)
+  })
+
+  it('is void when both players are gone past the grace, with an abandonment for each', async () => {
+    const { matchId, seats } = await rated()
+    await leave(matchId, seats[0])
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS)
+    const { match } = await peek(matchId)
+    expect(match.status).toBe('finished')
+    await until(() => endCall() !== undefined)
+    // No hand finished, nobody wins: v4 voids it and writes leave_mid_hand
+    // for each seat in `abandoned`.
+    expect(endCall()!.result).toEqual({
+      netBySeat: { 0: 0, 1: 0 },
+      reason: 'abandoned',
+      abandoned: [0, 1],
+      adjustedBySeat: { 0: 0, 1: 0 },
+    })
   })
 })
 

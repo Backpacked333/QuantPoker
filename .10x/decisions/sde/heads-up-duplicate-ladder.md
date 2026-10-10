@@ -81,3 +81,15 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
   - typecheck 0, typecheck:worker 0, lint 0;
   - 697 unit, 132 worker and 19 e2e tests;
   - entry bundle 141.5 kB.
+
+### Grace and both gone (P1-01b-2)
+
+- **A `grace` deadline per seat (60 s)** starts when a rated seat's last socket closes. Every close path (normal, error, flood cut-off, illegal frames) goes through `socketGone`. A tab replaced by a new one never starts a grace, because the new socket is already open.
+- **Away seats.** Past the grace, the seat is `away`. A turn of theirs that is pending is played at once, and later turns get a deadline of "now" (`turnFor`). Each counts as a timeout, so three in a row forfeit.
+- **Coming back** ends the grace or the time away, and gives a pending turn its normal clock again (`back`).
+- **Both away** ends the match `abandoned` (void). `result.abandoned` names both seats, and `record_match` v4 writes `leave_mid_hand` for each. Graces due together are handled before any turn, so two players leaving at once void the match instead of auto-playing a hand. The test pins this: the void match's `netBySeat` must be 0/0.
+- **Evidence:** 3 tests in `rated.test.ts`. Mutating the away-seat deadline back to the normal clock turns "played at once" red.
+
+### Deploy verification gap
+
+`verify-deploy` compares the static files and `/api/health`, so a Worker-only change passes it before the new Worker is live. For #13 the deployed Worker code was read through the Cloudflare connector, which confirmed the new code (`settleLuck`, `flushAgain`, `held:`). A build marker in `/api/health` would close the gap (follow-up).

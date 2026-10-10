@@ -54,7 +54,7 @@ import type { WorkerEnv } from './env'
 import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
 import { describeError, logEvent } from './log'
-import { outcomes, RATED_CONFIG } from './rated'
+import { GRACE_MS, outcomes, RATED_CONFIG } from './rated'
 import { archive, refusedForData } from './supabase'
 import type { ArchiveCall, ArchiveOutcome } from './supabase'
 import type { HandMessage } from './verify'
@@ -85,6 +85,11 @@ type Player = {
   bankMs: number
   /** Missed decisions in a row; any move of their own resets it. */
   timeouts: number
+  /**
+   * Rated: gone past the grace since then; their turns are played at once,
+   * and a turn that began while they were away costs no bank.
+   */
+  awaySince?: number
 }
 type Match = {
   v: 1
@@ -98,6 +103,8 @@ type Match = {
   endReason?: MatchEndReason
   forfeit?: SeatId
   noShow?: SeatId[]
+  /** Seats gone past the grace when the match was abandoned (void). */
+  abandoned?: SeatId[]
   /**
    * Rated: the luck-adjusted total per seat, through hand
    * `adjustedThrough` (settled after each hand; see settleLuck).
@@ -318,6 +325,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
         await this.ctx.storage.put('match', match)
       }
     }
+    await this.back(player)
     // One socket per account: a second tab replaces the first.
     for (const old of this.ctx.getWebSockets(userId))
       old.close(4001, 'replaced')
@@ -422,7 +430,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     this.reject(ws, error, message)
     ws.close(code, message)
     this.limitHit(ws, code, error)
-    this.broadcast('state', { gone: ws })
+    void this.socketGone(ws)
   }
 
   private limitHit(ws: WebSocket, code: number, reason: string) {
@@ -449,7 +457,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (n > ILLEGAL_PER_HAND) {
       ws.close(CLOSE_ABUSE, 'Too many illegal messages')
       this.limitHit(ws, CLOSE_ABUSE, 'illegal')
-      this.broadcast('state', { gone: ws })
+      void this.socketGone(ws)
     }
   }
 
@@ -460,11 +468,87 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } catch {
       // Already closed.
     }
-    this.broadcast('state', { gone: ws })
+    await this.socketGone(ws)
   }
 
   async webSocketError(ws: WebSocket) {
+    await this.socketGone(ws)
+  }
+
+  /**
+   * A socket is closing: the others see the seat offline, and a rated
+   * seat with no other socket open starts its grace.
+   */
+  private async socketGone(ws: WebSocket) {
     this.broadcast('state', { gone: ws })
+    const match = this.match
+    if (!match?.adjusted || match.status !== 'playing') return
+    const { seat } = ws.deserializeAttachment() as Attachment
+    const player = match.players.find((p) => p.seat === seat)
+    if (!player || player.awaySince !== undefined || this.seated(seat, ws))
+      return
+    if (this.deadlines.some((d) => d.kind === 'grace' && d.seat === seat))
+      return
+    this.deadlines.push({ kind: 'grace', at: this.clock() + GRACE_MS, seat })
+    await this.armAlarm()
+  }
+
+  /** A rated seat that (re)connects ends its grace, or its time away. */
+  private async back(player: Player) {
+    const match = this.match!
+    if (!match.adjusted) return
+    const grace = (d: Deadline) => d.kind === 'grace' && d.seat === player.seat
+    const away = player.awaySince !== undefined
+    if (!this.deadlines.some(grace) && !away) return
+    this.deadlines = this.deadlines.filter((d) => !grace(d))
+    const hand = this.hand
+    if (away) {
+      delete player.awaySince
+      // A turn of theirs still pending (its alarm not yet run) starts over
+      // with the normal clock from now: they had no clock while away.
+      const writes: Record<string, unknown> = { match }
+      if (hand && !isOver(hand) && hand.toAct === player.seat) {
+        const current = this.current!
+        current.turnStartedAt = this.clock()
+        this.setGameDeadline(this.turnFor(hand, current.turnStartedAt))
+        writes.current = current
+      }
+      await this.ctx.storage.put(writes)
+    }
+    await this.armAlarm()
+  }
+
+  /**
+   * Seats whose grace ran out are away: a turn of theirs is played at once.
+   * Both away: the match is abandoned, void.
+   */
+  private async graceOver(seats: SeatId[]) {
+    const match = this.match
+    if (match?.status !== 'playing') return
+    const leaving = match.players.filter(
+      (p) =>
+        seats.includes(p.seat) &&
+        p.awaySince === undefined &&
+        !this.seated(p.seat),
+    )
+    if (!leaving.length) return
+    for (const p of leaving) p.awaySince = this.clock()
+    if (match.players.every((p) => p.awaySince !== undefined))
+      return this.finish(
+        'abandoned',
+        undefined,
+        undefined,
+        match.players.map((p) => p.seat),
+      )
+    await this.ctx.storage.put('match', match)
+    const hand = this.hand
+    const seat = hand?.toAct
+    if (hand && !isOver(hand) && leaving.some((p) => p.seat === seat))
+      await this.applyAction(
+        seat!,
+        act(hand, seat!, timeoutAction(hand)),
+        'timeout',
+      )
   }
 
   /**
@@ -477,7 +561,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
       const t = this.clock()
       const due = this.deadlines.filter((d) => d.at <= t)
       this.deadlines = this.deadlines.filter((d) => d.at > t)
+      // All graces first, so two seats gone together void the match.
+      const graces = due.flatMap((d) => (d.kind === 'grace' ? [d.seat] : []))
+      if (graces.length) await this.graceOver(graces)
       for (const d of due) {
+        if (d.kind === 'grace') continue
         if (d.kind === 'outbox') {
           void this.flushOutbox()
           continue
@@ -549,7 +637,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const t = this.clock()
     const took = t - current.turnStartedAt
     const player = match.players.find((p) => p.seat === seat)!
-    player.bankMs = bankAfter(player.bankMs, took, match.config.decisionMs)
+    // A turn that began while the seat was away was due at once: however
+    // late the alarm ran, it costs no bank.
+    const awayTurn =
+      source === 'timeout' &&
+      player.awaySince !== undefined &&
+      current.turnStartedAt >= player.awaySince
+    if (!awayTurn)
+      player.bankMs = bankAfter(player.bankMs, took, match.config.decisionMs)
     player.timeouts = source === 'timeout' ? player.timeouts + 1 : 0
     current.timing.push({
       atMs: t - current.startedAt,
@@ -580,10 +675,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
           ? null
           : { kind: 'nextHand', at: t + NEXT_HAND_MS, handNo: match.handNo },
       )
-    } else
-      this.setGameDeadline(
-        turnDeadline(next, t, match.config.decisionMs, this.bankOf(next)),
-      )
+    } else this.setGameDeadline(this.turnFor(next, t))
     writes.deadlines = this.deadlines
     this.expectArchive(writes)
     await this.ctx.storage.put(writes)
@@ -633,9 +725,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
       timing: [],
     }
     this.seq++
-    this.setGameDeadline(
-      turnDeadline(hand, t, match.config.decisionMs, this.bankOf(hand)),
-    )
+    this.setGameDeadline(this.turnFor(hand, t))
     const writes: Record<string, unknown> = {
       match,
       hand,
@@ -845,6 +935,20 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (held.size) void this.flushOutbox()
   }
 
+  /** The turn deadline: the decision clock and bank, or now for an away seat. */
+  private turnFor(hand: HandState, startedAt: number) {
+    const match = this.match!
+    const player = match.players.find((p) => p.seat === hand.toAct)
+    return player?.awaySince !== undefined
+      ? turnDeadline(hand, startedAt, 0, 0)
+      : turnDeadline(
+          hand,
+          startedAt,
+          match.config.decisionMs,
+          this.bankOf(hand),
+        )
+  }
+
   private bankOf(hand: HandState) {
     return this.match!.players.find((p) => p.seat === hand.toAct)?.bankMs ?? 0
   }
@@ -863,10 +967,12 @@ export class TableDO extends DurableObject<WorkerEnv> {
     writes.deadlines = this.deadlines
   }
 
-  /** Replaces the turn/next-hand deadline; archive retries are kept. */
+  /** Replaces the turn/next-hand deadline; archive retries and graces stay. */
   private setGameDeadline(deadline: Deadline | null) {
     this.deadlines = [
-      ...this.deadlines.filter((d) => d.kind === 'outbox'),
+      ...this.deadlines.filter(
+        (d) => d.kind === 'outbox' || d.kind === 'grace',
+      ),
       ...(deadline ? [deadline] : []),
     ]
   }
@@ -962,6 +1068,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     reason: MatchEndReason,
     forfeit?: SeatId,
     noShow?: SeatId[],
+    abandoned?: SeatId[],
   ) {
     const match = this.match!
     await this.settleLuck()
@@ -969,6 +1076,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     match.endReason = reason
     if (forfeit !== undefined) match.forfeit = forfeit
     if (noShow) match.noShow = noShow
+    if (abandoned) match.abandoned = abandoned
     // Rated: a forfeit loses whatever the chips say; a void match has no
     // result; otherwise the luck-adjusted total and the draw band decide.
     if (match.adjusted && !VOID.includes(reason))
@@ -981,6 +1089,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     this.seq++
     this.logFinish(match, reason, forfeit, noShow)
     this.setGameDeadline({ kind: 'idle', at: this.clock() + IDLE_MS })
+    this.deadlines = this.deadlines.filter((d) => d.kind !== 'grace')
     const writes: Record<string, unknown> = {
       match,
       seq: this.seq,
@@ -1075,6 +1184,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
       reason: match.endReason!,
       ...(match.forfeit !== undefined ? { forfeit: match.forfeit } : {}),
       ...(match.noShow ? { noShow: match.noShow } : {}),
+      ...(match.abandoned ? { abandoned: match.abandoned } : {}),
       ...(match.adjusted ? { adjustedBySeat: { ...match.adjusted } } : {}),
       ...(match.outcome ? { outcomeBySeat: { ...match.outcome } } : {}),
     }

@@ -2,7 +2,7 @@
 
 ## Current handoff: SDE → User (P1-01 database live; rated match in the table server)
 
-Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10, #11 and #12 are merged, and each deploy was verified in production. The rated match now runs in the table server; its PR comes next.
+Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10–#13 are merged, and each deploy was verified in production; for #13 that meant reading the deployed Worker code. The 60 s grace and the both-gone void come next.
 
 ### What changed
 
@@ -38,10 +38,9 @@ Unchanged:
 
 Me:
 
-1. P1-01b-1's PR, merged when green;
-2. P1-01b-2, the 60 s disconnect grace and the both-gone void;
-3. P1-01b-3, the rated queue with the confirmed-email gate (checked against Supabase Auth, not a token claim);
-4. P1-01c, the UI.
+1. P1-01b-2's PR (the 60 s grace and the both-gone void), merged when green;
+2. P1-01b-3, the rated queue with the confirmed-email gate, checked against Supabase Auth rather than a token claim. It ships with the end text reading the rated outcome, so a forfeit while ahead never reads "you won";
+3. P1-01c, the rest of the UI.
 
 ---
 

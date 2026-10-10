@@ -21,6 +21,11 @@ export type Deadline =
    * match. At `at` it deletes itself once its archive calls are done.
    */
   | { kind: 'idle'; at: number }
+  /**
+   * Rated: a seat whose socket closed. If it is not back by `at`, its turns
+   * are played for it at once (GRACE_MS in rated.ts).
+   */
+  | { kind: 'grace'; at: number; seat: SeatId }
 
 /** A finished table keeps its storage this long for late arrivals. */
 export const IDLE_MS = 600_000

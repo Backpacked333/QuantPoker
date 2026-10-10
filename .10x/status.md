@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE/architect (rating: P1-12 to P1-14 live; P1-15/16 in PR #29; 6-max arenas blocked at the pre-check; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -57,7 +57,9 @@ Merged and deployed, each one verified in production after its merge:
 
 **6-max arenas (P2-13/P2-14): stopped at the pre-check, 2026-10-10.** 100,000 simulated 6-max hands with 0 failures; 0 of the 1,000 human casual 6-max hands the gate needs, because casual 6-max is unbuilt and production archives nothing until U-4. Path: `.10x/decisions/architect/six-max-arena.md`.
 
-**PR #29 (open): P1-15/16.** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
+**PR #29 (merged, verified live): P1-15/16.** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
+
+**Hands of a live match (Devin, #29; approved by the user).** Migration `20261010100000_hands_after_match.sql` adds a restrictive SELECT policy: no client role (anon or signed in, players included) reads `hands` of a match whose status is `playing`; they open the moment it is finished or void. A player's own `hand_holes` stay readable. `/api/stats` counts such hands once the match ends. Tests: `supabase/tests/hands-live.test.ts`; bench Q8c.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 

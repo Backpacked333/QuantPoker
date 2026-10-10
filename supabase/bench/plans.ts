@@ -152,15 +152,23 @@ async function generate(db: PGlite, n: number) {
 }
 
 /** Median execution time of EXPLAIN ANALYZE, and the plan's node lines. */
-async function plan(db: PGlite, sql: string, params: unknown[] = []) {
+async function plan(
+  db: PGlite,
+  sql: string,
+  params: unknown[] = [],
+  role?: string,
+) {
   const times: number[] = []
   let lines: string[] = []
   for (let i = 0; i < 3; i++) {
+    // A client role plans with its RLS policies, as PostgREST runs it.
+    if (role) await db.exec(`set role ${role}`)
     const rows = (
-      await db.query<{ 'QUERY PLAN': string }>(
-        `explain (analyze, costs off, timing off, summary on) ${sql}`,
-        params,
-      )
+      await db
+        .query<{
+          'QUERY PLAN': string
+        }>(`explain (analyze, costs off, timing off, summary on) ${sql}`, params)
+        .finally(() => role && db.exec('reset role'))
     ).rows.map((r) => r['QUERY PLAN'])
     const exec = rows.find((l) => l.startsWith('Execution Time'))
     times.push(Number(exec?.match(/([\d.]+) ms/)?.[1]))
@@ -231,7 +239,7 @@ async function queries(db: PGlite) {
     join public.match_players o on o.match_id = mp.match_id and o.user_id <> mp.user_id
     join public.players op on op.user_id = o.user_id
     order by mp.finished_at desc`
-  const list: [string, string, string, unknown[]][] = [
+  const list: [string, string, string, unknown[], string?][] = [
     [
       'Q1',
       'Profile: last 20 matches, join on matches (heaviest player)',
@@ -386,6 +394,13 @@ async function queries(db: PGlite) {
       [],
     ],
     [
+      'Q8c',
+      '/api/stats as anon (hands_after_match), worst case: every hand on one day, one matches_pkey probe each',
+      `select count(*) from public.hands`,
+      [],
+      'anon',
+    ],
+    [
       'Q9',
       'Accuracy recompute: latest 500 graded decisions (at match end, not per view)',
       `select * from private.player_accuracy($1)`,
@@ -422,8 +437,8 @@ async function queries(db: PGlite) {
     ],
   ]
   const out = []
-  for (const [id, what, sql, params] of list) {
-    const { ms, lines } = await plan(db, sql, params)
+  for (const [id, what, sql, params, role] of list) {
+    const { ms, lines } = await plan(db, sql, params, role)
     out.push({ id, what, ms, shape: shape(lines), lines })
   }
   return out

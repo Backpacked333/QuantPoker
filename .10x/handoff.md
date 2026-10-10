@@ -41,7 +41,7 @@ Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, 
 
 ### Next step
 
-#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is in review: three Devin findings are fixed, and one security finding waits on your decision (hands of a live match are readable through the public API; a restrictive RLS policy is proposed on the thread). Merge #29 when green and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is merged and verified live. The security finding on it (hands of a live match readable through the public API) is fixed by the restrictive `hands_after_match` policy, which you approved; see `.10x/decisions/dba/hands-after-match.md`. Next: casual 6-max (P2-01..P2-06, P2-08, P2-11), which you approved. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
 
 ## Handoff history
 

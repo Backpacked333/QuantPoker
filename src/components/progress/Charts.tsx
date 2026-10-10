@@ -16,8 +16,11 @@ export function LineChart({
   height = 180,
   label,
   format = (v: number) => v.toLocaleString('en-US'),
+  ends,
 }: {
   series: Series[]
+  /** The x-axis's first and last labels; "Hand 1" and "Hand n" by default. */
+  ends?: [string, string]
   /** viewBox width; match it roughly to the slot so labels stay ~12px. */
   width?: number
   height?: number
@@ -69,10 +72,10 @@ export function LineChart({
         </g>
       ))}
       <text className="axis-text" x={pad.l} y={h - 6}>
-        Hand 1
+        {ends?.[0] ?? 'Hand 1'}
       </text>
       <text className="axis-text" x={w - pad.r} y={h - 6} textAnchor="end">
-        Hand {n}
+        {ends?.[1] ?? `Hand ${n}`}
       </text>
       {series.map((s) => (
         <path

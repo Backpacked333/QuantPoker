@@ -133,3 +133,52 @@ Spec: `.10x/decisions/product-manager/rating-and-leaderboard.md` §2 Accuracy. T
 - Compute Spearman ρ against rating for three variants: the plain mean (shown), the pot-weighted mean, and 100 − 200·ΣEV lost/Σpot, all over the same 500 decisions. Bootstrap the intervals over players.
 - Switch the shown number only if a variant's ρ is higher with intervals that do not overlap. A switch bumps the aggregate's version and gets a changelog line on the Method page.
 - Synthetic stand-in, today: ρ of each variant with results against Atlas across 11 scripted players is 0.35 for the plain mean, 0.25 pot-weighted, 0.46 ratio of sums. Results against one bot are a weak proxy, because Atlas barely punishes folding or shoving.
+
+## P1-10 · Accuracy shown (2026-10-10)
+
+### Storage (`supabase/migrations/20261010070000_accuracy.sql`)
+
+- **`public.accuracy`** holds, per player and format:
+  - the plain mean of the latest 500 graded decisions from matches that are over;
+  - how many decisions it covers;
+  - the count of each grade over the same decisions.
+
+  Everyone reads it, since it is the second number on every profile. Only `private.refresh_accuracy` writes it.
+
+- **Why a stored aggregate.** Raw grades are readable only by a match's two players. A live average under invoker rights would see only the caller's shared matches, and a definer callable by browsers is against the RLS-matrix rule (the review finding on PR #21).
+- **When it refreshes.**
+  - A trigger fires when a rated match leaves `playing` (finished or void).
+  - `record_grades` refreshes when grades land after the finish; the last hand's always do.
+  - A match in play never moves the number, so a live grade cannot leak through it.
+- **Cost.** The recompute takes about 5 ms at 10k-player scale (`plans.ts` Q9b) and runs twice per finished match.
+- **`private.player_accuracy(user, format)`** is the private, invoker-rights query. Its order is newest grade first, then hand, then decision, so ties are deterministic.
+- **`public.rated_luck(user, limit = 2000)`** is the luck-versus-skill series. For each hand of the player's rated matches that are over, it returns their net and their net with all-in luck taken out (`hands.record.luck`, P1-02). It runs with invoker rights, because hands are public.
+- **The Phase 1 proposal follows.** `ratings` drops its `accuracy` and `graded` columns, and the ladders left-join `public.accuracy`. The proposal's shipped parts are removed, and `plans.ts` seeds and reads the new table.
+
+### Screen (`src/net/AccuracyPanel.tsx`, `src/net/accuracy.ts`)
+
+- **"Rated play"** shows under the lobby's cards for a signed-in player; a dev identity has no Supabase client and gets no panel.
+  - **The number** is labelled exactly "Accuracy vs. a model opponent, not a solver." with "over your last N graded decisions in rated matches".
+  - **The grade distribution** over the same decisions.
+  - **Luck versus skill:** cumulative big blinds of the result against the same hands with every all-in settled at equity, with the gap stated.
+- **Empty and error states.** "Not graded yet" appears under the same label. A load error says so and shows no number.
+- **P1-15** will mount the same panel on the public profile.
+
+### Tests
+
+- **`supabase/tests/accuracy.test.ts`** (8 tests, red first):
+  - not graded yet;
+  - a match counts only once it is over, refreshed when it finishes;
+  - late grades are taken in;
+  - exactly the latest 500 decisions are averaged;
+  - anon and an unrelated player read the same aggregate while the raw grades stay hidden from them;
+  - only the server writes it;
+  - the luck series covers finished rated matches only.
+- **`rls-matrix.test.ts`:** `public.accuracy` is public-read and server-write, and the four new functions are listed, the definers unreachable from browsers.
+- **`src/net/AccuracyPanel.test.tsx`** (6 tests):
+  - the label is exact;
+  - the number and coverage show;
+  - the distribution shows;
+  - "Not graded yet" for both no row and zero graded;
+  - an error shows no number;
+  - the luck chart and its gap, and the series sums to the net result.

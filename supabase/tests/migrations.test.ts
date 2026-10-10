@@ -99,6 +99,7 @@ describe('migrations', () => {
       '20261010043000_rematch.sql',
       '20261010053000_hand_grades.sql',
       '20261010060000_hand_grades_pot.sql',
+      '20261010070000_accuracy.sql',
     ])
   })
 })

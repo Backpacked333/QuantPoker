@@ -88,12 +88,15 @@ async function generate(db: PGlite, n: number) {
     where mp.abandoned;
 
     insert into public.ratings (user_id, format, rating, rd, sigma, matches, wins, draws,
-      abandoned, accuracy, graded, last_match_at, version)
+      abandoned, last_match_at, version)
     select user_id, 'hu-duplicate', 1200 + random() * 600, 40 + random() * 310, 0.06,
            m, floor(m * 0.45)::int, floor(m * 0.1)::int,
-           floor(m * random() ^ 2 * 0.25)::int, 60 + random() * 40, least(m * 20, 500),
+           floor(m * random() ^ 2 * 0.25)::int,
            now() - random() * interval '60 days', 1
     from (select user_id, floor(random() * 200)::int as m from u) s;
+
+    insert into public.accuracy (user_id, format, accuracy, graded)
+    select user_id, 'hu-duplicate', 60 + random() * 40, 500 from u;
 
     insert into public.rating_history (user_id, format, kind, match_id, outcome,
       before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma,
@@ -882,7 +885,7 @@ async function selfChecks(db: PGlite) {
         `update public.matches set status = 'finished' where id = $1`,
         [live],
       )
-      // record_match v4 refreshes both players at the finish:
+      // The finish trigger (P1-10) has refreshed both players; again is harmless:
       await db.query(`select private.refresh_accuracy($1, 'hu-duplicate')`, [a])
       const after = [
         await refused('anon', sql),
@@ -891,7 +894,7 @@ async function selfChecks(db: PGlite) {
       ]
       const stored = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.ratings where user_id = $1 and format = 'hu-duplicate'`,
+          `select accuracy from public.accuracy where user_id = $1 and format = 'hu-duplicate'`,
           [a],
         )
       ).accuracy

@@ -1,8 +1,10 @@
 // @vitest-environment node
 // Rated heads-up in the archive (P1-01, ADR amendment 2026-10-10): the
 // rated kind, each seat's outcome and luck-adjusted chips, and the copy of
-// finished_at that profiles list matches by. The newest migration is applied
-// after a casual match is already archived, to prove its backfill.
+// finished_at that profiles list matches by. The rated_matches migration is
+// applied after a casual match is already archived, to prove its backfill;
+// later migrations follow it, so these rules are checked on the newest
+// record_match.
 import { readFileSync } from 'node:fs'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -54,9 +56,9 @@ beforeAll(async () => {
   db = new PGlite()
   await db.exec(SUPABASE_STUB)
   const files = migrationFiles()
-  const newest = files[files.length - 1]
-  expect(newest).toMatch(/_rated_matches\.sql$/)
-  for (const f of files.slice(0, -1))
+  const at = files.findIndex((f) => f.endsWith('_rated_matches.sql'))
+  expect(at).toBeGreaterThan(0)
+  for (const f of files.slice(0, at))
     await db.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
   await db.query('insert into auth.users (id) values ($1), ($2)', [ALICE, BOB])
   // A casual match finished before the migration.
@@ -67,7 +69,8 @@ beforeAll(async () => {
     timeouts: {},
     result: { netBySeat: { 0: 100, 1: -100 }, reason: 'complete' },
   })
-  await db.exec(readFileSync(new URL(newest, MIGRATIONS_DIR), 'utf8'))
+  for (const f of files.slice(at))
+    await db.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
 }, 60_000)
 
 afterAll(() => db?.close())

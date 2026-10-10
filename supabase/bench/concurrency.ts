@@ -276,9 +276,21 @@ try {
     `B ${r4.b.ok ? 'ok' : r4.b.err.split('\n')[0]}; recomputed ${again.ok}; alice matches,history ${s4}`,
   )
 
-  // 5. record_grades twice at once: one row per decision.
+  /** A rated match in play between Alice and Bob, with one verified hand. */
+  const ratedHand = async () => {
+    const id = crypto.randomUUID()
+    await sql(`insert into public.matches (id, kind, status, config) values ('${id}', 'hu-rated', 'playing', '{}');
+      insert into public.match_players (match_id, user_id, seat) values ('${id}', '${ALICE}', 0), ('${id}', '${BOB}', 1);
+      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record, verified)
+        values ('${id}:1', '${id}', 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true)`)
+    return id
+  }
+
+  // 5. record_grades twice at once: one row per decision. (Only a verified
+  // hand of a rated match can be graded.)
+  const m5 = await ratedHand()
   const g = {
-    handId: `${m1}:1`,
+    handId: `${m5}:1`,
     format: 'hu-duplicate',
     modelVersion: 'grade.v1',
     grades: [
@@ -297,7 +309,7 @@ try {
     `select public.record_grades(${lit(g)})`,
   )
   const s5 = await sql(
-    `select count(*) from public.hand_grades where hand_id = '${m1}:1'`,
+    `select count(*) from public.hand_grades where hand_id = '${m5}:1'`,
   )
   check(
     'record_grades twice at once: one row per decision',
@@ -364,6 +376,41 @@ try {
     r8.a.ok && r8.b.ok && r8.waitedMs > 900 && s8 === '1',
     `B waited ${r8.waitedMs} ms; rows ${s8}`,
   )
+
+  // 9. A match finishing while its grades are written, in both orders: the
+  // aggregate counts the grades either way (record_grades locks the match
+  // row; P1-10 review finding).
+  const bobGraded = async () =>
+    Number(
+      (await sql(
+        `select coalesce((select graded from public.accuracy where user_id = '${BOB}' and format = 'hu-duplicate'), 0)`,
+      )) || 0,
+    )
+  const gradeBob = (m: string) =>
+    `select public.record_grades(${lit({
+      handId: `${m}:1`,
+      format: 'hu-duplicate',
+      modelVersion: 'grade.v1',
+      grades: [
+        { seat: 1, idx: 0, grade: 'best', evLost: 0, accuracy: 100, pot: 30 },
+      ],
+    })})`
+  const finishMatch = (m: string) =>
+    `update public.matches set status = 'finished' where id = '${m}'`
+  for (const [order, first, second] of [
+    ['the finish first, the grades while it commits', finishMatch, gradeBob],
+    ['the grades first, the finish while they commit', gradeBob, finishMatch],
+  ] as const) {
+    const m = await ratedHand()
+    const before = await bobGraded()
+    const r = await race(first(m), second(m))
+    const after = await bobGraded()
+    check(
+      `a finish and its grades at once (${order}): the accuracy counts them`,
+      r.a.ok && r.b.ok && after === before + 1 && r.waitedMs > 900,
+      `B waited ${r.waitedMs} ms; Bob graded ${before} -> ${after}`,
+    )
+  }
 } catch (error) {
   check('setup', false, String(error))
 } finally {

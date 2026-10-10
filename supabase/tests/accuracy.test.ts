@@ -151,8 +151,12 @@ describe('accuracy', () => {
   })
 
   it('averages exactly the latest 500 graded decisions', async () => {
-    // 510 older decisions at 0, then the three above stay the newest.
+    // 510 decisions at 0 from a hand played a day earlier; the three above
+    // stay the newest.
     await match(OLD, 'finished', 1)
+    await db.exec(
+      `update public.hands set created_at = now() - interval '1 day' where match_id = '${OLD}'`,
+    )
     await db.exec(`
       insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, pot, model_version, created_at)
       select '${OLD}:1', 0, i, '${ALICE}', 'hu-duplicate', 'blunder', 10, 0, 20, 'x', now() - interval '1 day' - i * interval '1 second'
@@ -167,6 +171,22 @@ describe('accuracy', () => {
     // The three newest (100, 0, 80) and 497 of the 510 at 0.
     expect(row.accuracy).toBeCloseTo(180 / 500, 5)
     expect(row.blunder).toBe(498)
+  })
+
+  it('keeps the window in the order the hands were played: an old hand graded late displaces nothing', async () => {
+    const before = await aggregate()
+    // A hand from two days ago, graded only now (a retry), all Best.
+    const STALE = '99999999-9999-4999-8999-999999999999'
+    await match(STALE, 'finished', 1)
+    await db.exec(
+      `update public.hands set created_at = now() - interval '2 days' where match_id = '${STALE}'`,
+    )
+    await grade(`${STALE}:1`, [
+      { idx: 0, grade: 'best', accuracy: 100 },
+      { idx: 2, grade: 'best', accuracy: 100 },
+    ])
+    // Still the three newest and 497 of yesterday's: the old hand is outside.
+    expect(await aggregate()).toEqual(before)
   })
 
   it('is public: anon and any player read the same aggregate, while the raw grades stay hidden from them', async () => {
@@ -228,9 +248,9 @@ describe('the luck series', () => {
           }>(`select * from public.rated_luck($1)`, [BOB])
         ).rows,
     )
-    // LIVE, LATE and OLD are over; each has hand 1 (net −10, adjusted −5 for
-    // Bob in seat 1).
-    expect(rows).toHaveLength(3)
+    // LIVE, LATE, OLD and STALE are over; each has hand 1 (net −10,
+    // adjusted −5 for Bob in seat 1), oldest hand first.
+    expect(rows).toHaveLength(4)
     for (const r of rows)
       expect([r.hand_no, r.net, r.adjusted]).toEqual([1, -10, -5])
     expect(
@@ -248,5 +268,33 @@ describe('the luck series', () => {
       )
     ).rows
     expect(rows.map((r) => r.match_id)).not.toContain(PLAYING)
+  })
+})
+
+describe('the migration', () => {
+  it('counts grades written before it, so nobody graded reads "Not graded yet"', async () => {
+    const early = new PGlite()
+    await early.exec(SUPABASE_STUB)
+    const files = migrationFiles()
+    const accuracy = files.findIndex((f) => f.endsWith('_accuracy.sql'))
+    for (const f of files.slice(0, accuracy))
+      await early.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
+    const M = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+    await early.exec(`
+      insert into auth.users (id) values ('${ALICE}'), ('${BOB}');
+      insert into public.matches (id, kind, status, config) values ('${M}', 'hu-rated', 'finished', '{}');
+      insert into public.match_players (match_id, user_id, seat) values ('${M}', '${ALICE}', 0), ('${M}', '${BOB}', 1);
+      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record, verified)
+        values ('${M}:1', '${M}', 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true);
+      insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, pot, model_version)
+        values ('${M}:1', 0, 0, '${ALICE}', 'hu-duplicate', 'good', 1, 90, 20, 'x');
+    `)
+    for (const f of files.slice(accuracy))
+      await early.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
+    const { rows } = await early.query(
+      `select user_id, accuracy, graded, good from public.accuracy`,
+    )
+    expect(rows).toEqual([{ user_id: ALICE, accuracy: 90, graded: 1, good: 1 }])
+    await early.close()
   })
 })

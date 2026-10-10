@@ -37,8 +37,10 @@ grant select on public.accuracy to anon, authenticated;
 create policy accuracy_public_read on public.accuracy
   for select to anon, authenticated using (true);
 
--- The latest 500 graded decisions of matches that are over (newest grades
--- first: hand_grades_user serves the order). Only definers call it.
+-- The latest 500 graded decisions of matches that are over, in the order the
+-- hands were played (archived), not the order they were graded: a retry can
+-- grade an old hand late, and it must not push newer play out of the window.
+-- Only definers call it.
 create function private.player_accuracy(p_user uuid, p_format text default 'hu-duplicate')
 returns table (accuracy real, graded integer, best integer, good integer,
                inaccuracy integer, mistake integer, blunder integer)
@@ -54,7 +56,7 @@ language sql stable set search_path = '' as $$
     join public.hands h on h.id = g.hand_id
     join public.matches m on m.id = h.match_id
     where g.user_id = p_user and g.format = p_format and m.status <> 'playing'
-    order by g.created_at desc, g.hand_id desc, g.idx desc
+    order by h.created_at desc, h.match_id, h.hand_no desc, g.idx desc
     limit 500
   ) l
 $$;
@@ -109,10 +111,15 @@ declare
   v_status text;
   v_user uuid;
 begin
+  -- The share lock serializes this with the match's finish: either the
+  -- finish trigger runs after these grades commit and counts them, or this
+  -- reads the finished status and refreshes itself. Unlocked, a finish
+  -- committing in between would count neither (review finding).
   select h.match_id, h.verified, m.kind, m.status
     into v_match, v_verified, v_kind, v_status
   from public.hands h join public.matches m on m.id = h.match_id
-  where h.id = v_hand;
+  where h.id = v_hand
+  for share of m;
   if v_match is null then
     raise exception 'hand % is not archived', v_hand using errcode = 'P0002';
   end if;
@@ -143,6 +150,11 @@ end $$;
 
 revoke all on function public.record_grades(jsonb) from public, anon, authenticated;
 grant execute on function public.record_grades(jsonb) to service_role;
+
+-- Grades written before this migration (the consumer shipped first) are
+-- counted now, so nobody who was graded reads "Not graded yet".
+select private.refresh_accuracy(g.user_id, g.format)
+from (select distinct user_id, format from public.hand_grades) g;
 
 -- The luck-versus-skill chart across rated matches: each hand of a player's
 -- rated matches that are over, oldest first, with their net and their net

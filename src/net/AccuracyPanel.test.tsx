@@ -98,9 +98,13 @@ describe('the accuracy panel', () => {
     expect(screen.getByText(/across 2 rated hands/).textContent).toContain(
       '+15.0 bb',
     )
-    expect(
-      screen.getByRole('img', { name: /result versus all-in luck taken out/ }),
-    ).toBeTruthy()
+    const chart = screen.getByRole('img', {
+      name: /result versus all-in luck taken out/,
+    })
+    // Three points (0, then two hands), labelled as the hands they are.
+    expect(chart.textContent).toContain('Before hand 1')
+    expect(chart.textContent).toContain('Hand 2')
+    expect(chart.textContent).not.toContain('Hand 3')
   })
 })
 

@@ -121,6 +121,8 @@ function Loaded({ accuracy, luck }: Loaded) {
             height={180}
             label="Cumulative big blinds across rated matches: result versus all-in luck taken out"
             format={(v) => `${Math.round(v)}`}
+            // The series starts at 0 before the first hand.
+            ends={['Before hand 1', `Hand ${luck.length}`]}
             series={[
               {
                 label: 'All-in luck taken out',

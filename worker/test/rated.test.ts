@@ -345,6 +345,43 @@ describe('a player who leaves a rated match', () => {
     ).toBe(1)
   })
 
+  it('gives a player back from away a fresh clock for a turn still pending', async () => {
+    const { matchId, seats } = await rated()
+    await move(matchId, seats, passive) // Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS) // away; his preflop turn played for him
+    // The flop is his to act, due at once, but the alarm is 30 s late and
+    // he is back first.
+    await setClock(matchId, T0 + GRACE_MS + 30_000)
+    const back = await connect(matchId, BOB)
+    await back.next((f) => f.t === 'welcome')
+    // 20 s + his 20 s of bank left, from now: not from when the turn began.
+    await elapse(matchId, 39_999)
+    expect(await actionsOf(matchId)).toBe(2)
+    await elapse(matchId, 1)
+    expect(await actionsOf(matchId)).toBe(3)
+  })
+
+  it('charges no bank for a turn played while away, even when the alarm is late', async () => {
+    const { matchId, seats } = await rated()
+    await move(matchId, seats, passive) // Bob to act
+    await leave(matchId, seats[1])
+    await elapse(matchId, GRACE_MS)
+    const bank = async () =>
+      (
+        (await peek(matchId)).match as unknown as {
+          players: { bankMs: number }[]
+        }
+      ).players[1].bankMs
+    // The turn he left on ran 60 s of his normal clock: 40 s of bank.
+    expect(await bank()).toBe(20_000)
+    // The flop turn began while he was away; its alarm runs 45 s late.
+    await setClock(matchId, T0 + GRACE_MS + 45_000)
+    await elapse(matchId, 0)
+    expect(await actionsOf(matchId)).toBe(3)
+    expect(await bank()).toBe(20_000)
+  })
+
   it('is void when both players are gone past the grace, with an abandonment for each', async () => {
     const { matchId, seats } = await rated()
     await leave(matchId, seats[0])

@@ -85,8 +85,11 @@ type Player = {
   bankMs: number
   /** Missed decisions in a row; any move of their own resets it. */
   timeouts: number
-  /** Rated: gone past the grace; their turns are played at once. */
-  away?: boolean
+  /**
+   * Rated: gone past the grace since then; their turns are played at once,
+   * and a turn that began while they were away costs no bank.
+   */
+  awaySince?: number
 }
 type Match = {
   v: 1
@@ -482,7 +485,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (!match?.adjusted || match.status !== 'playing') return
     const { seat } = ws.deserializeAttachment() as Attachment
     const player = match.players.find((p) => p.seat === seat)
-    if (!player || player.away || this.seated(seat, ws)) return
+    if (!player || player.awaySince !== undefined || this.seated(seat, ws))
+      return
     if (this.deadlines.some((d) => d.kind === 'grace' && d.seat === seat))
       return
     this.deadlines.push({ kind: 'grace', at: this.clock() + GRACE_MS, seat })
@@ -494,15 +498,22 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match!
     if (!match.adjusted) return
     const grace = (d: Deadline) => d.kind === 'grace' && d.seat === player.seat
-    if (!this.deadlines.some(grace) && !player.away) return
+    const away = player.awaySince !== undefined
+    if (!this.deadlines.some(grace) && !away) return
     this.deadlines = this.deadlines.filter((d) => !grace(d))
     const hand = this.hand
-    if (player.away) {
-      player.away = false
-      // Their turn, if it is one, gets the normal clock again.
-      if (hand && !isOver(hand) && hand.toAct === player.seat)
-        this.setGameDeadline(this.turnFor(hand, this.current!.turnStartedAt))
-      await this.ctx.storage.put('match', match)
+    if (away) {
+      delete player.awaySince
+      // A turn of theirs still pending (its alarm not yet run) starts over
+      // with the normal clock from now: they had no clock while away.
+      const writes: Record<string, unknown> = { match }
+      if (hand && !isOver(hand) && hand.toAct === player.seat) {
+        const current = this.current!
+        current.turnStartedAt = this.clock()
+        this.setGameDeadline(this.turnFor(hand, current.turnStartedAt))
+        writes.current = current
+      }
+      await this.ctx.storage.put(writes)
     }
     await this.armAlarm()
   }
@@ -515,11 +526,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const match = this.match
     if (match?.status !== 'playing') return
     const leaving = match.players.filter(
-      (p) => seats.includes(p.seat) && !p.away && !this.seated(p.seat),
+      (p) =>
+        seats.includes(p.seat) &&
+        p.awaySince === undefined &&
+        !this.seated(p.seat),
     )
     if (!leaving.length) return
-    for (const p of leaving) p.away = true
-    if (match.players.every((p) => p.away))
+    for (const p of leaving) p.awaySince = this.clock()
+    if (match.players.every((p) => p.awaySince !== undefined))
       return this.finish(
         'abandoned',
         undefined,
@@ -623,7 +637,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const t = this.clock()
     const took = t - current.turnStartedAt
     const player = match.players.find((p) => p.seat === seat)!
-    player.bankMs = bankAfter(player.bankMs, took, match.config.decisionMs)
+    // A turn that began while the seat was away was due at once: however
+    // late the alarm ran, it costs no bank.
+    const awayTurn =
+      source === 'timeout' &&
+      player.awaySince !== undefined &&
+      current.turnStartedAt >= player.awaySince
+    if (!awayTurn)
+      player.bankMs = bankAfter(player.bankMs, took, match.config.decisionMs)
     player.timeouts = source === 'timeout' ? player.timeouts + 1 : 0
     current.timing.push({
       atMs: t - current.startedAt,
@@ -917,8 +938,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
   /** The turn deadline: the decision clock and bank, or now for an away seat. */
   private turnFor(hand: HandState, startedAt: number) {
     const match = this.match!
-    const away = match.players.find((p) => p.seat === hand.toAct)?.away
-    return away
+    const player = match.players.find((p) => p.seat === hand.toAct)
+    return player?.awaySince !== undefined
       ? turnDeadline(hand, startedAt, 0, 0)
       : turnDeadline(
           hand,

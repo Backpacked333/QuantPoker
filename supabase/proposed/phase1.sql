@@ -150,8 +150,8 @@ language sql stable set search_path = '' as $$
   select l.*, l.rating - (
       select h.before_rating from public.rating_history h
       where h.user_id = l.user_id and h.format = p_format
-        and h.created_at >= now() - interval '30 days'
-      order by h.created_at
+        and h.played_at >= now() - interval '30 days'
+      order by h.played_at, h.id
       limit 1) as trend
   from (
     select r.user_id, p.username, r.rating, r.rd, r.matches, r.wins, r.draws,
@@ -191,12 +191,13 @@ language sql stable set search_path = '' as $$
     select h.user_id, count(*)::int as matches,
            count(*) filter (where h.outcome = 'win')::int as wins,
            count(*) filter (where h.outcome = 'draw')::int as draws,
-           (array_agg(h.after_rating order by h.created_at desc))[1]
-             - (array_agg(h.before_rating order by h.created_at))[1] as trend
+           (array_agg(h.after_rating order by h.played_at desc, h.id desc))[1]
+             - (array_agg(h.before_rating order by h.played_at, h.id))[1] as trend
     from public.rating_history h
     where h.format = p_format and h.kind = 'match'
-      and h.created_at >= p_month::timestamp at time zone 'utc'
-      and h.created_at < (p_month + interval '1 month')::timestamp at time zone 'utc'
+      and h.played_at >= date_trunc('month', p_month::timestamp) at time zone 'utc'
+      and h.played_at < (date_trunc('month', p_month::timestamp)
+                         + interval '1 month') at time zone 'utc'
     group by h.user_id)
   select r.user_id, p.username, r.rating, r.rd, mo.matches, mo.wins, mo.draws,
          a.accuracy, mo.trend

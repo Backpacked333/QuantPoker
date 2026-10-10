@@ -100,9 +100,9 @@ async function generate(db: PGlite, n: number) {
 
     insert into public.rating_history (user_id, format, kind, match_id, outcome,
       before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma,
-      model_version, created_at)
+      model_version, created_at, played_at)
     select mp.user_id, 'hu-duplicate', 'match', mp.match_id, mp.outcome,
-           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at
+           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at, p.at
     from public.match_players mp join pairs p on p.id = mp.match_id
     where mp.outcome is not null;
 
@@ -322,7 +322,7 @@ async function queries(db: PGlite) {
          select h.user_id, count(*)::int as matches
          from public.rating_history h
          where h.format = 'hu-duplicate' and h.kind = 'match'
-           and h.created_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+           and h.played_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
          group by h.user_id)
        select r.user_id, r.rating, mo.matches
        from month mo join public.ratings r on r.user_id = mo.user_id and r.format = 'hu-duplicate'

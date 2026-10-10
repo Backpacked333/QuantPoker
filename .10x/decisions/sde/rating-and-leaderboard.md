@@ -136,6 +136,17 @@ The DBA decisions and EXPLAIN evidence are in `.10x/decisions/dba/ladder.md`.
   - **Routes:** `#ladder` and `#ladder/month` belong to the Online area and are public: no sign-in, no welcome dialog, read with the publishable key. There is no new top-nav item. The ladder is linked from the lobby's rated card and the Online header.
 - **Metrics:** `supabase/metrics/rating-metrics.sql` is a single read-only query, run on production read-only. All three metrics report "insufficient data (need 30)" because there are no rated matches yet.
 
+### Review fix (PR #27)
+
+- **Devin 🔴: a match rated after midnight on the last day of a month counted in the next month,** because `rating_history.created_at` is when the rating was applied.
+  - History rows now carry `played_at` (the finish time `apply_rating` receives), backfilled for earlier rows, and both ladders count by it.
+  - `ladder_month` also accepts any day of the month.
+  - Tests:
+    - `ladder.test.ts › a match counts in the month it was played, even when its rating applied the next month`;
+    - `the migration › backfills when each earlier rated match was played, and history stays append-only`;
+    - a `played_at` assertion in `ratings.test.ts`.
+  - Mutation-checked (each fails a test): grouping by `created_at`, storing `now()`, skipping the backfill, and leaving the trigger off.
+
 ### Deviations
 
 - There are two functions (`ladder`, `ladder_month`) instead of one with a `period` argument. Each keeps a plan the planner can see.

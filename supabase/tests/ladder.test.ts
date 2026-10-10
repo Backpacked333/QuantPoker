@@ -149,7 +149,7 @@ describe('the ladder', () => {
       )
       await db.query(
         `insert into public.rating_history (user_id, format, kind, match_id, outcome,
-           before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma, model_version, created_at)
+           before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma, model_version, played_at)
          values ($1, 'hu-duplicate', 'match', $2, $3, $4, 60, 0.06, $5, 60, 0.06, 'glicko2.v1', ${created})`,
         [uid(n), id, outcome, before, after],
       )
@@ -168,6 +168,68 @@ describe('the ladder', () => {
     ])
   })
 
+  it('a match counts in the month it was played, even when its rating applied the next month', async () => {
+    // pl1 beats pl7 at 23:59 UTC on the last day of last month; the rating
+    // is applied now, this month (a retry after an outage).
+    const id = crypto.randomUUID()
+    const { rows } = await db.query<{ at: string; last: string }>(
+      `select (date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+                 - interval '1 minute')::text as at,
+              (date_trunc('month', now() at time zone 'utc') - interval '1 day')::date::text as last`,
+    )
+    const [{ at, last }] = rows
+    await db.query(
+      `insert into public.matches (id, kind, status, config, finished_at) values ($1, 'hu-rated', 'finished', '{}', $2)`,
+      [id, at],
+    )
+    await db.query(
+      `insert into public.match_players (match_id, user_id, seat, outcome)
+       values ($1, $2, 0, 'win'), ($1, $3, 1, 'loss')`,
+      [id, uid(1), uid(7)],
+    )
+    await db.query('select public.apply_rating($1::jsonb)', [
+      JSON.stringify({
+        matchId: id,
+        format: 'hu-duplicate',
+        modelVersion: 'glicko2.v1',
+        finishedAt: at,
+        players: [
+          {
+            userId: uid(1),
+            outcome: 'win',
+            version: 0,
+            rating: 1810,
+            rd: 59,
+            sigma: 0.06,
+          },
+          {
+            userId: uid(7),
+            outcome: 'loss',
+            version: 0,
+            rating: 1740,
+            rd: 99,
+            sigma: 0.06,
+          },
+        ],
+      }),
+    ])
+    const counts = async (month: string | null) =>
+      (
+        await db.query<{ username: string; matches: number }>(
+          `select username, matches from public.ladder_month('hu-duplicate', null, null, 50${month ? `, '${month}'::date` : ''})`,
+        )
+      ).rows.map((r) => [r.username, r.matches])
+    // This month: pl1 still has only its two matches from this month.
+    expect(await counts(null)).toEqual([['pl1', 2]])
+    // Last month (any day of it names the month): the new match is there,
+    // for both players.
+    expect(await counts(last)).toEqual([
+      ['pl1', 2],
+      ['pl7', 1],
+      ['pl6', 1],
+    ])
+  })
+
   it('is read with the caller’s rights, by anyone; abandonment rate is public too', async () => {
     expect((await page('ladder', null, 3, 'anon')).length).toBe(3)
     expect((await page('ladder', null, 3, 'authenticated')).length).toBe(3)
@@ -177,5 +239,40 @@ describe('the ladder', () => {
       ]),
     )
     expect(rows[0].rate).toBeCloseTo(0.1, 6)
+  })
+})
+
+describe('the migration', () => {
+  it('backfills when each earlier rated match was played, and history stays append-only', async () => {
+    const early = new PGlite()
+    await early.exec(SUPABASE_STUB)
+    const files = migrationFiles()
+    const ladder = files.findIndex((f) => f.endsWith('_ladder.sql'))
+    for (const f of files.slice(0, ladder))
+      await early.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
+    const M = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    await early.exec(`
+      insert into auth.users (id) values ('${uid(1)}');
+      insert into public.matches (id, kind, status, config, finished_at)
+        values ('${M}', 'hu-rated', 'finished', '{}', '2026-09-30 23:59:00+00');
+      insert into public.rating_history (user_id, format, kind, match_id, outcome,
+          before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma, model_version, created_at)
+        values ('${uid(1)}', 'hu-duplicate', 'match', '${M}', 'win', 1500, 350, 0.06, 1600, 300, 0.06, 'glicko2.v1', '2026-10-01 00:02:00+00'),
+               ('${uid(1)}', 'hu-duplicate', 'reset', null, null, 1600, 300, 0.06, 1500, 350, 0.06, 'glicko2.v1', '2026-10-05 10:00:00+00');
+    `)
+    for (const f of files.slice(ladder))
+      await early.exec(readFileSync(new URL(f, MIGRATIONS_DIR), 'utf8'))
+    const { rows } = await early.query<{ kind: string; at: string }>(
+      `select kind, to_char(played_at at time zone 'utc', 'YYYY-MM-DD HH24:MI') at
+       from public.rating_history order by id`,
+    )
+    expect(rows).toEqual([
+      { kind: 'match', at: '2026-09-30 23:59' },
+      { kind: 'reset', at: '2026-10-05 10:00' },
+    ])
+    await expect(
+      early.query(`update public.rating_history set played_at = now()`),
+    ).rejects.toThrow(/append-only/)
+    await early.close()
   })
 })

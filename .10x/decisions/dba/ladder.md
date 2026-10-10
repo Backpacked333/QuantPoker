@@ -4,13 +4,19 @@ Last updated: 2026-10-10. Builds on `phase1-schema.md` D3 (ladder columns from c
 
 ## What shipped
 
-`supabase/migrations/20261010090000_ladder.sql` is additive (functions only; the index `ratings_ladder` and `rating_history_month` came with P1-12's migration).
+`supabase/migrations/20261010090000_ladder.sql` is additive: three functions, one column, one index, and `apply_rating` replaced to fill the column. `ratings_ladder` came with P1-12's migration.
 
 - **`public.ladder(format, after_rating, after_user, page)`** is all time.
   - It lists only eligible players: `rd < 100`, `matches >= 20`, `last_match_at` within 30 days, and `10 * abandoned < matches` (exactly 10% is out).
   - It orders by `(rating desc, user_id)` with a keyset cursor. The page size is capped at 100 whatever is asked.
-  - Trend is the rating change over 30 days, looked up per row of the page only (`rating_history_user`).
-- **`public.ladder_month(...)`** has the same eligibility and keyset. Matches, wins, draws and trend are over the UTC month, aggregated from `rating_history_month`.
+  - Trend is the rating change over matches played in the last 30 days, looked up per row of the page only (`rating_history_user`).
+- **`public.ladder_month(...)`** has the same eligibility and keyset. Matches, wins, draws and trend are over the UTC month the matches were **played** in (any day of the month names it), aggregated through `rating_history_played`.
+- **`rating_history.played_at`** records when each rated match was played. `created_at` is when its rating was applied, which an outbox retry can push into the next month (Devin, PR #27).
+  - `apply_rating` stores the finish time the table sends (`finishedAt`).
+  - Earlier rows are backfilled from `matches.finished_at`; other kinds keep `created_at`. The history is append-only, so the one-time backfill disables its trigger inside the migration transaction and re-enables it; a test proves it is back on.
+  - The column is added `not null default now()`, a constant default, so nothing is rewritten. Production has 0 history rows today.
+  - Two indexes serve it: `rating_history_played (format, played_at) where kind = 'match'` for the month, and `rating_history_user_played (user_id, format, played_at)` for each page row's 30-day trend.
+  - `rating_history_month (format, created_at)` from P1-12 no longer serves a query. It stays (migrations are additive) and is a candidate for a later cleanup.
 - **`public.abandonment_rate(user)`** is the lifetime share, for the profile.
 - **Rights:** all three are invoker-rights, `stable`, and pin `search_path`. Every table they read is public. No security definer is callable by browsers (`rls-matrix.test.ts`).
 - **P1-18:** `supabase/proposed/phase1.sql` now holds only P1-18's `create or replace` of the two ladder functions, which add "no active ladder removal".
@@ -27,12 +33,14 @@ Bench: `node supabase/bench/plans.ts <N>`, PGlite (Postgres 17). Plans carry ove
 
 | Query                                           | 10k matches (500 players) | 100k matches (5,000 players) | Plan at 100k                                                                              |
 | ----------------------------------------------- | ------------------------: | ---------------------------: | ----------------------------------------------------------------------------------------- |
-| Q4 ladder page 1 (function, with trend)         |                   1.67 ms |                      3.43 ms | function scan                                                                             |
-| Q4b ladder page 2 (keyset)                      |                   1.12 ms |                      3.61 ms | function scan                                                                             |
-| Q4e page 1 inlined, as shipped                  |                   0.21 ms |                      0.66 ms | Limit → Nested Loop → **Index Scan using ratings_ladder** → Index Scan using players_pkey |
-| Q4c page 1 inlined, P1-18 (sanctions anti-join) |                   0.25 ms |                      0.76 ms | Limit → Nested Loop Anti Join → Nested Loop → Index Scan using ratings_ladder             |
-| Q4d this month, page 1 (function)               |                   2.75 ms |                        16 ms | function scan                                                                             |
-| Q4f this month inlined                          |                   0.59 ms |                      6.45 ms | Limit → Sort (top-N heapsort, 23 kB) → Hash Join on the month's aggregate                 |
+| Q4 ladder page 1 (function, with trend)         |                   2.61 ms |                      2.74 ms | function scan                                                                             |
+| Q4b ladder page 2 (keyset)                      |                   1.39 ms |                      3.35 ms | function scan                                                                             |
+| Q4e page 1 inlined, as shipped                  |                   0.38 ms |                      0.73 ms | Limit → Nested Loop → **Index Scan using ratings_ladder** → Index Scan using players_pkey |
+| Q4c page 1 inlined, P1-18 (sanctions anti-join) |                   0.25 ms |                      0.74 ms | Limit → Nested Loop Anti Join → Nested Loop → Index Scan using ratings_ladder             |
+| Q4d this month, page 1 (function)               |                   4.62 ms |                        15 ms | function scan                                                                             |
+| Q4f this month inlined                          |                   1.01 ms |                      7.09 ms | Limit → Sort (top-N heapsort, 23 kB) → Hash Join on the month's aggregate                 |
+
+Measured after the `played_at` fix, on a loaded machine; the 10k column is noisy. Before `rating_history_user_played` existed, the trend lookup filtered each player's rows by `played_at` and Q4 / Q4b rose to 5.5 / 6.5 ms at 100k. With it, they are 2.7 / 3.4 ms, better than the 3.4 / 3.6 ms measured before the fix. The cost is one more index entry per history row (two per rated match).
 
 - At 10k the planner sorts a hash join instead (500 ratings rows fit in one page); from 5,000 players it walks `ratings_ladder` in order and stops after 50.
 - The month ladder at 100k is ≈ 5,500 rated matches a month, in line with D6's slope (12 ms there; 16 ms here with trend and accuracy). D6's trigger stands: materialize `ratings_month` once rated matches pass ≈ 20,000 a month or Q4d passes 50 ms in production.

@@ -1,6 +1,6 @@
 # Landing page and account onboarding
 
-Slug: `landing-and-onboarding` · Owner: PM · Aligned with the user 2026-10-10 · Scope **B** · Priority **P0** (runs alongside Phase 1; it does not replace the ladder work)
+Slug: `landing-and-onboarding` · Owner: PM · Aligned with the user 2026-10-10 · Scope **B** · Priority **P0** (runs alongside Phase 1; it does not replace the ladder work) · **Built:** L-1 to L-14 in PR #30 (2026-10-10)
 
 ## Problem statement
 

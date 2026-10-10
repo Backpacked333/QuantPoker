@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (landing page phase 1 built in PR #30) and SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (landing page phases 1 and 2 built in PR #30) and SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -23,7 +23,12 @@ Last updated: 2026-10-10 by SDE (landing page phase 1 built in PR #30) and SDE/D
 
   Merging #30 launches the landing page and applies the migration to production.
 
-- **Phase 2 (not started):** the share card and `/c/*` link previews (L-12), the friend challenge (L-13), and a school code to a second email (L-14).
+- **Phase 2 built, same PR:**
+  - `/c/<receipt>` share links with a link preview (L-12);
+  - the friend challenge on the same hand (L-13);
+  - school codes by email (L-14, migration `20261010120000_school_email.sql`, needs U-11).
+
+  Checks run locally: 893 unit, 212 worker, 126 SQL and 33 e2e tests; entry bundle 143.0 kB.
 
 ## Phase 1 progress (2026-10-10)
 

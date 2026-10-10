@@ -1,35 +1,62 @@
 # Handoff
 
-## Current handoff: SDE → User (landing page and onboarding, phase 1 built)
+## Current handoff: SDE → User (landing page phase 2 built)
+
+Date: 2026-10-10 · Status: **phases 1 and 2 are built and tested in PR #30, which is not merged.**
+
+### What changed in phase 2
+
+- **Share links (L-12).** "Challenge a friend" on the score card shares `/c/<receipt>`. Its link preview reads "Beat 87/100 on “The nut flush draw”", over a new static card (`public/og-challenge.png`).
+- **Friend challenge (L-13).** The link opens the same hand with the score to beat, and ends with "You beat your friend: 91 to 87" (or the reverse). Links last 30 days and carry no name.
+- **School code by email (L-14).** A player without a badge can verify a school email in onboarding step 2: a six-digit code sent by Resend, only its hash kept, 15 minutes, 5 guesses, 3 sends a day. A right code sets the badge through the outbox (`set_player_school`).
+
+### Decisions I took (reversible)
+
+- **One static share card,** with the numbers in the preview text (P1-16's precedent), not an image rendered per score.
+- **Shared links are anonymous.**
+- **Without the Resend secrets, the school route answers 503** and onboarding says so; nothing else changes.
+
+### User actions
+
+- **Before launch:** U-9 (Google) and U-10 (SMTP).
+- **For school codes:** U-11 (the two Worker secrets).
+- **For claims and badges to reach Postgres:** U-4.
+- **Merging #30** launches the landing page and applies two migrations (`20261010110000_landing.sql`, `20261010120000_school_email.sql`).
+
+### Next step
+
+Read `/api/funnel` 2 weeks after launch against the PM targets. Then: school leaderboards once the ladder has data (P2 in the PM file).
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (landing page and onboarding, phase 1 built)
 
 Date: 2026-10-10 · Status: **phase 1 is built and tested in PR #30, which is not merged.**
 
-### What changed
+#### What changed
 
 - **The landing page.** A first visit to the bare URL plays one of six curated hands against Atlas, graded per decision, with no account. The score card shows accuracy, a percentile ranked by the server, luck shown apart from skill, and Atlas's reasoning. `#start` reopens it.
 - **The server.** `ScoreDO` re-scores every line from the pre-scored trees, so a score cannot be forged. It keeps the percentile histograms and the "x% of players chose this" counts, counts funnel events once per visitor per day (`GET /api/funnel`), and queues score claims to Postgres.
 - **The database** (`20261010110000_landing.sql`): `school_domains` (our own list), a trigger that sets `players.school` from a confirmed school email, and `challenge_scores` with `record_challenge_claim`.
 - **Onboarding** (`#welcome/onboard`): the sign-in screen names the score, then username, school badge and first move. The score is attached after sign-in.
 
-### Decisions I took (reversible)
+#### Decisions I took (reversible)
 
 - **Our own school list** of about 90 schools, plus any `.edu` or `.ac.uk` address shown by its domain. The public dataset has no license.
 - **Two challenge hands replaced:** one raise dominated, so the percentile meant nothing.
 - **Model players are read from the graded accuracy, not raw EV,** so shoves do not dominate.
 - **`AuthGate` stays the single sign-in surface;** no separate `SignIn.tsx`.
 
-### User actions
+#### User actions
 
 - **U-9** (Google sign-in) and **U-10** (custom SMTP) before launch. **U-4** for claimed scores to reach Postgres. Steps: `.10x/decisions/architect/landing-and-onboarding.md` §User gates.
 - **Your call:** merging #30 launches the landing page and applies the migration to production. It works on email links alone, but sign-up is slower until U-9 and U-10 are done.
 
-### Next step
+#### Next step
 
 Phase 2 when you want it: the share card and link previews (L-12), the friend challenge (L-13), and a school code to a second email (L-14). Read the funnel at `/api/funnel` 2 weeks after launch against the PM targets.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — Architect → Staff Engineer / EM (landing page and onboarding)
 

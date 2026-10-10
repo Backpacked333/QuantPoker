@@ -9,11 +9,14 @@ alter table public.matches
 create index matches_rematch_of on public.matches (rematch_of)
   where rematch_of is not null;
 
--- v5: exactly v4 (rated_matches), except that the call creating the match
--- row stores p.rematchOf when that match is already archived. Two tables
--- archive the two matches, so the rematch can arrive first: the link is
--- then left out rather than the call refused, because a foreign-key
--- refusal would retry and then park the whole match (S7-13).
+-- v5: exactly v4 (rated_matches), plus the rematch link: p.rematchOf is
+-- stored when that match is in the archive as a finished rated match, by
+-- the call that creates the row or, failing that, by the finish. Two
+-- tables archive the two matches, so the rematch can arrive first; the
+-- link then waits for the rematch's own finish rather than the call being
+-- refused, because a foreign-key refusal would retry and then park the
+-- whole match (S7-13). A predecessor that never arrives finished leaves
+-- no link.
 create or replace function public.record_match(p jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -27,11 +30,12 @@ begin
   select status, kind into v_status, v_kind
   from public.matches where id = v_match for update;
   if v_status is null then
-    -- v5: the rematch link, only to a match that is already archived.
+    -- v5: the rematch link, if its match is archived and finished.
     insert into public.matches (id, kind, status, config, rematch_of)
     values (v_match, p ->> 'kind', 'playing', p -> 'config',
       (select m.id from public.matches m
-       where m.id = (p ->> 'rematchOf')::uuid));
+       where m.id = (p ->> 'rematchOf')::uuid
+         and m.kind = 'hu-rated' and m.status = 'finished'));
     insert into public.match_players (match_id, user_id, seat)
     select v_match, (s ->> 'userId')::uuid, (s ->> 'seat')::smallint
     from jsonb_array_elements(p -> 'players') s;
@@ -45,8 +49,13 @@ begin
 
   v_final := case when v_reason in ('engine_fault', 'no_show', 'abandoned')
     then 'void' else 'finished' end;
+  -- v5: a link the first call could not make yet is made now.
   update public.matches
-  set status = v_final, result = p -> 'result', finished_at = v_at
+  set status = v_final, result = p -> 'result', finished_at = v_at,
+      rematch_of = coalesce(rematch_of,
+        (select m.id from public.matches m
+         where m.id = (p ->> 'rematchOf')::uuid
+           and m.kind = 'hu-rated' and m.status = 'finished'))
   where id = v_match;
 
   update public.match_players mp

@@ -92,6 +92,42 @@ describe('rematches', () => {
     expect(await row(EARLY)).toEqual({ status: 'finished', rematch_of: null })
   })
 
+  it('a rematch archived before the match it follows is linked when it finishes', async () => {
+    const before = '50000000-0000-4000-8000-000000000010'
+    const after = '50000000-0000-4000-8000-000000000011'
+    await call(start(after, before))
+    expect(await row(after)).toEqual({ status: 'playing', rematch_of: null })
+    await call(start(before))
+    await call(finish(before))
+    await call(finish(after, before))
+    expect(await row(after)).toEqual({ status: 'finished', rematch_of: before })
+  })
+
+  it('links only to a finished rated match: one still playing in the archive is linked once it finishes', async () => {
+    const before = '50000000-0000-4000-8000-000000000020'
+    const after = '50000000-0000-4000-8000-000000000021'
+    await call(start(before))
+    await call(start(after, before))
+    expect(await row(after)).toEqual({ status: 'playing', rematch_of: null })
+    await call(finish(before))
+    await call(finish(after, before))
+    expect(await row(after)).toEqual({ status: 'finished', rematch_of: before })
+    // A casual match is never a rated rematch's predecessor.
+    const casual = '50000000-0000-4000-8000-000000000022'
+    const linked = '50000000-0000-4000-8000-000000000023'
+    await call({ ...start(casual), kind: 'hu-casual' })
+    await call({
+      ...start(casual),
+      kind: 'hu-casual',
+      handNo: 20,
+      timeouts: {},
+      result: { netBySeat: { 0: 10, 1: -10 }, reason: 'complete' },
+    })
+    await call(start(linked, casual))
+    await call(finish(linked, casual))
+    expect(await row(linked)).toEqual({ status: 'finished', rematch_of: null })
+  })
+
   it("keeps v4's rules: a rated finish missing a seat's result is refused", async () => {
     const id = '50000000-0000-4000-8000-000000000004'
     await call(start(id, FIRST))

@@ -5,7 +5,12 @@ import { env, SELF } from 'cloudflare:test'
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import type { JWTPayload } from 'jose'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { identify, ratedEligibility, verifyToken } from '../src/auth'
+import {
+  ELIGIBLE_TTL_MS,
+  identify,
+  ratedEligibility,
+  verifyToken,
+} from '../src/auth'
 import type { WorkerEnv } from '../src/env'
 import { DEV_SECRET, ORIGIN } from './helpers'
 
@@ -23,6 +28,8 @@ const NAMES: Record<string, string> = {
 }
 /** The apikey each request to Supabase Auth's user endpoint carried. */
 const authKeys: string[] = []
+/** Whether Auth reports USER's email as confirmed (a test may revoke it). */
+let userConfirmed = true
 const ISSUER = `${env.SUPABASE_URL}/auth/v1`
 const KID = 'qp-test-key'
 // Production never sets DEV_AUTH_SECRET.
@@ -71,7 +78,8 @@ beforeAll(async () => {
         if (sub === AUTH_DOWN) return new Response('down', { status: 503 })
         return Response.json({
           id: sub,
-          email_confirmed_at: sub === USER ? '2026-10-01T00:00:00Z' : null,
+          email_confirmed_at:
+            sub === USER && userConfirmed ? '2026-10-01T00:00:00Z' : null,
           is_anonymous: sub === ANONYMOUS,
           // Editable by the user, so never trusted.
           user_metadata: { email_verified: true },
@@ -253,6 +261,22 @@ describe('the rated gate', () => {
     )
     // The browser-safe key, never the secret one.
     expect(new Set(authKeys)).toEqual(new Set([env.SUPABASE_PUBLISHABLE_KEY]))
+  })
+
+  it('asks again once a cached yes is older than its TTL, so a revoked confirmation lapses', async () => {
+    const t0 = Date.now()
+    expect(await ratedEligibility(await sign(), USER, prodEnv)).toBe('yes')
+    userConfirmed = false
+    try {
+      // Within the TTL the cached answer stands.
+      vi.spyOn(Date, 'now').mockReturnValue(t0 + ELIGIBLE_TTL_MS - 1000)
+      expect(await ratedEligibility(await sign(), USER, prodEnv)).toBe('yes')
+      vi.spyOn(Date, 'now').mockReturnValue(t0 + ELIGIBLE_TTL_MS + 1000)
+      expect(await ratedEligibility(await sign(), USER, prodEnv)).toBe('no')
+    } finally {
+      userConfirmed = true
+      vi.restoreAllMocks()
+    }
   })
 
   it('refuses a rated queue to an unconfirmed account, which can still queue casual', async () => {

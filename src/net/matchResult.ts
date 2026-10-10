@@ -27,6 +27,11 @@ export function matchOverText(
   }
   if (result.reason === 'abandoned')
     return 'Match over: both players left, so it is void and not rated.'
+  // Halted, not decided: nobody won it.
+  if (result.reason === 'engine_fault')
+    return result.adjustedBySeat
+      ? 'Match over: a server fault stopped it, so it is void and not rated.'
+      : 'Match over: a server fault stopped it.'
   const net = result.netBySeat[you] ?? 0
   return `Match over: ${net >= 0 ? 'you won' : 'you lost'} ${chips(Math.abs(net))} chips.`
 }

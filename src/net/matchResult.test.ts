@@ -61,6 +61,21 @@ describe('the match-over text', () => {
     ).toBe('Match over: both players left, so it is void and not rated.')
   })
 
+  it('never names a winner of a match a server fault stopped', () => {
+    const fault = {
+      netBySeat: { 0: 100, 1: -100 },
+      reason: 'engine_fault' as const,
+    }
+    expect(
+      matchOverText({ ...fault, adjustedBySeat: { 0: 100, 1: -100 } }, 0, 20),
+    ).toBe(
+      'Match over: a server fault stopped it, so it is void and not rated.',
+    )
+    expect(matchOverText(fault, 0, 20)).toBe(
+      'Match over: a server fault stopped it.',
+    )
+  })
+
   it('reads a casual match by its chips, as before', () => {
     const result = {
       netBySeat: { 0: 1240, 1: -1240 },

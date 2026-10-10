@@ -103,8 +103,13 @@ export async function usernameFor(
  */
 export type RatedEligibility = 'yes' | 'no' | 'unknown'
 
-/** Accounts already found eligible in this isolate: a confirmation stays. */
-const eligible = new Set<string>()
+/**
+ * A yes is cached this long, then asked again, so a confirmation an
+ * operator revokes lapses within minutes.
+ */
+export const ELIGIBLE_TTL_MS = 300_000
+/** Accounts found eligible in this isolate, and when. */
+const eligible = new Map<string, number>()
 
 export async function ratedEligibility(
   token: string,
@@ -112,7 +117,8 @@ export async function ratedEligibility(
   env: WorkerEnv,
 ): Promise<RatedEligibility> {
   if (devTokensOn(env) && token.startsWith('dev.')) return 'yes'
-  if (eligible.has(userId)) return 'yes'
+  const seen = eligible.get(userId)
+  if (seen !== undefined && now() - seen < ELIGIBLE_TTL_MS) return 'yes'
   let user: {
     id?: unknown
     email_confirmed_at?: unknown
@@ -135,10 +141,10 @@ export async function ratedEligibility(
     user.id === userId &&
     typeof user.email_confirmed_at === 'string' &&
     user.is_anonymous !== true
+  eligible.delete(userId)
   if (!ok) return 'no'
-  if (eligible.size >= MAX_NAMES)
-    eligible.delete(eligible.values().next().value!)
-  eligible.add(userId)
+  if (eligible.size >= MAX_NAMES) eligible.delete(eligible.keys().next().value!)
+  eligible.set(userId, now())
   return 'yes'
 }
 

@@ -4,6 +4,8 @@
 // never an input.
 import { policy } from './atlas'
 import type { AtlasStyle } from './atlas'
+import { populationPolicy } from './population'
+import type { Seat } from './population'
 import type { Card, HistoryEntry } from './poker'
 import { hashString } from './random'
 import { drawTail, lcg, liveIds, score, toId } from './sim'
@@ -42,6 +44,11 @@ export type SpotRequest = {
   board: Card[]
   history: HistoryEntry[]
   style: AtlasStyle
+  /**
+   * Whose strategy the opponent's actions are read with: Atlas's (`style`)
+   * by default, or the human population model (src/lib/population.ts).
+   */
+  opponent?: 'population'
 }
 export type RangeStep = {
   label: string
@@ -122,6 +129,45 @@ function preflopClassEquity() {
     table[cell] = points / trials
   }
   return (preflopClasses = table)
+}
+
+let preflopRanks: Float32Array | null = null
+/**
+ * Each starting-hand class's strength among all starting hands, 0 to 1,
+ * by equity against a random hand and weighted by combos (a pair has 6,
+ * a suited hand 4, an offsuit hand 12): the population model's pre-flop
+ * ranges are shares of hands in this order.
+ */
+export function preflopPercentiles() {
+  if (preflopRanks) return preflopRanks
+  const equity = preflopClassEquity()
+  const combos = new Float32Array(169)
+  for (let k = 0; k < COMBOS; k++) combos[gridCell(COMBO_A[k], COMBO_B[k])]++
+  const order = Array.from({ length: 169 }, (_, c) => c).sort(
+    (a, b) => equity[a] - equity[b] || a - b,
+  )
+  const ranks = new Float32Array(169)
+  let below = 0
+  for (const c of order) {
+    ranks[c] = (below + combos[c] / 2) / COMBOS
+    below += combos[c]
+  }
+  return (preflopRanks = ranks)
+}
+
+/** The population model's seat for the opponent (player 1) at `index`. */
+export function opponentSeat(history: HistoryEntry[], index: number): Seat {
+  const entry = history[index]
+  // The small blind acts first pre-flop: whoever acted first is the button.
+  const first = history.find((h) => h.street === 'preflop')
+  const raises = history
+    .slice(0, index)
+    .filter((h) => h.street === entry.street && h.action === 'raise').length
+  return {
+    preflop: entry.street === 'preflop',
+    bigBlind: first ? first.player !== 1 : true,
+    raises,
+  }
 }
 
 /**
@@ -293,7 +339,9 @@ export function rangeWeights(
   board: number[],
   history: HistoryEntry[],
   style: AtlasStyle,
+  opponent?: 'population',
 ) {
+  const ranks = opponent === 'population' ? preflopPercentiles() : null
   const weights = new Float32Array(COMBOS)
   const dead = new Set([...hole, ...board])
   for (let k = 0; k < COMBOS; k++)
@@ -302,7 +350,7 @@ export function rangeWeights(
   const steps: RangeStep[] = [
     { label: 'Any two cards', buckets: bucketsOf(weights, current) },
   ]
-  for (const entry of history) {
+  for (const [index, entry] of history.entries()) {
     if (entry.player !== 1 || entry.action === 'fold') continue
     const table = atlasEquityTable(board.slice(0, entry.boardCount))
     const context = {
@@ -310,9 +358,19 @@ export function rangeWeights(
       pot: entry.pot,
       canRaise: entry.canRaise,
     }
+    const seat = ranks ? opponentSeat(history, index) : null
     for (let k = 0; k < COMBOS; k++) {
       if (!weights[k]) continue
-      const mix = policy(table[k], context, style, POLICY_SIGMA)
+      const mix =
+        ranks && seat
+          ? populationPolicy(
+              table[k],
+              ranks[gridCell(COMBO_A[k], COMBO_B[k])],
+              context,
+              seat,
+              POLICY_SIGMA,
+            )
+          : policy(table[k], context, style, POLICY_SIGMA)
       weights[k] *= entry.action === 'raise' ? mix.raise : mix.passive
     }
     steps.push({
@@ -471,6 +529,7 @@ export function analyzeSpot(
     board,
     request.history,
     request.style,
+    request.opponent,
   )
   const [heroWin, heroTie] = heroTables(hole, board)
   let win = 0,

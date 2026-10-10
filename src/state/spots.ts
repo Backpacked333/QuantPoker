@@ -1,19 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AtlasStyle } from '../lib/atlas'
-import { cardKey } from '../lib/poker'
 import type { Game } from '../lib/poker'
 import type { SpotAnalysis, SpotRequest } from '../lib/range'
+import { spotKey } from '../lib/spotKey'
 
-/** Identifies everything the hero's analysis depends on. */
-export function spotKey(game: Game, style: AtlasStyle) {
-  const cards = game.cards[0].map(cardKey).join('')
-  const board = game.board.map(cardKey).join('')
-  const atlas = game.history
-    .filter((h) => h.player === 1)
-    .map((h) => `${h.boardCount}${h.action[0]}${h.amount}/${h.toCall}/${h.pot}`)
-    .join(',')
-  return `${style}|${cards}|${board}|${atlas}`
-}
+export { spotKey }
 
 const LIMIT = 120
 

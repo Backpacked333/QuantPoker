@@ -3,13 +3,28 @@
 import { policy } from './atlas'
 import type { AtlasStyle } from './atlas'
 import { decisionEV } from './finance'
+import { populationPolicy } from './population'
+import type { Seat } from './population'
 import type { Card, Game, OutcomeProbabilities } from './poker'
 import { legalActions } from './poker'
-import { COMBOS, COMBO_A, COMBO_B, gridCell, POLICY_SIGMA } from './range'
+import {
+  COMBOS,
+  COMBO_A,
+  COMBO_B,
+  gridCell,
+  POLICY_SIGMA,
+  preflopPercentiles,
+} from './range'
 import type { FullSpot } from './range'
 import { categoryOf, fromId, score, toId } from './sim'
 
-export type OpponentModel = 'range' | 'uniform'
+/**
+ * `range`: Atlas's range and responses (the trainer). `uniform`: any two
+ * cards. `population`: the human population model (src/lib/population.ts),
+ * for grading people; the spot must be analysed with `opponent:
+ * 'population'`, so its weights are that model's range.
+ */
+export type OpponentModel = 'range' | 'uniform' | 'population'
 export type Outcome = OutcomeProbabilities
 
 const toOutcome = (win: number, tie: number): Outcome => ({
@@ -25,7 +40,7 @@ export function spotOutcome(spot: FullSpot, model: OpponentModel): Outcome {
     total = 0
   for (let k = 0; k < COMBOS; k++) {
     if (Number.isNaN(spot.heroWin[k])) continue
-    const weight = model === 'range' ? spot.weights[k] : 1
+    const weight = model === 'uniform' ? 1 : spot.weights[k]
     if (!weight) continue
     w += weight * spot.heroWin[k]
     t += weight * spot.heroTie[k]
@@ -39,6 +54,8 @@ export type RaiseContext = {
   heroBet: number
   atlasBet: number
   raiseTo: number
+  /** The opponent's seat as it faces the raise (population model only). */
+  seat?: Seat
 }
 export type RaiseAnalysis = {
   foldProbability: number
@@ -49,7 +66,10 @@ export type RaiseAnalysis = {
   opponentCall: number
 }
 
-/** Atlas's modeled response to a hero raise, using its published policy. */
+/**
+ * The opponent's modeled response to a hero raise: Atlas's published policy,
+ * or the population model's.
+ */
 export function raiseAnalysis(
   spot: FullSpot,
   model: OpponentModel,
@@ -63,6 +83,8 @@ export function raiseAnalysis(
     pot: context.pot + risk,
     canRaise: true,
   }
+  const ranks = model === 'population' ? preflopPercentiles() : null
+  const seat = context.seat ?? { preflop: false, bigBlind: false, raises: 1 }
   let total = 0,
     folds = 0,
     continuing = 0,
@@ -70,13 +92,18 @@ export function raiseAnalysis(
     tie = 0
   for (let k = 0; k < COMBOS; k++) {
     if (Number.isNaN(spot.heroWin[k])) continue
-    const weight = model === 'range' ? spot.weights[k] : 1
+    const weight = model === 'uniform' ? 1 : spot.weights[k]
     if (!weight) continue
-    const fold = policy(
-      spot.atlasEquity[k],
-      atlasContext,
-      style,
-      POLICY_SIGMA,
+    const fold = (
+      ranks
+        ? populationPolicy(
+            spot.atlasEquity[k],
+            ranks[gridCell(COMBO_A[k], COMBO_B[k])],
+            atlasContext,
+            seat,
+            POLICY_SIGMA,
+          )
+        : policy(spot.atlasEquity[k], atlasContext, style, POLICY_SIGMA)
     ).fold
     total += weight
     folds += weight * fold
@@ -106,7 +133,7 @@ export type NextScenario = Outcome & { card: Card }
 export function nextScenarios(spot: FullSpot, model: OpponentModel) {
   const all: NextScenario[] = spot.next.map((item) => ({
     card: fromId(item.id),
-    ...toOutcome(...(model === 'range' ? item.range : item.uniform)),
+    ...toOutcome(...(model === 'uniform' ? item.uniform : item.range)),
   }))
   if (!all.length)
     return { all, best: [], worst: [], volatility: null as number | null }
@@ -144,7 +171,7 @@ export function rangeGrid(spot: FullSpot, model: OpponentModel) {
     if (Number.isNaN(spot.heroWin[k])) continue
     const cell = gridCell(COMBO_A[k], COMBO_B[k])
     live[cell]++
-    mass[cell] += model === 'range' ? spot.weights[k] : 1
+    mass[cell] += model === 'uniform' ? 1 : spot.weights[k]
   }
   let totalMass = 0
   for (let c = 0; c < 169; c++) totalMass += mass[c]

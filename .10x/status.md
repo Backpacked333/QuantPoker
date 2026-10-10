@@ -7,6 +7,12 @@ Last updated: 2026-10-10 by SDE (accuracy: P1-08 and P1-09 live, QA attack run, 
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
 
+## Landing page and onboarding (PM, 2026-10-10)
+
+- **Scoped and aligned with the user: scope B, P0.** `.10x/decisions/product-manager/landing-and-onboarding.md`.
+- A landing page for first-time visitors whose hero is a curated, live-graded challenge hand; a score card with an honest percentile; a share card and friend-challenge link; one sign-up surface; onboarding (username → optional school badge → first move); first-party funnel analytics.
+- **Next:** architect answers O-1 to O-4 and plans the build. It runs alongside Phase 1 and does not displace P1-12.
+
 ## Phase 1 progress (2026-10-10)
 
 Merged and deployed, each one verified in production after its merge:

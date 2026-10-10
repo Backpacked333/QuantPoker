@@ -1,10 +1,48 @@
 # Handoff
 
-## Current handoff: SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
+## Current handoff: PM → Architect (landing page and onboarding)
+
+Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); architecture next.**
+
+### Read first
+
+`.10x/decisions/product-manager/landing-and-onboarding.md` (slug `landing-and-onboarding`).
+
+### What was decided
+
+- **Audience:** competitive, high-ability students (math, finance, physics, CS) aiming for IB or quant roles, mostly at elite schools. The user's hypothesis, to be validated.
+- **Hook:** the landing page hero is one curated hand against Atlas on the real table, graded per decision, with no account. It ends on a score card (accuracy, percentile, luck versus skill).
+- **Account:** "Save your score & get rated" → 1-click sign-up (Google first) → username → optional school badge (verified school email) → first move.
+- **Tone:** trading-desk elite. Dark, precise, monospace figures, no casino imagery.
+- **Scope B:** L-1 to L-11 are P0; the share card, the friend-challenge link and second-email school verification (L-12 to L-14) are P1.
+
+### Priority order
+
+1. L-1/L-2/L-3/L-4/L-5 (landing page + challenge hand + score card), with L-10 analytics from the first PR.
+2. L-7/L-8 (one sign-up surface + onboarding), with the score carried over (O-4).
+3. L-6 (real percentile), L-9 (sections), L-11 (a11y, motion, frame time).
+4. P1: L-12 share card, L-13 friend link, L-14 school email sender.
+
+### Open questions for you
+
+O-1 school verification (auto-verify vs an email sender) · O-2 routing `/` for first-time visitors without breaking hash deep links · O-3 anonymous score and event storage · O-4 carrying the score into the new account. Details and PM preferences are in the feature file.
+
+### Constraints
+
+- The entry bundle budget (`scripts/check-bundle.mjs`): the landing page must not pull the lab or `src/net` into the entry chunk.
+- The lab is off during the challenge (same rule as rated play) and on in its review.
+- Play money only; no personal data in analytics events.
+- This runs alongside Phase 1 and does not displace P1-12 ratings.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
 
 Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going through its PR.**
 
-### What changed
+#### What changed
 
 - **Grades after every rated hand** (PRs #21 and #23, live).
   - The hands consumer grades every move of both players once a hand is verified, against the population model, from each player's redacted view.
@@ -16,24 +54,20 @@ Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going
   - a plain mean barely separates "raise every street" from a thinking player, although the model's EV ranks them right. Pot-weighted variants broke the required order, so the plain mean stays, and the pot is stored for the real-data Spearman comparison.
 - **P1-10:** a public accuracy number (latest 500 decisions) and the grade distribution, refreshed when a rated match ends. Also luck versus skill across rated matches, and a "Rated play" panel in the lobby with the exact label and "Not graded yet".
 
-### Decisions I took (reversible)
+#### Decisions I took (reversible)
 
 - **Clock moves are graded.** A disconnected player's auto-folds count too.
 - **The shown accuracy is the plain mean.** The pot-weighted alternatives wait for real data.
 - **The accuracy lives in `public.accuracy`,** not on `ratings`. The P1-12 proposal now joins it.
 - **The panel sits in the lobby** until the P1-15 profile exists.
 
-### User actions
+#### User actions
 
 - **Unchanged:** U-4, U-8, Q7, and the open rematch-link finding on #19.
 
-### Next step
+#### Next step
 
 Me: open the P1-10 PR, merge when green, verify the deploy, then P1-12 ratings.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (P1-04 live; P1-12 next)
 

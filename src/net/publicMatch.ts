@@ -4,7 +4,12 @@
 // played is not shown at all, so nobody can follow a live table from here.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SeatId } from '../engine/types'
-import type { HandRecordV1, MatchKind, Outcome } from '../shared/protocol'
+import type {
+  HandRecordV1,
+  MatchEndReason,
+  MatchKind,
+  Outcome,
+} from '../shared/protocol'
 
 export type PublicSeat = {
   seat: SeatId
@@ -20,6 +25,8 @@ export type PublicMatch =
       status: 'finished' | 'void'
       kind: MatchKind
       finishedAt: string | null
+      /** Why it ended (a void match says which way), when recorded. */
+      reason: MatchEndReason | null
       seats: PublicSeat[]
       hands: PublicHand[]
     }
@@ -35,13 +42,14 @@ export async function loadPublicMatch(
 ): Promise<PublicMatch | null> {
   const match = await client
     .from('matches')
-    .select('id, kind, status, finished_at')
+    .select('id, kind, status, finished_at, result')
     .eq('id', matchId)
     .maybeSingle<{
       id: string
       kind: MatchKind
       status: 'playing' | 'finished' | 'void'
       finished_at: string | null
+      result: { reason?: MatchEndReason } | null
     }>()
   fail(match.error)
   if (!match.data) return null
@@ -86,6 +94,7 @@ export async function loadPublicMatch(
     status: match.data.status,
     kind: match.data.kind,
     finishedAt: match.data.finished_at,
+    reason: match.data.result?.reason ?? null,
     seats: seatRows.map((s) => ({
       seat: s.seat,
       username: nameOf.get(s.user_id) ?? 'A player',

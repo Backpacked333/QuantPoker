@@ -1,6 +1,6 @@
 // A player's public profile (P1-15), read with the publishable key: every
-// table here is public (players, ratings, rating_history, match_players,
-// matches). Only rated matches that were rated, so finished, are listed.
+// table here is public (players, ratings, rating_history, match_players).
+// Only rated matches that were rated, so finished, are listed.
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Outcome } from '../../shared/protocol'
 
@@ -83,7 +83,7 @@ export async function loadProfile(
   const p = found.data
   const userId = p.user_id
 
-  const [rating, changes] = await Promise.all([
+  const [rating, changes, latest] = await Promise.all([
     client
       .from('ratings')
       .select('rating, rd, matches, wins, draws, abandoned, last_match_at')
@@ -107,9 +107,21 @@ export async function loadProfile(
       .eq('format', 'hu-duplicate')
       .order('created_at', { ascending: false })
       .limit(HISTORY),
+    // The list is by when matches were played: a rating applied late (an
+    // outbox retry) must not push a newer match off it.
+    client
+      .from('rating_history')
+      .select('match_id, outcome, before_rating, after_rating, played_at')
+      .eq('user_id', userId)
+      .eq('format', 'hu-duplicate')
+      .eq('kind', 'match')
+      .order('played_at', { ascending: false })
+      .limit(RECENT),
   ])
   fail(rating.error)
   fail(changes.error)
+  fail(latest.error)
+  // The graph follows the order the ratings changed in.
   const rows = (changes.data ?? []) as HistoryRow[]
 
   const oldestFirst = [...rows].reverse()
@@ -128,23 +140,24 @@ export async function loadProfile(
       ]
     : []
 
-  const played = rows
-    .filter((h) => h.kind === 'match' && h.match_id && h.outcome)
-    .slice(0, RECENT)
-  const ids = played.map((h) => h.match_id!)
+  const played = (
+    (latest.data ?? []) as {
+      match_id: string
+      outcome: Outcome
+      before_rating: number
+      after_rating: number
+      played_at: string
+    }[]
+  ).filter((h) => h.match_id && h.outcome)
+  const ids = played.map((h) => h.match_id)
   let opponents = new Map<string, string>()
-  let finished = new Map<string, string>()
   if (ids.length) {
-    const [seats, matches] = await Promise.all([
-      client
-        .from('match_players')
-        .select('match_id, user_id')
-        .in('match_id', ids)
-        .neq('user_id', userId),
-      client.from('matches').select('id, finished_at').in('id', ids),
-    ])
+    const seats = await client
+      .from('match_players')
+      .select('match_id, user_id')
+      .in('match_id', ids)
+      .neq('user_id', userId)
     fail(seats.error)
-    fail(matches.error)
     const seatRows = (seats.data ?? []) as {
       match_id: string
       user_id: string
@@ -163,11 +176,6 @@ export async function loadProfile(
     )
     opponents = new Map(
       seatRows.map((s) => [s.match_id, nameOf.get(s.user_id) ?? '']),
-    )
-    finished = new Map(
-      ((matches.data ?? []) as { id: string; finished_at: string | null }[])
-        .filter((m) => m.finished_at)
-        .map((m) => [m.id, m.finished_at!]),
     )
   }
 
@@ -192,10 +200,10 @@ export async function loadProfile(
       : null,
     history,
     recent: played.map((h) => ({
-      matchId: h.match_id!,
-      finishedAt: finished.get(h.match_id!) ?? h.created_at,
-      outcome: h.outcome!,
-      opponent: opponents.get(h.match_id!) || null,
+      matchId: h.match_id,
+      finishedAt: h.played_at,
+      outcome: h.outcome,
+      opponent: opponents.get(h.match_id) || null,
       before: Number(h.before_rating),
       after: Number(h.after_rating),
     })),

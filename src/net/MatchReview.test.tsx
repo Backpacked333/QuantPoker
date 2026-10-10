@@ -73,6 +73,30 @@ describe('the public match review', () => {
     expect(cards()).toEqual([])
   })
 
+  it('a match still in play can be checked again, and shows its hands once it ends', async () => {
+    const t = await tables('playing')
+    const { client } = fakeSupabase({ tables: t })
+    render(<MatchReview client={client} matchId={MATCH} />)
+    await screen.findByText(/This match is still being played/)
+    t.matches[0].status = 'finished'
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(
+      await screen.findByRole('region', { name: 'Hand 1' }),
+    ).toBeInTheDocument()
+  })
+
+  it('a void match says why, without blaming both players for a no-show', async () => {
+    const t = await tables('void')
+    Object.assign(t.matches[0], { result: { reason: 'no_show' } })
+    for (const p of t.match_players) p.outcome = null as unknown as string
+    const { client } = fakeSupabase({ tables: t })
+    render(<MatchReview client={client} matchId={MATCH} />)
+    expect(
+      await screen.findByText('Void: a player did not arrive. Not rated.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/both players left/)).toBeNull()
+  })
+
   it('an unknown match says so', async () => {
     const { client } = fakeSupabase({ tables: await tables() })
     render(

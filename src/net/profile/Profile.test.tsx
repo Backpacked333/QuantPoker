@@ -24,6 +24,7 @@ function aliceTables({ matches = 25, rd = 64 } = {}) {
     after_rating: 1505 + i * 5,
     after_rd: 291 - i * 9,
     created_at: day(i),
+    played_at: day(i),
   }))
   return {
     players: [
@@ -106,6 +107,24 @@ describe('the public profile', () => {
     expect(
       screen.getByRole('heading', { name: 'Last 20 rated matches' }),
     ).toBeInTheDocument()
+  })
+
+  it('lists matches in the order they were played, even one rated days late', async () => {
+    const tables = aliceTables({ matches: 3 })
+    // Match 1 was played first but its rating applied after match 3's.
+    tables.rating_history[0].created_at = day(10)
+    const { client } = fakeSupabase({ tables })
+    render(<Profile client={client} username="alice" />)
+    const items = within(await screen.findByRole('list')).getAllByRole(
+      'listitem',
+    )
+    expect(
+      items.map(
+        (i) => within(i).getByRole('link', { name: /rival/ }).textContent,
+      ),
+    ).toEqual(['rival3', 'rival2', 'rival1'])
+    // Each shows the day it was played.
+    expect(items[2]).toHaveTextContent('1 Sept 2026')
   })
 
   it('a provisional player shows how many matches are left', async () => {

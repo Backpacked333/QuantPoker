@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SeatId } from '../engine/types'
+import type { MatchEndReason } from '../shared/protocol'
 import { loadPublicMatch } from './publicMatch'
 import type { PublicHand, PublicMatch, PublicSeat } from './publicMatch'
 import { Cards } from './ReviewLive'
@@ -28,6 +29,7 @@ export function MatchReview({
 }) {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [at, setAt] = useState(0)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let live = true
     loadPublicMatch(client, matchId).then(
@@ -39,7 +41,7 @@ export function MatchReview({
     return () => {
       live = false
     }
-  }, [client, matchId])
+  }, [client, matchId, attempt])
 
   if (state.status === 'loading')
     return (
@@ -62,9 +64,17 @@ export function MatchReview({
   const match = state.match
   if (match.status === 'playing')
     return (
-      <p className="panel live-muted" role="status">
-        This match is still being played. Its hands appear here once it ends.
-      </p>
+      <div className="panel live-profile" role="status">
+        <p className="live-muted">
+          This match is still being played. Its hands appear here once it ends.
+        </p>
+        <button
+          className="btn btn-outline"
+          onClick={() => setAttempt((n) => n + 1)}
+        >
+          Check again
+        </button>
+      </div>
     )
 
   const name = (seat: SeatId) =>
@@ -84,7 +94,11 @@ export function MatchReview({
             </span>
           ))}
         </p>
-        <Summary seats={match.seats} status={match.status} />
+        <Summary
+          seats={match.seats}
+          status={match.status}
+          reason={match.reason}
+        />
       </section>
       {hand ? (
         <>
@@ -116,15 +130,28 @@ export function MatchReview({
   )
 }
 
+/** Why a match was void, from its archived result; never a guess. */
+const VOID_REASON: Partial<Record<MatchEndReason, string>> = {
+  no_show: 'Void: a player did not arrive. Not rated.',
+  abandoned: 'Void: both players left. Not rated.',
+  engine_fault: 'Void: the server stopped the match. Not rated.',
+}
+
 function Summary({
   seats,
   status,
+  reason,
 }: {
   seats: PublicSeat[]
   status: 'finished' | 'void'
+  reason: MatchEndReason | null
 }) {
   if (status === 'void')
-    return <p className="live-muted">Void: both players left. Not rated.</p>
+    return (
+      <p className="live-muted">
+        {(reason && VOID_REASON[reason]) ?? 'Void. Not rated.'}
+      </p>
+    )
   const rated = seats.filter((s) => s.outcome)
   if (!rated.length) return null
   return (

@@ -155,6 +155,7 @@ export async function fakeProfile(page: Page) {
     after_rating: 1505 + i * 5,
     after_rd: 291 - i * 9,
     created_at: day(i),
+    played_at: day(i),
   }))
   const hand = (handNo: number, showdown: boolean) => ({
     v: 1,

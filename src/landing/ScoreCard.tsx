@@ -4,12 +4,13 @@
 // with its grade and what the best play was, and Atlas's reasoning, now that
 // the hand is over.
 import { useEffect, useState } from 'react'
-import { ArrowRight, RotateCcw, ShieldCheck } from 'lucide-react'
+import { ArrowRight, RotateCcw, Share2, ShieldCheck } from 'lucide-react'
 import { scorePath } from '../challenge/score'
 import { cardLabel } from '../lib/poker'
 import { savePendingClaim } from '../lib/landing'
 import { track } from '../lib/track'
 import type { FinishedChallenge } from './ChallengeHand'
+import type { Rival } from './Landing'
 import { ordinal, why } from './why'
 
 type Server =
@@ -20,23 +21,45 @@ type Server =
       percentile: number
       basis: 'players' | 'model'
       crowd: (number | null)[]
+      receipt: string
     }
 
 const chips = (x: number) =>
   `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(Math.round(x)).toLocaleString('en-US')}`
 
+/** Shares a link to this score: the system sheet, else the clipboard. */
+async function shareLink(url: string, accuracy: number, title: string) {
+  const text = `I scored ${accuracy}/100 on “${title}”. Beat me.`
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: 'QuantPoker challenge', text, url })
+      return 'shared'
+    }
+    await navigator.clipboard.writeText(`${text} ${url}`)
+    return 'copied'
+  } catch {
+    return 'failed'
+  }
+}
+
 export function ScoreCard({
   finished,
+  rival = null,
   onSave,
   onAgain,
 }: {
   finished: FinishedChallenge
+  /** The friend whose link this hand came from (L-13). */
+  rival?: Rival | null
   onSave: () => void
   onAgain: () => void
 }) {
   const { spec, tree, game, path, decisions } = finished
   const accuracy = scorePath(tree, path)?.accuracy ?? 0
   const [server, setServer] = useState<Server>({ status: 'loading' })
+  const [shared, setShared] = useState<'shared' | 'copied' | 'failed' | null>(
+    null,
+  )
 
   useEffect(() => {
     const controller = new AbortController()
@@ -131,6 +154,15 @@ export function ScoreCard({
             </dd>
           </div>
         </dl>
+        {rival && (
+          <p className="scorecard-versus" role="status">
+            {accuracy > rival.accuracy
+              ? `You beat your friend: ${accuracy} to ${rival.accuracy}.`
+              : accuracy === rival.accuracy
+                ? `A tie with your friend at ${accuracy}.`
+                : `Your friend wins this one: ${rival.accuracy} to ${accuracy}.`}
+          </p>
+        )}
         <p className="scorecard-note">
           Your score ignores how the cards fell. Winning a pot with a bad call
           still costs you; losing one with the right call does not.
@@ -192,10 +224,35 @@ export function ScoreCard({
         >
           Save your score and get rated <ArrowRight size={16} />
         </button>
+        {server.status === 'ok' && (
+          <button
+            className="btn btn-ghost-desk"
+            onClick={async () => {
+              track('share_click')
+              setShared(
+                await shareLink(
+                  `${window.location.origin}/c/${server.receipt}`,
+                  accuracy,
+                  spec.title,
+                ),
+              )
+            }}
+          >
+            <Share2 size={15} />
+            {shared === 'copied' ? 'Link copied' : 'Challenge a friend'}
+          </button>
+        )}
         <button className="btn btn-ghost-desk" onClick={onAgain}>
           <RotateCcw size={15} /> Play another hand
         </button>
       </div>
+      {shared === 'failed' && (
+        <p className="scorecard-basis" role="alert">
+          Could not share from this browser. Copy this link instead:{' '}
+          {server.status === 'ok' &&
+            `${window.location.origin}/c/${server.receipt}`}
+        </p>
+      )}
       <p className="scorecard-fine">
         <ShieldCheck size={14} /> Play money only. Your score is checked on our
         server against the same model, so nobody can post one they did not earn.

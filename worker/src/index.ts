@@ -11,6 +11,7 @@ import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
 import { describeError, logEvent } from './log'
 import { profilePage } from './profile'
+import { sharePage } from './share'
 import { challengeRoute } from './challenge'
 import { originAllowed } from './origin'
 import type { InitBody } from './table'
@@ -27,7 +28,7 @@ const json = (body: unknown, status = 200, headers?: HeadersInit) =>
 const MATCH_PATH = /^\/ws\/table\/([0-9a-f-]{36})$/
 /** Paths that verify a token or may wake a Durable Object. */
 const LIMITED =
-  /^\/(ws\/|api\/(matches|me|events|challenge\/score|challenge\/claim)$)/
+  /^\/(ws\/|c\/|api\/(matches|me|events|challenge\/(score|claim|shared\/[0-9a-f]{32}))$)/
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -140,6 +141,9 @@ export default {
     // The landing page: challenge scores, funnel events, score claims.
     const landing = await challengeRoute(request, env, pathname)
     if (landing) return landing
+
+    // A shared challenge score: the app, with the score to beat in its preview.
+    if (pathname.startsWith('/c/')) return sharePage(request, env)
 
     // A shared profile: the app, with that player's link preview.
     if (pathname.startsWith('/u/')) return profilePage(request, env)

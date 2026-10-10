@@ -157,6 +157,25 @@
   scroll-margin: 96px;
 }
 
+.landing-rival {
+  margin: 20px 0 0;
+  padding: 12px 16px;
+  border: 1px solid rgb(178 224 140 / 0.35);
+  border-radius: 12px;
+  background: rgb(178 224 140 / 0.08);
+  color: var(--desk-text);
+}
+.landing-rival b {
+  font-family: var(--mono);
+  color: var(--desk-accent);
+}
+.landing-loading {
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  color: var(--desk-text-2);
+}
+
 /* ---------- The challenge hand ---------- */
 .challenge .table {
   box-shadow:
@@ -326,6 +345,15 @@
 }
 .scorecard-split .is-down {
   color: var(--desk-down);
+}
+.scorecard-versus {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(178 224 140 / 0.1);
+  font-weight: 600;
+  color: var(--desk-text);
 }
 .scorecard-note {
   grid-column: 1 / -1;

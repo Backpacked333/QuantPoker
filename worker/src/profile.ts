@@ -7,17 +7,16 @@
 import { isProvisional } from '../../src/rating/rules'
 import type { WorkerEnv } from './env'
 import { describeError, logEvent } from './log'
+import { previewPage } from './preview'
+import type { PreviewOptions } from './preview'
+export { OG_IMAGE, PREVIEW_TTL_S } from './preview'
 
 const PROFILE_PATH = /^\/u\/([a-z0-9_]{3,20})\/?$/
-/** The share card, 1200 × 630 (public/og-default.png, scripts/og-card.ts). */
-export const OG_IMAGE = '/og-default.png'
 
 type Found = {
   username: string
   ratings: { rating: number; rd: number; matches: number }[]
 }
-
-type Preview = { status: number; title: string; description: string }
 
 const GENERIC = {
   title: 'QuantPoker',
@@ -73,55 +72,15 @@ async function preview(env: WorkerEnv, name: string | undefined) {
   }
 }
 
-/** How long a preview is reused at the edge: one read per name per minute. */
-export const PREVIEW_TTL_S = 60
-
 export async function profilePage(
   request: Request,
   env: WorkerEnv,
-  {
-    assets = env.ASSETS,
-    cache = caches.default,
-  }: { assets?: Pick<Fetcher, 'fetch'>; cache?: Cache } = {},
+  options: PreviewOptions = {},
 ): Promise<Response> {
   const url = new URL(request.url)
-  // Repeated requests for one profile are answered from the edge cache, so
-  // nobody can turn page loads into Postgres reads.
-  const key = new Request(`${url.origin}${url.pathname}`)
-  const hit = await cache.match(key)
-  if (hit) return hit
   const name = url.pathname.match(PROFILE_PATH)?.[1]
-  const [page, shown]: [Response, Preview] = await Promise.all([
-    assets.fetch(new Request(new URL('/', url))),
-    preview(env, name),
-  ])
-  const content = (value: string) => ({
-    element(e: Element) {
-      e.setAttribute('content', value)
-    },
-  })
-  const rewritten = new HTMLRewriter()
-    .on('title', {
-      element(e) {
-        e.setInnerContent(shown.title)
-      },
-    })
-    .on('meta[name="description"]', content(shown.description))
-    .on('meta[property="og:title"]', content(shown.title))
-    .on('meta[property="og:description"]', content(shown.description))
-    .on('meta[property="og:type"]', content(name ? 'profile' : 'website'))
-    .on('meta[property="og:url"]', content(`${url.origin}${url.pathname}`))
-    .on('meta[property="og:image"]', content(`${url.origin}${OG_IMAGE}`))
-    .transform(page)
-  const headers = new Headers(rewritten.headers)
-  // The body is no longer index.html's: its validators and length are not ours.
-  for (const stale of ['ETag', 'Last-Modified', 'Content-Length'])
-    headers.delete(stale)
-  headers.set('Cache-Control', `public, max-age=${PREVIEW_TTL_S}`)
-  const response = new Response(rewritten.body, {
-    status: shown.status,
-    headers,
-  })
-  await cache.put(key, response.clone())
-  return response
+  return previewPage(request, env, options, async () => ({
+    ...(await preview(env, name)),
+    type: name ? 'profile' : 'website',
+  }))
 }

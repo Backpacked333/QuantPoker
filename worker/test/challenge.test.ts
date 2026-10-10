@@ -25,6 +25,7 @@ import type {
 } from '../../src/challenge/score'
 import { treeFor } from '../../src/challenge/trees'
 import { forgetFunnel } from '../src/challenge'
+import { describeShared, sharePage } from '../src/share'
 import { now } from '../src/clock'
 import { CROWD_MIN, EVENT_DAYS, PLAYER_BASIS, scoreStub } from '../src/scores'
 import type { ScoreDO, ScoreResult } from '../src/scores'
@@ -355,5 +356,94 @@ describe('POST /api/challenge/claim', () => {
       return instance.alarm()
     })
     expect(await count()).toBe(0)
+  })
+})
+
+describe('shared scores: /api/challenge/shared/<receipt> and /c/<receipt>', () => {
+  const APP = `<!doctype html><html><head>
+<meta name="description" content="x" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="QuantPoker" />
+<meta property="og:description" content="x" />
+<meta property="og:url" content="/" />
+<meta property="og:image" content="/og-default.png" />
+<title>QuantPoker</title></head><body></body></html>`
+  const assets = {
+    fetch: async () =>
+      new Response(APP, { headers: { 'Content-Type': 'text/html' } }),
+  } as unknown as Fetcher
+  let n = 0
+  const tag = (html: string, property: string) =>
+    html.match(
+      new RegExp(`<meta (?:property|name)="${property}" content="([^"]*)"`),
+    )?.[1] ?? null
+
+  async function scored() {
+    return (await (
+      await post('/api/challenge/score', {
+        hand: tree.id,
+        ver: tree.ver,
+        path: line,
+      })
+    ).json()) as ScoreResult
+  }
+
+  it('looks a receipt up: the hand, the score and where it ranks now', async () => {
+    const result = await scored()
+    const response = await SELF.fetch(
+      `${ORIGIN}/api/challenge/shared/${result.receipt}`,
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      hand: tree.id,
+      ver: tree.ver,
+      accuracy: result.accuracy,
+      percentile: result.percentile,
+      basis: 'model',
+    })
+    expect(
+      (await SELF.fetch(`${ORIGIN}/api/challenge/shared/${'0'.repeat(32)}`))
+        .status,
+    ).toBe(404)
+  })
+
+  it('serves the app with the score to beat in its link preview', async () => {
+    const result = await scored()
+    const response = await sharePage(
+      new Request(`${ORIGIN}/c/${result.receipt}`),
+      env,
+      { assets, cache: await caches.open(`share-${n++}`) },
+    )
+    expect(response.status).toBe(200)
+    const html = await response.text()
+    expect(tag(html, 'og:title')).toBe(
+      `Beat ${result.accuracy}/100 on “Overpair under pressure” · QuantPoker`,
+    )
+    expect(tag(html, 'og:description')).toContain(
+      `Someone scored ${result.accuracy}/100 on this hand`,
+    )
+    expect(tag(html, 'og:image')).toBe(`${ORIGIN}/og-challenge.png`)
+    expect(tag(html, 'og:url')).toBe(`${ORIGIN}/c/${result.receipt}`)
+  })
+
+  it('an unknown or malformed link still opens the app, with a generic preview', async () => {
+    for (const path of [`/c/${'0'.repeat(32)}`, '/c/nope']) {
+      const response = await sharePage(new Request(`${ORIGIN}${path}`), env, {
+        assets,
+        cache: await caches.open(`share-${n++}`),
+      })
+      expect(response.status).toBe(404)
+      expect(tag(await response.text(), 'og:title')).toMatch(/misprice/)
+    }
+  })
+
+  it('names the percentile only once it is against real players', () => {
+    const base = { hand: 'nut-draw', ver: 1, accuracy: 91 }
+    expect(
+      describeShared({ ...base, percentile: 83, basis: 'model' }).description,
+    ).not.toContain('percentile')
+    expect(
+      describeShared({ ...base, percentile: 83, basis: 'players' }).description,
+    ).toContain('83rd percentile')
   })
 })

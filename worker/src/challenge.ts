@@ -4,6 +4,7 @@
 //   POST /api/challenge/score  {hand, ver, path}  → ScoreResult
 //   POST /api/events           {vid, name}         → 204
 //   POST /api/challenge/claim  {receipt} + Bearer  → 204 | 404 | 409
+//   GET  /api/challenge/shared/<receipt>           → SharedScore | 404
 //   GET  /api/funnel                               → {days}, cached
 import { isFunnelEvent, VISITOR_ID } from '../../src/challenge/events'
 import { MAX_PATH } from '../../src/challenge/score'
@@ -12,6 +13,7 @@ import { now } from './clock'
 import type { WorkerEnv } from './env'
 import { originAllowed } from './origin'
 import { scoreStub } from './scores'
+import { sharedScore } from './share'
 import type { FunnelDay } from './scores'
 
 export const SCORE_BODY_MAX = 2048
@@ -107,6 +109,13 @@ export async function challengeRoute(
     if (result === 'unknown') return json({ error: 'unknown_receipt' }, 404)
     if (result === 'taken') return json({ error: 'claimed' }, 409)
     return new Response(null, { status: 204 })
+  }
+
+  // A shared score, for the friend who opens /c/<receipt>.
+  const shared = pathname.match(/^\/api\/challenge\/shared\/([0-9a-f]{32})$/)
+  if (shared && request.method === 'GET') {
+    const found = await sharedScore(env, shared[1])
+    return found ? json(found) : json({ error: 'unknown_receipt' }, 404)
   }
 
   // Aggregate counts only, like /api/stats: no visitor ids leave the object.

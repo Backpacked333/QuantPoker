@@ -33,7 +33,8 @@ export const PLAYER_BASIS = 200
 /** Visits a decision needs before "x% of players chose this" is shown. */
 export const CROWD_MIN = 50
 export const EVENT_DAYS = 30
-export const RECEIPT_DAYS = 7
+/** Receipts back claims and shared challenge links (/c/<receipt>). */
+export const RECEIPT_DAYS = 30
 const DAY_MS = 86_400_000
 /** Housekeeping runs at least this often while anything is stored. */
 const SWEEP_MS = 6 * 3_600_000
@@ -45,6 +46,13 @@ export type ScoreResult = {
   /** Per decision, the share of players who chose the same (null: too few). */
   crowd: (number | null)[]
   receipt: string
+}
+export type SharedScore = {
+  hand: string
+  ver: number
+  accuracy: number
+  percentile: number
+  basis: ScoreResult['basis']
 }
 export type ClaimResult = 'ok' | 'unknown' | 'taken'
 export type FunnelDay = {
@@ -141,17 +149,7 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
     })
     await this.keepSweeping()
 
-    const real = new Array<number>(101).fill(0)
-    let total = 0
-    for (const row of this.sql.exec<{ bucket: number; n: number }>(
-      `SELECT bucket, n FROM histogram WHERE hand = ? AND ver = ?`,
-      hand,
-      ver,
-    )) {
-      real[row.bucket] = row.n
-      total += row.n
-    }
-    const players = total >= PLAYER_BASIS
+    const ranked = this.rank(tree, scored.accuracy)
     const crowd = scored.decisions.map((d) => {
       let visits = 0
       let same = 0
@@ -168,15 +166,47 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
         ? Math.round((100 * same) / visits) / 100
         : null
     })
+    return { accuracy: scored.accuracy, ...ranked, crowd, receipt }
+  }
+
+  /** Where `accuracy` stands on `tree`: real players from PLAYER_BASIS on. */
+  private rank(tree: ChallengeTree, accuracy: number) {
+    const real = new Array<number>(101).fill(0)
+    let total = 0
+    for (const row of this.sql.exec<{ bucket: number; n: number }>(
+      `SELECT bucket, n FROM histogram WHERE hand = ? AND ver = ?`,
+      tree.id,
+      tree.ver,
+    )) {
+      real[row.bucket] = row.n
+      total += row.n
+    }
+    const players = total >= PLAYER_BASIS
     return {
-      accuracy: scored.accuracy,
-      percentile: percentileOf(
-        players ? real : modelFor(tree),
-        scored.accuracy,
-      )!,
-      basis: players ? 'players' : 'model',
-      crowd,
-      receipt,
+      percentile: percentileOf(players ? real : modelFor(tree), accuracy)!,
+      basis: (players ? 'players' : 'model') as ScoreResult['basis'],
+    }
+  }
+
+  /**
+   * A shared score (/c/<receipt>): the hand and how it ranks now. Null when
+   * the receipt is unknown or has expired.
+   */
+  shared(receipt: string): SharedScore | null {
+    const row = this.sql
+      .exec<{
+        hand: string
+        ver: number
+        accuracy: number
+      }>(`SELECT hand, ver, accuracy FROM receipts WHERE id = ?`, receipt)
+      .toArray()[0]
+    const tree = row && treeFor(row.hand, row.ver)
+    if (!row || !tree) return null
+    return {
+      hand: row.hand,
+      ver: row.ver,
+      accuracy: row.accuracy,
+      ...this.rank(tree, row.accuracy),
     }
   }
 

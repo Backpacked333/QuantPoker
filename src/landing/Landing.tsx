@@ -25,14 +25,57 @@ import './landing.css'
 
 /** Each visitor starts on their own hand, so a spoiler helps nobody much. */
 const firstHand = () => hashString(visitorId()) % CHALLENGE_HANDS.length
+const SHARE_HASH = /^#c\/([0-9a-f]{32})$/
+
+/** A friend's shared score (L-13), from GET /api/challenge/shared/<receipt>. */
+export type Rival = {
+  hand: string
+  ver: number
+  accuracy: number
+  percentile: number
+  basis: 'players' | 'model'
+}
 
 export default function Landing() {
   const [index, setIndex] = useState(firstHand)
   const [round, setRound] = useState(1)
   const [finished, setFinished] = useState<FinishedChallenge | null>(null)
   const stage = useRef<HTMLDivElement>(null)
+  // Opened from a friend's link: play their hand, with their score to beat.
+  const [link] = useState(
+    () => window.location.hash.match(SHARE_HASH)?.[1] ?? null,
+  )
+  const [rival, setRival] = useState<Rival | 'loading' | 'missing' | null>(
+    link ? 'loading' : null,
+  )
 
   useEffect(() => track('landing_view'), [])
+  useEffect(() => {
+    if (!link) return
+    track('challenge_link_open')
+    let live = true
+    fetch(`/api/challenge/shared/${link}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Rival>) : null))
+      .catch(() => null)
+      .then((found) => {
+        if (!live) return
+        const at = found
+          ? CHALLENGE_HANDS.findIndex(
+              (h) => h.id === found.hand && h.ver === found.ver,
+            )
+          : -1
+        if (!found || at < 0) return setRival('missing')
+        setIndex(at)
+        setRival(found)
+      })
+    return () => {
+      live = false
+    }
+  }, [link])
+  const against =
+    rival && typeof rival === 'object' && finished?.spec.id === rival.hand
+      ? rival
+      : null
 
   const onDone = useCallback((result: FinishedChallenge) => {
     markLanded()
@@ -77,14 +120,29 @@ export default function Landing() {
               <dd>0%</dd>
             </div>
           </dl>
+          {rival && typeof rival === 'object' && (
+            <p className="landing-rival" role="status">
+              A friend scored <b>{rival.accuracy}/100</b> on this hand. Beat it.
+            </p>
+          )}
+          {rival === 'missing' && (
+            <p className="landing-rival" role="status">
+              That challenge link has expired, so here is a fresh hand.
+            </p>
+          )}
           <a className="landing-skip" href="#table" onClick={markLanded}>
             Skip to free practice <ArrowRight size={14} />
           </a>
         </div>
         <div className="landing-stage" ref={stage}>
-          {finished ? (
+          {rival === 'loading' ? (
+            <p className="landing-loading" role="status">
+              Dealing your friend's hand…
+            </p>
+          ) : finished ? (
             <ScoreCard
               finished={finished}
+              rival={against}
               onSave={() => {
                 window.location.hash = '#welcome/onboard'
               }}

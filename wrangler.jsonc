@@ -11,8 +11,9 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    // /u/* is a shared profile: the Worker adds its link preview.
-    "run_worker_first": ["/api/*", "/ws/*", "/u/*"],
+    // /u/* is a shared profile and /c/* a shared challenge score: the Worker
+    // adds their link previews.
+    "run_worker_first": ["/api/*", "/ws/*", "/u/*", "/c/*"],
   },
   "durable_objects": {
     "bindings": [

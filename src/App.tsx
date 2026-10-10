@@ -104,14 +104,19 @@ const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
- * Hash routes: the landing page (the bare URL on a first visit, or #start),
+ * Hash routes: the landing page (the bare URL on a first visit, #start, or
+ * #c/<receipt> for a friend's challenge),
  * #table (default), #progress, #lobby[/find], #play/<id>,
  * #ladder[/month], #u/<username> and #match/<id> (online play), #fair-play,
  * #terms and #method, #learn/...
  * and #learn/quick[/id].
  */
 function parseRoute(hash: string, firstVisit = false): Route {
-  if (hash === '#start' || (firstVisit && (hash === '' || hash === '#')))
+  if (
+    hash === '#start' ||
+    /^#c\/[0-9a-f]{32}$/.test(hash) ||
+    (firstVisit && (hash === '' || hash === '#'))
+  )
     return { view: 'landing', lesson: null }
   const quick = hash.match(/^#learn\/quick(?:\/([\w-]+))?$/)
   if (quick) {

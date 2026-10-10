@@ -30,6 +30,7 @@ function visitorFor(id: string) {
 }
 
 const RECEIPT = 'ab'.repeat(16)
+const FRIEND = 'cd'.repeat(16)
 let beacons: { name: string }[] = []
 let scoreBodies: { hand: string; ver: number; path: string[] }[] = []
 let scoreFails = false
@@ -50,6 +51,16 @@ beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === `/api/challenge/shared/${FRIEND}`)
+        return Response.json({
+          hand: 'nut-draw',
+          ver: 1,
+          accuracy: 101,
+          percentile: 99,
+          basis: 'model',
+        })
+      if (url.startsWith('/api/challenge/shared/'))
+        return Response.json({}, { status: 404 })
       if (url !== '/api/challenge/score' || scoreFails)
         return new Response('{}', { status: 503 })
       const body = JSON.parse(String(init?.body))
@@ -196,4 +207,46 @@ describe('the challenge', () => {
       await screen.findByRole('group', { name: /Your decision/ }),
     ).toBeVisible()
   }, 30_000)
+})
+
+describe("a friend's challenge link", () => {
+  it("plays the friend's hand, compares the scores and shares a new link", async () => {
+    window.history.replaceState(null, '', `/#c/${FRIEND}`)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ onboarded: true }))
+    const user = userEvent.setup()
+    render(<App />)
+    expect(await screen.findByText(/A friend scored/)).toHaveTextContent(
+      'A friend scored 101/100 on this hand. Beat it.',
+    )
+    expect(await screen.findByText('The nut flush draw')).toBeVisible()
+    await playByCalling(user)
+    const card = await screen.findByRole(
+      'region',
+      { name: /Accuracy/ },
+      { timeout: 10_000 },
+    )
+    expect(
+      await within(card).findByText(/Your friend wins this one/),
+    ).toBeVisible()
+    expect(beacons.map((b) => b.name)).toContain('challenge_link_open')
+    await user.click(
+      await within(card).findByRole('button', { name: /Challenge a friend/ }),
+    )
+    // user-event provides the clipboard.
+    expect(await navigator.clipboard.readText()).toContain(
+      `${window.location.origin}/c/${RECEIPT}`,
+    )
+    expect(
+      within(card).getByRole('button', { name: /Link copied/ }),
+    ).toBeVisible()
+  }, 30_000)
+
+  it('says when a link has expired and deals a fresh hand', async () => {
+    window.history.replaceState(null, '', `/#c/${'ef'.repeat(16)}`)
+    render(<App />)
+    expect(await screen.findByText(/link has expired/)).toBeVisible()
+    expect(
+      await screen.findByRole('group', { name: /Your decision/ }),
+    ).toBeVisible()
+  })
 })

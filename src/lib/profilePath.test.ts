@@ -15,6 +15,13 @@ describe('a shared profile path', () => {
     expect(window.location.hash).toBe('#u/alice_92')
   })
 
+  it('opens a shared challenge score at the site root', () => {
+    const receipt = 'ab'.repeat(16)
+    profilePathToHash(at(`/c/${receipt}`))
+    expect(window.location.pathname).toBe('/')
+    expect(window.location.hash).toBe(`#c/${receipt}`)
+  })
+
   it('leaves every other path alone, including names no account can have', () => {
     for (const path of [
       '/',
@@ -23,6 +30,8 @@ describe('a shared profile path', () => {
       '/u/a',
       '/u/alice/extra',
       '/x/alice',
+      '/c/abc',
+      '/c/' + 'AB'.repeat(16),
     ]) {
       profilePathToHash(at(path))
       expect(window.location.pathname + window.location.hash).toBe(path)

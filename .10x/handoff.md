@@ -1,6 +1,42 @@
 # Handoff
 
-## Current handoff: SDE → User (P1-01 database live; rated match in the table server)
+## Current handoff: SDE → User (P1-03 live; P1-04 next)
+
+Date: 2026-10-10 · Status: **P1-03 is merged (PR #17, `d042683`) and live.** `verify-deploy` confirmed production serves the merged build file by file.
+
+### What changed
+
+- **A rated table draws no equity ring and no break-even figure** (HU AC6). Casual tables and the trainer are unchanged.
+- **Proof that a rated match sends nothing to analyse:**
+  - `worker/test/rated-leak.test.ts` plays a full 40-hand match through an all-in, a timeout, a second tab, the grace, junk and stale frames, and a reconnect after the end;
+  - the frame allowlists in `worker/test/frames.ts` are checked against the protocol by the compiler;
+  - `src/net/` cannot import the `?seed` and `?motion` switches;
+  - an e2e frame tap covers a rated hand in two browsers.
+- Every new test was shown red against an injected leak, or with the fix off.
+- Gates:
+  - typecheck, worker typecheck and lint are clean;
+  - 713 unit, 143 worker and 21 e2e tests pass;
+  - the entry bundle is 141.5 kB.
+- Details: `.10x/decisions/sde/heads-up-duplicate-ladder.md` §P1-03.
+
+### Decisions I took (reversible)
+
+- **`?motion=off` still freezes animation on rated tables.** It equals the OS reduced-motion setting and hides nothing.
+- **The face-up all-in equity during a runout stays.** It shows only after the server has decided the hand.
+
+### User actions
+
+Unchanged: U-4, U-8, Q6 before P1-09, Q7 whenever you like.
+
+### Next step
+
+Me: P1-04 (end of match and rematch, on your "build P1-04 and merge when green"). It includes resending `match_end` to a socket that reconnects after the end, which P1-03 found missing.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (P1-01 database live; rated match in the table server)
 
 Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10–#16 are merged, and each deploy was verified in production; for the Worker-only #13 and #14 that meant reading the deployed Worker code. **Rated play is live.**
 
@@ -42,10 +78,6 @@ Me:
 2. a build marker in `/api/health`, so `verify-deploy` also sees Worker-only changes.
 
 For you: once U-4 is done, play one rated match between two real accounts. It checks the gate against real Supabase Auth and archives the outcome. Until U-4, rated matches play but are not archived.
-
----
-
-## Handoff history
 
 ### 2026-10-09 — DBA → User, SDE (deploy prerequisites done; U-4, U-8 and your go remain)
 

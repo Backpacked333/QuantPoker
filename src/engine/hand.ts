@@ -61,11 +61,12 @@ function validateConfig(config: HandConfig) {
   const { seats, button, blinds, handNo } = config
   if (!Number.isInteger(handNo) || handNo < 1)
     throw new EngineError('Hand number must be a positive integer')
-  if (seats.length < 2 || seats.length > 10)
-    throw new EngineError('A hand needs 2 to 10 players')
+  // A table has six seats (SeatId 0..5); positionNames labels at most six.
+  if (seats.length < 2 || seats.length > 6)
+    throw new EngineError('A hand needs 2 to 6 players')
   seats.forEach((s, i) => {
-    if (!Number.isInteger(s.seat) || s.seat < 0)
-      throw new EngineError('Seats must be non-negative integers')
+    if (!Number.isInteger(s.seat) || s.seat < 0 || s.seat > 5)
+      throw new EngineError('Seats must be integers from 0 to 5')
     if (i > 0 && s.seat <= seats[i - 1].seat)
       throw new EngineError('Seats must be ascending and distinct')
     if (!Number.isInteger(s.stack) || s.stack <= 0)

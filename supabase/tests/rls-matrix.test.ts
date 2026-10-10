@@ -195,6 +195,22 @@ const TABLES: Record<string, Spec> = {
       `insert into public.coach_messages (user_id, id, role, text, snapshot_id, label)
        values ('${u}', gen_random_uuid(), 'user', 'hi', 's', 'l')`,
   ),
+  'public.school_domains': {
+    select: () =>
+      `select count(*) n from public.school_domains where domain = 'mit.edu'`,
+    insert: () =>
+      `insert into public.school_domains (domain, school, country) values ('evil.edu', 'Evil', 'US')`,
+    update: () =>
+      `update public.school_domains set school = 'MIT' where domain = 'mit.edu'`,
+    remove: () => `delete from public.school_domains where domain = 'mit.edu'`,
+  },
+  'public.challenge_scores': owned(
+    'public.challenge_scores',
+    'accuracy = accuracy',
+    (u) =>
+      `insert into public.challenge_scores (user_id, hand, ver, accuracy, receipt, played_at)
+       values ('${u}', 'nut-draw', 1, 50, repeat('e', 32), now()) on conflict do nothing`,
+  ),
   'private.coach_usage': shared(
     'private.coach_usage',
     'used = used',
@@ -267,6 +283,17 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
   'public.lesson_progress': { ...OWN_ONLY, ...SERVICE },
   'public.practice_attempts': { ...OWN_ONLY, ...SERVICE },
   'public.coach_messages': { ...OWN_ONLY, ...SERVICE },
+  // The school list: anyone reads it (onboarding shows the name), only
+  // migrations write it.
+  'public.school_domains': { ...PUBLIC_READ, ...SERVICE },
+  // A player reads their own challenge scores; only the server's
+  // record_challenge_claim writes them (supabase/tests/landing.test.ts).
+  'public.challenge_scores': {
+    anon: [D, D, D, D],
+    self: [1, D, D, D],
+    other: [0, D, D, D],
+    ...SERVICE,
+  },
   // Only reachable through reserve_coach_request (security definer). In this
   // stub service_role has no usage on schema private either; on Supabase the
   // grants may differ, which does not change what browsers can do.
@@ -308,6 +335,9 @@ beforeAll(async () => {
       values ('${ALICE}', gen_random_uuid(), 'user', 'hi', 's', 'l'),
              ('${BOB}', gen_random_uuid(), 'user', 'hi', 's', 'l');
     insert into private.coach_usage (scope, window_start) values ('seed', now());
+    insert into public.challenge_scores (user_id, hand, ver, accuracy, receipt, played_at)
+      values ('${ALICE}', 'overpair', 1, 80, repeat('a', 32), now()),
+             ('${BOB}', 'overpair', 1, 70, repeat('b', 32), now());
   `)
 }, 60_000)
 
@@ -378,6 +408,8 @@ describe('functions', () => {
       'private.refresh_accuracy',
       'private.refresh_finished_match',
       'private.refuse_change',
+      'private.school_for',
+      'private.set_player_school',
       'public.abandonment_rate',
       'public.apply_rating',
       'public.audit_hand',
@@ -386,6 +418,7 @@ describe('functions', () => {
       'public.ladder',
       'public.ladder_month',
       'public.rated_luck',
+      'public.record_challenge_claim',
       'public.record_grades',
       'public.record_hand',
       'public.record_incident',

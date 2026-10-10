@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (rating: P1-12 and P1-13 live; P1-14 ladder in PR #27; P1-15/16 profile, Method and share card built; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE/architect (rating: P1-12 to P1-14 live; P1-15/16 in PR #29; 6-max arenas blocked at the pre-check; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -53,11 +53,11 @@ Merged and deployed, each one verified in production after its merge:
 - **#25:** a finished rated match changes both Glicko-2 ratings once (`ratings`, an append-only `rating_history`, `apply_rating` with compare-and-set). The end screen shows "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player". Production holds `20261010080000` (checked read-only: anon cannot apply, the abandonment trigger is present). The Worker carries the rating outbox, and `verify-deploy` passed. No rated match had finished before the deploy, so none is unrated.
 - **#26:** rated quick-match pairs the closest rating within 100 + 50 per minute of waiting, re-pairing every 15 s, under the 2-a-day pair cap. Devin found a real race (a search cancelled during the rating read could come back as a ghost), fixed in the same PR. The deployed Worker carries both, and `verify-deploy` passed. Simulated median wait: 29 s at 10 players online.
 
-**PR #27 (open): the ladder, the metrics query and a simulated season (P1-14).** `#ladder` and `#ladder/month` are public; `supabase/metrics/rating-metrics.sql` reports "insufficient data" on production today. A 200-player, 5,000-match season in PGlite ranks players by hidden skill with Spearman 0.975 and meets all three PM targets.
+**PR #27 (`f27a364`): the ladder, the metrics query and a simulated season (P1-14).** `#ladder` and `#ladder/month` are public. Production holds `20261010090000`, checked read-only: the functions, `played_at` with two indexes, and the append-only trigger back on. `verify-deploy` passed. `supabase/metrics/rating-metrics.sql` reports "insufficient data" on production today. Devin's month-boundary finding (a match rated after midnight counted in the next month) was fixed before the merge.
 
 **6-max arenas (P2-13/P2-14): stopped at the pre-check, 2026-10-10.** 100,000 simulated 6-max hands with 0 failures; 0 of the 1,000 human casual 6-max hands the gate needs, because casual 6-max is unbuilt and production archives nothing until U-4. Path: `.10x/decisions/architect/six-max-arena.md`.
 
-**P1-15/16 (built, PR after #27):** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
+**PR #29 (open): P1-15/16.** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 

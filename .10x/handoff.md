@@ -2,7 +2,7 @@
 
 ## Current handoff: SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
 
-Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12 and P1-13 are merged and verified live; P1-14 is PR #27; P1-15/16 are committed locally and go up as the next PR once #27 merges.
+Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, P1-13 and P1-14 are merged and verified live; P1-15/16 is PR #29.
 
 ### What changed
 
@@ -33,9 +33,15 @@ Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12 a
 - **Unchanged:** U-4 (until then no rated match is archived or rated in production), U-8, Q7, and the open rematch-link finding on #19.
 - **Optional:** say if you want profile-view counting built next.
 
+### 6-max arena mission: stopped at the pre-check
+
+- 100,000 simulated 6-max hands with 0 failures (VERIFIED).
+- 0 of 1,000 human casual 6-max hands (VERIFIED: production holds 0 hands; casual 6-max is unbuilt; U-4).
+- No design note or build until the gate passes. The path is in `.10x/decisions/architect/six-max-arena.md`.
+
 ### Next step
 
-Merge #27 when green and verify the migration. Then push P1-15/16 as its own PR, merge when green, and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is in review: three Devin findings are fixed, and one security finding waits on your decision (hands of a live match are readable through the public API; a restrictive RLS policy is proposed on the thread). Merge #29 when green and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
 
 ## Handoff history
 

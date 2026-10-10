@@ -426,3 +426,10 @@
   font-size: 13.5px;
   color: var(--text-2);
 }
+.onboard-school {
+  display: grid;
+  gap: 12px;
+}
+.onboard-school > p svg {
+  vertical-align: -3px;
+}

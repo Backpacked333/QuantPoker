@@ -431,6 +431,7 @@ describe('functions', () => {
       'public.record_incident',
       'public.record_match',
       'public.reserve_coach_request',
+      'public.set_player_school',
       'public.verify_hand',
     ])
     for (const f of all) {

@@ -6,6 +6,7 @@
 //   POST /api/challenge/claim  {receipt} + Bearer  → 204 | 404 | 409
 //   GET  /api/challenge/shared/<receipt>           → SharedScore | 404
 //   GET  /api/funnel                               → {days}, cached
+//   POST /api/school/start, /api/school/confirm    (worker/src/school.ts)
 import { isFunnelEvent, VISITOR_ID } from '../../src/challenge/events'
 import { MAX_PATH } from '../../src/challenge/score'
 import { bearerToken, verifyToken } from './auth'
@@ -14,6 +15,8 @@ import type { WorkerEnv } from './env'
 import { originAllowed } from './origin'
 import { scoreStub } from './scores'
 import { sharedScore } from './share'
+import { codeHash, newCode, schoolFor, sendCode } from './school'
+import { describeError, logEvent } from './log'
 import type { FunnelDay } from './scores'
 
 export const SCORE_BODY_MAX = 2048
@@ -111,6 +114,17 @@ export async function challengeRoute(
     return new Response(null, { status: 204 })
   }
 
+  if (pathname === '/api/school/start' || pathname === '/api/school/confirm') {
+    const read = await readBody(request, EVENT_BODY_MAX)
+    if ('refused' in read) return read.refused
+    const token = bearerToken(request)
+    const userId = token && (await verifyToken(token, env))
+    if (!userId) return json({ error: 'unauthorized' }, 401)
+    return pathname === '/api/school/start'
+      ? startSchool(env, userId, read.body.email)
+      : confirmSchool(env, userId, read.body.code)
+  }
+
   // A shared score, for the friend who opens /c/<receipt>.
   const shared = pathname.match(/^\/api\/challenge\/shared\/([0-9a-f]{32})$/)
   if (shared && request.method === 'GET') {
@@ -127,4 +141,49 @@ export async function challengeRoute(
   }
 
   return null
+}
+
+async function startSchool(env: WorkerEnv, userId: string, email: unknown) {
+  if (typeof email !== 'string' || email.length > 254)
+    return json({ error: 'bad_request' }, 400)
+  if (!env.RESEND_API_KEY || !env.SCHOOL_EMAIL_FROM)
+    return json({ error: 'email_unavailable' }, 503)
+  let school
+  try {
+    school = await schoolFor(env, email)
+  } catch (error) {
+    logEvent('error', { reason: 'school_lookup', detail: describeError(error) })
+    return json({ error: 'unavailable' }, 503)
+  }
+  if (!school) return json({ error: 'not_school' }, 400)
+  const code = newCode()
+  const address = email.trim().toLowerCase()
+  const stub = scoreStub(env)
+  if (
+    !(await stub.schoolStart(
+      userId,
+      address,
+      school,
+      await codeHash(userId, code),
+    ))
+  )
+    return json({ error: 'too_many' }, 429)
+  if (!(await sendCode(env, address, code, school.school))) {
+    await stub.schoolUnsend(userId)
+    return json({ error: 'email_unavailable' }, 503)
+  }
+  return json({ school: school.school })
+}
+
+async function confirmSchool(env: WorkerEnv, userId: string, code: unknown) {
+  if (typeof code !== 'string' || !/^\d{6}$/.test(code.trim()))
+    return json({ error: 'bad_request' }, 400)
+  const result = await scoreStub(env).schoolConfirm(
+    userId,
+    await codeHash(userId, code.trim()),
+  )
+  if (typeof result === 'object') return json({ school: result.school })
+  if (result === 'wrong') return json({ error: 'wrong' }, 400)
+  if (result === 'locked') return json({ error: 'locked' }, 429)
+  return json({ error: result === 'expired' ? 'expired' : 'no_code' }, 410)
 }

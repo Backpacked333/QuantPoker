@@ -24,7 +24,15 @@ import type {
   ChallengeTree,
 } from '../../src/challenge/score'
 import { treeFor } from '../../src/challenge/trees'
-import { forgetFunnel } from '../src/challenge'
+import { challengeRoute, forgetFunnel } from '../src/challenge'
+import {
+  candidates,
+  CODE_TRIES,
+  CODE_TTL_MS,
+  fallbackSchool,
+  newCode,
+  SENDS_PER_DAY,
+} from '../src/school'
 import { describeShared, sharePage } from '../src/share'
 import { now } from '../src/clock'
 import { CROWD_MIN, EVENT_DAYS, PLAYER_BASIS, scoreStub } from '../src/scores'
@@ -59,6 +67,9 @@ const tree = treeFor('overpair')!
 const line = lineOf(tree, 1)
 
 let rpcCalls: { fn: string; body: unknown }[] = []
+let emails: { to: string[]; subject: string; text: string; from: string }[] = []
+let resendStatus = 200
+const LISTED = [{ domain: 'mit.edu', school: 'MIT' }]
 let rpcStatus = 200
 let rpcCode: string | undefined
 
@@ -68,13 +79,21 @@ beforeAll(() => {
     'fetch',
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
+      if (url.origin === 'https://api.resend.com') {
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer re_test',
+        )
+        emails.push(JSON.parse(String(init?.body)))
+        return new Response('{}', { status: resendStatus })
+      }
       if (url.origin !== new URL(env.SUPABASE_URL).origin)
         return realFetch(input, init)
-      const fn = url.pathname.replace('/rest/v1/rpc/', '')
-      rpcCalls.push({ fn, body: JSON.parse(String(init?.body)).p })
-      return rpcStatus === 200
-        ? new Response(null, { status: 204 })
-        : Response.json({ code: rpcCode }, { status: rpcStatus })
+      if (url.pathname === '/rest/v1/school_domains') {
+        const wanted = url.searchParams.get('domain')!.slice(4, -1).split(',')
+        return Response.json(LISTED.filter((r) => wanted.includes(r.domain)))
+      }
+      // Outbox calls go through ScoreDO.send, replaced in beforeEach.
+      throw new Error(`unexpected Supabase call ${url.pathname}`)
     },
   )
 })
@@ -82,6 +101,8 @@ afterAll(() => vi.unstubAllGlobals())
 
 beforeEach(async () => {
   rpcCalls = []
+  emails = []
+  resendStatus = 200
   rpcStatus = 200
   rpcCode = undefined
   forgetFunnel()
@@ -93,10 +114,18 @@ beforeEach(async () => {
       'events',
       'receipts',
       'outbox',
+      'school_codes',
+      'school_sends',
     ])
       inside.ctx.storage.sql.exec(`DELETE FROM ${table}`)
     await inside.ctx.storage.deleteAlarm()
     instance.clock = now
+    instance.send = async (call) => {
+      rpcCalls.push({ fn: call.rpc, body: call.body })
+      return rpcStatus === 200
+        ? { ok: true }
+        : { ok: false, status: rpcStatus, code: rpcCode }
+    }
   })
 })
 
@@ -319,18 +348,21 @@ describe('POST /api/challenge/claim', () => {
     expect((await claim(id, 'bob')).status).toBe(409)
     // The claim arms the alarm for now; it may already have run.
     await runDurableObjectAlarm(scoreStub(env))
-    expect(rpcCalls).toEqual([
-      {
-        fn: 'record_challenge_claim',
-        body: expect.objectContaining({
-          userId: 'alice',
-          hand: tree.id,
-          ver: tree.ver,
-          accuracy: scorePath(tree, line)!.accuracy,
-          receipt: id,
-        }),
-      },
-    ])
+    // It may already be running on its own: wait for it.
+    await vi.waitFor(() =>
+      expect(rpcCalls).toEqual([
+        {
+          fn: 'record_challenge_claim',
+          body: expect.objectContaining({
+            userId: 'alice',
+            hand: tree.id,
+            ver: tree.ver,
+            accuracy: scorePath(tree, line)!.accuracy,
+            receipt: id,
+          }),
+        },
+      ]),
+    )
     await runInDurableObject(scoreStub(env), (instance: ScoreDO) => {
       const sql = (instance as unknown as { ctx: DurableObjectState }).ctx
         .storage.sql
@@ -445,5 +477,166 @@ describe('shared scores: /api/challenge/shared/<receipt> and /c/<receipt>', () =
     expect(
       describeShared({ ...base, percentile: 83, basis: 'players' }).description,
     ).toContain('83rd percentile')
+  })
+})
+
+// A school badge from a second email (L-14). Kept in this file: both use
+// the one ScoreDO, and files run in parallel.
+const postAs = (path: string, body: unknown, user: string | null = 'alice') =>
+  SELF.fetch(`${ORIGIN}${path}`, {
+    method: 'POST',
+    headers: {
+      Origin: ORIGIN,
+      ...(user ? { Authorization: `Bearer ${token(user)}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+const codeSent = () => emails.at(-1)!.subject.slice(0, 6)
+
+describe('school codes', () => {
+  it('sends a code to a listed school and sets the badge once it comes back', async () => {
+    const start = await postAs('/api/school/start', {
+      email: 'Ada@CSAIL.MIT.edu',
+    })
+    expect(start.status).toBe(200)
+    expect(await start.json()).toEqual({ school: 'MIT' })
+    expect(emails).toHaveLength(1)
+    expect(emails[0].to).toEqual(['ada@csail.mit.edu'])
+    expect(emails[0].from).toBe('QuantPoker <verify@quantpoker.test>')
+    expect(codeSent()).toMatch(/^\d{6}$/)
+    expect(emails[0].text).toContain(codeSent())
+    // Only a hash is kept.
+    await runInDurableObject(scoreStub(env), (instance: ScoreDO) => {
+      const sql = (instance as unknown as { ctx: DurableObjectState }).ctx
+        .storage.sql
+      const row = sql
+        .exec<{ hash: string }>(`SELECT hash FROM school_codes`)
+        .one()
+      expect(row.hash).toMatch(/^[0-9a-f]{64}$/)
+      expect(row.hash).not.toContain(codeSent())
+    })
+    const confirm = await postAs('/api/school/confirm', { code: codeSent() })
+    expect(confirm.status).toBe(200)
+    expect(await confirm.json()).toEqual({ school: 'MIT' })
+    await runDurableObjectAlarm(scoreStub(env))
+    // It may already be running on its own: wait for it.
+    await vi.waitFor(() =>
+      expect(rpcCalls).toEqual([
+        {
+          fn: 'set_player_school',
+          body: expect.objectContaining({
+            userId: 'alice',
+            domain: 'mit.edu',
+            school: 'MIT',
+          }),
+        },
+      ]),
+    )
+    // The code is used up.
+    expect(
+      (await postAs('/api/school/confirm', { code: codeSent() })).status,
+    ).toBe(410)
+  })
+
+  it('takes an unlisted .edu or .ac.uk as its domain, and refuses anything else', async () => {
+    expect(
+      await (
+        await postAs('/api/school/start', { email: 'a@smallcollege.edu' })
+      ).json(),
+    ).toEqual({
+      school: 'smallcollege.edu',
+    })
+    expect(
+      (await postAs('/api/school/start', { email: 'a@gmail.com' })).status,
+    ).toBe(400)
+    expect(
+      (await postAs('/api/school/start', { email: 'not an email' })).status,
+    ).toBe(400)
+    expect(
+      (await postAs('/api/school/start', { email: 'a@mit.edu' }, null)).status,
+    ).toBe(401)
+  })
+
+  it(`burns the code after ${CODE_TRIES} wrong guesses`, async () => {
+    await postAs('/api/school/start', { email: 'ada@mit.edu' })
+    const wrong = codeSent() === '000000' ? '111111' : '000000'
+    for (let i = 1; i < CODE_TRIES; i++)
+      expect(
+        (await postAs('/api/school/confirm', { code: wrong })).status,
+      ).toBe(400)
+    expect((await postAs('/api/school/confirm', { code: wrong })).status).toBe(
+      429,
+    )
+    expect(
+      (await postAs('/api/school/confirm', { code: codeSent() })).status,
+    ).toBe(410)
+  })
+
+  it('expires a code', async () => {
+    await postAs('/api/school/start', { email: 'ada@mit.edu' })
+    await runInDurableObject(scoreStub(env), (instance: ScoreDO) => {
+      instance.clock = () => now() + CODE_TTL_MS + 1
+    })
+    expect(
+      (await postAs('/api/school/confirm', { code: codeSent() })).status,
+    ).toBe(410)
+  })
+
+  it(`allows ${SENDS_PER_DAY} sends a day, and refunds a failed send`, async () => {
+    resendStatus = 500
+    expect(
+      (await postAs('/api/school/start', { email: 'ada@mit.edu' })).status,
+    ).toBe(503)
+    resendStatus = 200
+    for (let i = 0; i < SENDS_PER_DAY; i++)
+      expect(
+        (await postAs('/api/school/start', { email: 'ada@mit.edu' })).status,
+      ).toBe(200)
+    expect(
+      (await postAs('/api/school/start', { email: 'ada@mit.edu' })).status,
+    ).toBe(429)
+    // Each account has its own allowance.
+    expect(
+      (await postAs('/api/school/start', { email: 'bo@mit.edu' }, 'bob'))
+        .status,
+    ).toBe(200)
+  })
+
+  it('answers 503 when email is not set up', async () => {
+    const request = new Request(`${ORIGIN}/api/school/start`, {
+      method: 'POST',
+      headers: { Origin: ORIGIN, Authorization: `Bearer ${token('alice')}` },
+      body: JSON.stringify({ email: 'ada@mit.edu' }),
+    })
+    const response = await challengeRoute(
+      request,
+      { ...env, RESEND_API_KEY: undefined },
+      '/api/school/start',
+    )
+    expect(response!.status).toBe(503)
+    expect(emails).toEqual([])
+  })
+})
+
+describe('school helpers', () => {
+  it('lists the domains to look up, nearest first', () => {
+    expect(candidates('a@cs.ox.ac.uk')).toEqual([
+      'cs.ox.ac.uk',
+      'ox.ac.uk',
+      'ac.uk',
+    ])
+    expect(candidates('a@gmail')).toBeNull()
+    expect(candidates('<a>@mit.edu')).toBeNull()
+    expect(fallbackSchool('mail.smallcollege.edu')).toEqual({
+      domain: 'smallcollege.edu',
+      school: 'smallcollege.edu',
+    })
+    expect(fallbackSchool('edu.example.com')).toBeNull()
+  })
+
+  it('draws six-digit codes', () => {
+    const codes = new Set(Array.from({ length: 200 }, newCode))
+    for (const code of codes) expect(code).toMatch(/^\d{6}$/)
+    expect(codes.size).toBeGreaterThan(190)
   })
 })

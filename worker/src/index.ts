@@ -28,7 +28,7 @@ const json = (body: unknown, status = 200, headers?: HeadersInit) =>
 const MATCH_PATH = /^\/ws\/table\/([0-9a-f-]{36})$/
 /** Paths that verify a token or may wake a Durable Object. */
 const LIMITED =
-  /^\/(ws\/|c\/|api\/(matches|me|events|challenge\/(score|claim|shared\/[0-9a-f]{32}))$)/
+  /^\/(ws\/|c\/|api\/(matches|me|events|challenge\/(score|claim|shared\/[0-9a-f]{32})|school\/(start|confirm))$)/
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {

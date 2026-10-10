@@ -13,6 +13,7 @@ export type ArchiveCall = {
     | 'record_incident'
     | 'apply_rating'
     | 'record_challenge_claim'
+    | 'set_player_school'
   body: Record<string, unknown>
 }
 

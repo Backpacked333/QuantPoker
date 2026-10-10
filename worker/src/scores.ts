@@ -8,6 +8,8 @@
 //   events       (day, name, vid)               kept EVENT_DAYS days
 //   receipts     id → hand, ver, accuracy, at, claimed_by   kept RECEIPT_DAYS
 //   outbox       seq → call, attempts, next_at
+//   school_codes user_id → email, domain, school, hash, expires_at, tries
+//   school_sends (user_id, day) → n                     (school.ts limits)
 //
 // Every write is one transaction and lands before the reply (principle 3);
 // Postgres is reached only from the alarm (principle 6).
@@ -25,6 +27,8 @@ import { now } from './clock'
 import { outboxBackoff } from './deadlines'
 import type { WorkerEnv } from './env'
 import { describeError, logEvent } from './log'
+import { CODE_TRIES, CODE_TTL_MS, SENDS_PER_DAY } from './school'
+import type { School } from './school'
 import { archive, refusedForData } from './supabase'
 import type { ArchiveCall } from './supabase'
 
@@ -88,6 +92,9 @@ const modelFor = (tree: ChallengeTree) => {
 export class ScoreDO extends DurableObject<WorkerEnv> {
   /** The object's clock; tests move it. */
   clock: () => number = now
+  /** Sends one outbox call to Postgres; tests replace it. */
+  send: (call: ArchiveCall) => ReturnType<typeof archive> = (call) =>
+    archive(this.env, call)
   private sql: SqlStorage
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
@@ -105,6 +112,13 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
       CREATE TABLE IF NOT EXISTS receipts (
         id TEXT PRIMARY KEY, hand TEXT NOT NULL, ver INTEGER NOT NULL,
         accuracy INTEGER NOT NULL, at INTEGER NOT NULL, claimed_by TEXT);
+      CREATE TABLE IF NOT EXISTS school_codes (
+        user_id TEXT PRIMARY KEY, email TEXT NOT NULL, domain TEXT NOT NULL,
+        school TEXT NOT NULL, hash TEXT NOT NULL, expires_at INTEGER NOT NULL,
+        tries INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS school_sends (
+        user_id TEXT, day TEXT, n INTEGER NOT NULL,
+        PRIMARY KEY (user_id, day));
       CREATE TABLE IF NOT EXISTS outbox (
         seq INTEGER PRIMARY KEY AUTOINCREMENT, call TEXT NOT NULL,
         attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL);
@@ -267,6 +281,116 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
     return 'ok'
   }
 
+  /**
+   * Counts a school-code send against the account's daily allowance and
+   * stores the code's hash (replacing any earlier code). False when the
+   * allowance is spent.
+   */
+  schoolStart(userId: string, email: string, school: School, hash: string) {
+    const today = day(this.clock())
+    const sent =
+      this.sql
+        .exec<{
+          n: number
+        }>(
+          `SELECT n FROM school_sends WHERE user_id = ? AND day = ?`,
+          userId,
+          today,
+        )
+        .toArray()[0]?.n ?? 0
+    if (sent >= SENDS_PER_DAY) return false
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(
+        `INSERT INTO school_sends (user_id, day, n) VALUES (?, ?, 1)
+         ON CONFLICT DO UPDATE SET n = n + 1`,
+        userId,
+        today,
+      )
+      this.sql.exec(
+        `INSERT OR REPLACE INTO school_codes
+           (user_id, email, domain, school, hash, expires_at, tries)
+         VALUES (?, ?, ?, ?, ?, ?, 0)`,
+        userId,
+        email,
+        school.domain,
+        school.school,
+        hash,
+        this.clock() + CODE_TTL_MS,
+      )
+    })
+    return true
+  }
+
+  /** Withdraws a code whose email could not be sent (the send is refunded). */
+  schoolUnsend(userId: string) {
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`DELETE FROM school_codes WHERE user_id = ?`, userId)
+      this.sql.exec(
+        `UPDATE school_sends SET n = max(0, n - 1) WHERE user_id = ? AND day = ?`,
+        userId,
+        day(this.clock()),
+      )
+    })
+  }
+
+  /**
+   * Checks a code. Right: the badge is queued for Postgres and the code (and
+   * the address) are gone. Wrong guesses count; the last one burns the code.
+   */
+  async schoolConfirm(
+    userId: string,
+    hash: string,
+  ): Promise<School | 'none' | 'expired' | 'wrong' | 'locked'> {
+    const row = this.sql
+      .exec<{
+        domain: string
+        school: string
+        hash: string
+        expires_at: number
+        tries: number
+      }>(
+        `SELECT domain, school, hash, expires_at, tries FROM school_codes WHERE user_id = ?`,
+        userId,
+      )
+      .toArray()[0]
+    if (!row) return 'none'
+    const t = this.clock()
+    if (row.expires_at < t) {
+      this.sql.exec(`DELETE FROM school_codes WHERE user_id = ?`, userId)
+      return 'expired'
+    }
+    if (row.hash !== hash) {
+      if (row.tries + 1 >= CODE_TRIES) {
+        this.sql.exec(`DELETE FROM school_codes WHERE user_id = ?`, userId)
+        return 'locked'
+      }
+      this.sql.exec(
+        `UPDATE school_codes SET tries = tries + 1 WHERE user_id = ?`,
+        userId,
+      )
+      return 'wrong'
+    }
+    const call: ArchiveCall = {
+      rpc: 'set_player_school',
+      body: {
+        userId,
+        domain: row.domain,
+        school: row.school,
+        verifiedAt: new Date(t).toISOString(),
+      },
+    }
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec(`DELETE FROM school_codes WHERE user_id = ?`, userId)
+      this.sql.exec(
+        `INSERT INTO outbox (call, next_at) VALUES (?, ?)`,
+        JSON.stringify(call),
+        t,
+      )
+    })
+    await this.ctx.storage.setAlarm(t)
+    return { domain: row.domain, school: row.school }
+  }
+
   /** Per-day counts and step rates for the last EVENT_DAYS days. */
   funnel(): FunnelDay[] {
     const days = new Map<string, FunnelDay>()
@@ -303,7 +427,7 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
       .toArray()
     for (const row of due) {
       const call = JSON.parse(row.call) as ArchiveCall
-      const outcome = await archive(this.env, call)
+      const outcome = await this.send(call)
       if (outcome.ok) this.sql.exec(`DELETE FROM outbox WHERE seq = ?`, row.seq)
       else if (refusedForData(outcome)) {
         // No retry can change a refusal for the data: drop it, loudly.
@@ -327,6 +451,8 @@ export class ScoreDO extends DurableObject<WorkerEnv> {
         `DELETE FROM events WHERE day < ?`,
         day(t - EVENT_DAYS * DAY_MS),
       )
+      this.sql.exec(`DELETE FROM school_codes WHERE expires_at < ?`, t)
+      this.sql.exec(`DELETE FROM school_sends WHERE day < ?`, day(t))
       // A claim carries its own copy of the score into the outbox, so a
       // receipt is only needed for RECEIPT_DAYS, claimed or not.
       this.sql.exec(

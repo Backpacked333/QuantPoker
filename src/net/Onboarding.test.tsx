@@ -68,14 +68,73 @@ describe('Onboarding', () => {
     expect(beacons).toContain('first_move_rated')
   })
 
-  it('explains how to get a badge when there is none', async () => {
+  it('verifies a school email by code when the account has no badge', async () => {
+    const asked: { url: string; body: unknown; auth: string | null }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body))
+        asked.push({
+          url,
+          body,
+          auth: new Headers(init?.headers).get('Authorization'),
+        })
+        if (url === '/api/school/start') return Response.json({ school: 'MIT' })
+        return body.code === '123456'
+          ? Response.json({ school: 'MIT' })
+          : Response.json({ error: 'wrong' }, { status: 400 })
+      }),
+    )
+    const user = userEvent.setup()
     render(
       <Onboarding
         identity={identity}
         client={clientWith({ school: null, school_domain: null })}
       />,
     )
-    expect(await screen.findByText(/you have no badge yet/)).toBeVisible()
-    expect(fetch).not.toHaveBeenCalled()
+    await user.type(await screen.findByLabelText('School email'), 'ada@mit.edu')
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
+    const code = await screen.findByLabelText(
+      /Code sent to ada@mit.edu \(MIT\)/,
+    )
+    await user.type(code, '000000')
+    await user.click(screen.getByRole('button', { name: 'Verify' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('not right')
+    await user.clear(code)
+    await user.type(code, '123456')
+    await user.click(screen.getByRole('button', { name: 'Verify' }))
+    expect(await screen.findByText(/You're playing for/)).toHaveTextContent(
+      'MIT',
+    )
+    expect(asked.map((a) => [a.url, a.body, a.auth])).toEqual([
+      ['/api/school/start', { email: 'ada@mit.edu' }, 'Bearer jwt'],
+      ['/api/school/confirm', { code: '000000' }, 'Bearer jwt'],
+      ['/api/school/confirm', { code: '123456' }, 'Bearer jwt'],
+    ])
+    expect(beacons).toEqual(
+      expect.arrayContaining(['school_verify_start', 'school_verify_complete']),
+    )
+  })
+
+  it('explains when a school email cannot be sent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: 'email_unavailable' }, { status: 503 }),
+      ),
+    )
+    const user = userEvent.setup()
+    render(
+      <Onboarding
+        identity={identity}
+        client={clientWith({ school: null, school_domain: null })}
+      />,
+    )
+    await user.type(await screen.findByLabelText('School email'), 'ada@mit.edu')
+    await user.click(screen.getByRole('button', { name: 'Send code' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'cannot be sent right now',
+    )
+    expect(screen.getByRole('button', { name: 'Skip for now' })).toBeVisible()
   })
 })

@@ -12,6 +12,7 @@ import { markLanded } from '../lib/landing'
 import { track } from '../lib/track'
 import type { Identity } from './api'
 import { claimPendingScore } from './claim'
+import { SchoolEmail } from './SchoolEmail'
 import type { Claimed } from './claim'
 
 type School = { school: string | null; domain: string | null }
@@ -105,18 +106,16 @@ export function Onboarding({
               and on the ladder.
             </p>
           ) : (
-            <p className="live-muted">
-              <GraduationCap size={16} /> School badges come from a confirmed
-              school email: a listed school, or any .edu or .ac.uk address. You
-              signed in with a personal address, so you have no badge yet.
-              Adding a school email to an existing account comes next.
-            </p>
+            <SchoolEmail
+              getToken={getToken}
+              onVerified={(name) => setSchool({ school: name, domain: null })}
+            />
           )}
           <button
-            className="btn btn-primary btn-lg"
+            className={`btn btn-lg ${school?.school ? 'btn-primary' : 'btn-quiet'}`}
             onClick={() => setStep('move')}
           >
-            Continue
+            {school?.school ? 'Continue' : 'Skip for now'}
           </button>
         </>
       ) : (

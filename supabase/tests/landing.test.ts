@@ -143,6 +143,48 @@ describe('school badges', () => {
   })
 })
 
+describe('set_player_school (a school code by email)', () => {
+  const set = (p: Record<string, unknown>) =>
+    db.query(`select public.set_player_school($1::jsonb)`, [JSON.stringify(p)])
+
+  it('sets a badge once, for the server only', async () => {
+    const id = await signUp('ada@gmail.com')
+    for (const role of ['anon', 'authenticated']) {
+      await db.exec(`set role ${role}`)
+      try {
+        await expect(
+          set({
+            userId: id,
+            domain: 'mit.edu',
+            school: 'MIT',
+            verifiedAt: new Date().toISOString(),
+          }),
+        ).rejects.toThrow(/permission denied/)
+      } finally {
+        await db.exec('reset role')
+      }
+    }
+    await set({
+      userId: id,
+      domain: 'mit.edu',
+      school: 'MIT',
+      verifiedAt: '2026-10-10T12:00:00Z',
+    })
+    expect(await badge(id)).toEqual({
+      school: 'MIT',
+      school_domain: 'mit.edu',
+      verified: true,
+    })
+    await set({
+      userId: id,
+      domain: 'yale.edu',
+      school: 'Yale',
+      verifiedAt: '2026-10-11T12:00:00Z',
+    })
+    expect((await badge(id)).school).toBe('MIT')
+  })
+})
+
 describe('record_challenge_claim', () => {
   const claim = (p: Record<string, unknown>) =>
     db.query(`select public.record_challenge_claim($1::jsonb)`, [

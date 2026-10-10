@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (P1-01 database live; rated match in the table server; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (P1-03 live: rated tables show and send nothing to analyse; P1-04 next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -25,6 +25,8 @@ Merged and deployed, each one verified in production after its merge:
 - The outcome comes from the luck-adjusted total and the ±2 bb draw band. A forfeit is a loss.
 - It also fixes a pre-existing outbox race that could strand a match's result.
 - Nobody can start a rated match yet: the lobby queue opens in P1-01b-3, after the grace rule (P1-01b-2). Then comes the UI (P1-01c).
+
+**PR #17 (`d042683`), nothing to analyse on a rated table (P1-03).** A rated table no longer draws the equity ring or the break-even figure. A full 40-hand rated match is proven to send no analysis key and no unshown opponent card, and the frame allowlists are compiler-checked against the protocol. Production serves the build (`verify-deploy`).
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 
@@ -145,5 +147,6 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: P1-01b-2 grace and both-gone void (PR #14)
 - [x] SDE: P1-01b-3 rated queue and email gate, with the outcome in the end text (PR #15)
 - [x] SDE: P1-01c, the lobby's Rated card and the match bar (PR #16, live)
-- [ ] Next in Phase 1: P1-04 rematch, P1-12 ratings (`ratings` migration, Glicko-2 at match end), S7-05 telemetry
+- [x] SDE: P1-03, nothing to analyse on a rated table (PR #17, live)
+- [ ] Next in Phase 1: P1-04 end of match and rematch (in progress), P1-12 ratings (`ratings` migration, Glicko-2 at match end), S7-05 telemetry
 - [ ] SDE: a build marker in `/api/health` so `verify-deploy` sees Worker-only changes

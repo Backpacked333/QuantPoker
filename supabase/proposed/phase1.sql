@@ -6,12 +6,11 @@
 -- self-check the rules below. Rationale, alternatives and rollback:
 -- .10x/decisions/dba/phase1-schema.md.
 
--- ---- P1-04: rematches ------------------------------------------------------------
+-- ---- Shipped ------------------------------------------------------------------
 -- P1-01's part (the rated kind, match_players.outcome, adjusted_chips,
 -- finished_at and match_players_history) shipped as
--- supabase/migrations/*_rated_matches.sql.
-alter table public.matches
-  add column rematch_of uuid references public.matches (id) on delete set null;
+-- supabase/migrations/*_rated_matches.sql, and P1-04's matches.rematch_of
+-- (with record_match v5) as supabase/migrations/*_rematch.sql.
 
 -- ---- P1-12: ratings ----------------------------------------------------------
 -- Glicko-2 state per format, stored on the display scale: rating = 1500 +

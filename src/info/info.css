@@ -1,0 +1,30 @@
+/* Info pages (fair play, terms, method). Loaded only with their chunk. */
+.info-section {
+  min-width: 0;
+}
+/* Long formulas scroll inside the block; the page never scrolls sideways. */
+.info-formula {
+  max-width: 100%;
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre;
+}
+.info-versions {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+}
+.info-versions dt {
+  font-weight: 600;
+}
+.info-versions dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

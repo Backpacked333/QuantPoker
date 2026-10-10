@@ -2,7 +2,10 @@
 // every hand as casual (Q1 = B); the result is the luck-adjusted total
 // (src/engine/luck.ts) with a draw band.
 import type { SeatId } from '../../src/engine/types'
+import { DRAW_BAND_BB } from '../../src/rating/rules'
 import type { MatchConfig, Outcome } from '../../src/shared/protocol'
+
+export { DRAW_BAND_BB }
 
 /** 40 hands at 100 bb; 20 s a decision and a 60 s bank for each half. */
 export const RATED_CONFIG: MatchConfig = {
@@ -23,9 +26,6 @@ export const GRACE_MS = 60_000
 
 /** After a rated match, both players must press Rematch within this. */
 export const REMATCH_MS = 60_000
-
-/** A luck-adjusted lead of at most this many big blinds is a draw (R-8). */
-export const DRAW_BAND_BB = 2
 
 /**
  * Each seat's result from the luck-adjusted totals. Decided once from the

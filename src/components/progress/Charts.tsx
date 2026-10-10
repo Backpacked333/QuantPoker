@@ -17,8 +17,11 @@ export function LineChart({
   label,
   format = (v: number) => v.toLocaleString('en-US'),
   ends,
+  zero = true,
 }: {
   series: Series[]
+  /** Keep 0 on the y-axis (results in bb); off for ratings near 1500. */
+  zero?: boolean
   /** The x-axis's first and last labels; "Hand 1" and "Hand n" by default. */
   ends?: [string, string]
   /** viewBox width; match it roughly to the slot so labels stay ~12px. */
@@ -33,8 +36,8 @@ export function LineChart({
   const all = series.flatMap((s) => s.values)
   const n = Math.max(...series.map((s) => s.values.length))
   if (n < 2) return null
-  const min = Math.min(0, ...all),
-    max = Math.max(0, ...all)
+  const min = zero ? Math.min(0, ...all) : Math.min(...all),
+    max = zero ? Math.max(0, ...all) : Math.max(...all)
   const ticks = niceTicks(min, max)
   const lo = Math.min(min, ticks[0]),
     hi = Math.max(max, ticks[ticks.length - 1])

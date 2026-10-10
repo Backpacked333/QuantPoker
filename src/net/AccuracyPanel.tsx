@@ -30,9 +30,12 @@ type Loaded = { accuracy: Accuracy | null; luck: LuckRow[] }
 export function AccuracyPanel({
   client,
   userId,
+  subject,
 }: {
   client: SupabaseClient
   userId: string
+  /** Whose numbers, on someone else's profile; "your" when absent. */
+  subject?: string
 }) {
   const [state, setState] = useState<Loaded | 'loading' | 'error'>('loading')
 
@@ -60,13 +63,14 @@ export function AccuracyPanel({
           Accuracy could not be loaded. Try again later.
         </p>
       ) : (
-        <Loaded {...state} />
+        <Loaded {...state} subject={subject} />
       )}
     </section>
   )
 }
 
-function Loaded({ accuracy, luck }: Loaded) {
+function Loaded({ accuracy, luck, subject }: Loaded & { subject?: string }) {
+  const whose = subject ? `${subject}’s` : 'your'
   const series = luckSeries(luck)
   const most = accuracy ? Math.max(1, ...Object.values(accuracy.counts)) : 1
   return (
@@ -77,7 +81,8 @@ function Loaded({ accuracy, luck }: Loaded) {
           <>
             <strong>{Math.round(accuracy.accuracy)}</strong>
             <small>
-              over your last {accuracy.graded} graded decisions in rated matches
+              over {whose} last {accuracy.graded} graded decisions in rated
+              matches
             </small>
           </>
         ) : (
@@ -104,8 +109,9 @@ function Loaded({ accuracy, luck }: Loaded) {
         <div className="live-accuracy-luck">
           <h3>Luck versus skill</h3>
           <p className="live-muted">
-            Your result across {luck.length} rated hands against the same hands
-            with every all-in settled at equity. The gap is all-in luck:{' '}
+            {subject ? `${subject}’s` : 'Your'} result across {luck.length}{' '}
+            rated hands against the same hands with every all-in settled at
+            equity. The gap is all-in luck:{' '}
             {bb(series.result[luck.length] - series.skill[luck.length])}.
           </p>
           <div className="legend">

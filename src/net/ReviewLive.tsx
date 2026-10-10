@@ -4,34 +4,12 @@
 import { MiniCard } from '../components/PlayingCard'
 import type { SeatId } from '../engine/types'
 import { fromId } from '../lib/sim'
-import type { HandRecordV1 } from '../shared/protocol'
 import type { HandSeen } from './client'
+import { describeAction, STREETS, seconds, streetName } from './reviewText'
 import { useDeckCheck } from './useDeckCheck'
 import type { DeckCheck } from './useDeckCheck'
 
-const STREETS = ['preflop', 'flop', 'turn', 'river'] as const
-const streetName = (s: string) =>
-  s === 'preflop' ? 'Pre-flop' : s[0].toUpperCase() + s.slice(1)
-const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} s`
-
-/** "folds" for others, "fold" for you. */
-function describeAction(a: HandRecordV1['actions'][number], you: boolean) {
-  const verb = (word: string) => (you ? word : `${word}s`)
-  switch (a.action.type) {
-    case 'fold':
-      return verb('fold')
-    case 'check':
-      return verb('check')
-    case 'call':
-      return `${verb('call')} ${a.amount}`
-    case 'raise':
-      return a.toCall > 0 || a.street === 'preflop'
-        ? `${verb('raise')} to ${a.amount}`
-        : `${verb('bet')} ${a.amount}`
-  }
-}
-
-const Cards = ({ ids }: { ids: number[] }) => (
+export const Cards = ({ ids }: { ids: number[] }) => (
   <>
     {ids.map((id) => (
       <MiniCard key={id} card={fromId(id)} />

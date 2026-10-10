@@ -1,13 +1,18 @@
 // What each frame type may carry on the wire, shared by the tests that
-// check frames (leaks, rated-leak, rating, rematch) and by frames.test.ts,
-// which checks that every type is covered. The compiler checks every
-// list against src/shared/protocol.ts: a field added to a frame without a
-// line here fails `npm run typecheck:worker`, so no field reaches a client
-// unreviewed.
+// check frames (leaks, rated-leak, rating, rematch, lobby) and by
+// frames.test.ts, which checks that every type is covered. The compiler
+// checks every list against src/shared/protocol.ts: a field added to a
+// frame without a line here fails `npm run typecheck:worker`, so no field
+// reaches a client unreviewed.
 import { expect } from 'vitest'
-import type { HandRecordV1, ServerMsg } from '../../src/shared/protocol'
+import type {
+  HandRecordV1,
+  LobbyMsg,
+  ServerMsg,
+} from '../../src/shared/protocol'
 
 type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>
+type Lobby<T extends LobbyMsg['t']> = Extract<LobbyMsg, { t: T }>
 type Name<S> = S extends `${infer K}?` ? K : S
 
 /**
@@ -95,6 +100,21 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'until?',
     'next?',
   ]),
+}
+// The lobby socket's frames: presence goes to everyone online and the rest
+// to one socket. They carry counts, a table id and the player's own match,
+// never another account.
+export const LOBBY_FRAME_KEYS: Record<LobbyMsg['t'], string[]> = {
+  queued: keysOf<Lobby<'queued'>>()(['t', 'seq', 'position', 'since']),
+  matched: keysOf<Lobby<'matched'>>()(['t', 'seq', 'matchId', 'resumed?']),
+  presence: keysOf<Lobby<'presence'>>()([
+    't',
+    'seq',
+    'online',
+    'queued',
+    'rated?',
+  ]),
+  error: keysOf<Lobby<'error'>>()(['t', 'seq', 'code', 'message']),
 }
 type Change = Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
 export const RATING_CHANGE_KEYS = keysOf<Change>()([
@@ -247,6 +267,11 @@ export function checkFrame(f: ServerMsg) {
       expectKeys(change.before, RATING_BEFORE_KEYS, 'rating.change.before')
       expectKeys(change.after, RATING_AFTER_KEYS, 'rating.change.after')
     }
+}
+
+export function checkLobbyFrame(f: LobbyMsg) {
+  expectKeys(f, LOBBY_FRAME_KEYS[f.t], `lobby ${f.t}`)
+  expect(forbiddenKeys(f), `lobby ${f.t}: forbidden keys`).toEqual([])
 }
 
 /** Runs every frame through checkFrame and returns the types that passed. */

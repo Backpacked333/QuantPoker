@@ -504,8 +504,9 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 - **Database: done and live** (PR #12, `6d1bad4`; `20261010010000 rated_matches` recorded in production). `record_match` v4 also refuses a rated finish missing a seat's result, and voids a match both players left (`abandoned`, one `leave_mid_hand` row each). It went first because S7-05 is not started, so this `record_match` is v4 and S7-05 defines the next version.
 - **Rated rules in the table server.** Under B the "segments" below are halves that exist only for the clock: 40 hands, the bank refills at hand 21, and the match bar reads "Hand 7 of 40". The acceptance tests are in `worker/test/rated.test.ts` with that wording.
-- **Table server: done** (P1-01b-1, PR #13). The 60 s grace and the both-gone void are done in P1-01b-2.
-- **Next:** the rated queue with the email gate (P1-01b-3). It ships together with the live table's end text reading `outcomeBySeat` (review finding on PR #13). Then the rest of the UI (P1-01c).
+- **Table server: done.** P1-01b-1 is PR #13; the 60 s grace and the both-gone void are P1-01b-2 (PR #14).
+- **Rated queue and the email gate: done** (P1-01b-3), with the end text reading the outcome. The gate asks Supabase Auth, not a token claim (the riskiest assumption, checked against the docs).
+- **Next:** the lobby's Rated card and the match bar (P1-01c).
 
 - **Goal.** A signed-in player with a confirmed email can queue for a rated HU match and play 2 segments × 20 hands, with a 60 s bank per segment, a 60 s reconnect grace, the forfeit rule and a W/D/L result archived.
 - **User-visible outcome.**

@@ -2,7 +2,7 @@
 // account is at, and how often two accounts were paired today. Everything
 // is in storage, so hibernation or eviction never loses a waiting player.
 //
-//   queue:<userId>          { userId, username, since }  (connected + asked)
+//   queue:<userId>          { userId, username, since, kind }  (connected + asked)
 //   active:<userId>         matchId                      (one table each)
 //   pairs:<day>:<a>:<b>     times paired that UTC day    (limit 2)
 //   creates:<day>:<userId>  invite tables made that day  (limit 30)
@@ -14,7 +14,8 @@ import {
   parseClientMsg,
   PROTOCOL,
 } from '../../src/shared/protocol'
-import type { ErrorCode, LobbyMsg } from '../../src/shared/protocol'
+import type { ErrorCode, LobbyMsg, MatchKind } from '../../src/shared/protocol'
+import type { RatedEligibility } from './auth'
 import { now } from './clock'
 import type { WorkerEnv } from './env'
 import { FrameBudget, MATCH_CREATES_PER_DAY } from './limits'
@@ -26,8 +27,20 @@ export const PAIRS_PER_DAY = 2
 /** Both players must open a paired table within this time. */
 export const START_WITHIN_MS = 30_000
 
-type Waiting = { userId: string; username: string; since: number }
-type Attachment = { userId: string; username: string }
+/** `kind` is absent on rows queued before rated play existed: casual. */
+type Waiting = {
+  userId: string
+  username: string
+  since: number
+  kind?: MatchKind
+}
+type Attachment = {
+  userId: string
+  username: string
+  /** Checked by the Worker at connect (ratedEligibility). */
+  rated?: RatedEligibility
+}
+const kindOf = (w: Waiting): MatchKind => w.kind ?? 'hu-casual'
 
 const OPEN = 1
 const json = (body: unknown, status = 200) => Response.json(body, { status })
@@ -77,6 +90,9 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   async fetch(request: Request): Promise<Response> {
     const userId = request.headers.get('x-user-id')
     const username = request.headers.get('x-username')
+    const header = request.headers.get('x-rated')
+    const rated: RatedEligibility =
+      header === 'yes' || header === 'no' ? header : 'unknown'
     if (new URL(request.url).pathname !== '/connect')
       return json({ error: 'not found' }, 404)
     if (!userId || !username) return json({ error: 'unauthorized' }, 401)
@@ -103,7 +119,11 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     const pair = new WebSocketPair()
     const [client, server] = [pair[0], pair[1]]
     this.ctx.acceptWebSocket(server, [userId])
-    server.serializeAttachment({ userId, username } satisfies Attachment)
+    server.serializeAttachment({
+      userId,
+      username,
+      rated,
+    } satisfies Attachment)
     await this.presence()
     return new Response(null, {
       status: 101,
@@ -127,7 +147,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     if (size > MAX_FRAME)
       return this.cutOff(ws, CLOSE_ABUSE, 'too_large', 'Message too large')
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
-    if (msg?.t === 'queue') return this.enqueue(ws)
+    if (msg?.t === 'queue') return this.enqueue(ws, msg.kind)
     if (msg?.t === 'dequeue') {
       await this.ctx.storage.delete(`queue:${this.who(ws).userId}`)
       return this.presence()
@@ -171,8 +191,8 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
 
   // ---- Queue -------------------------------------------------------------------
 
-  private async enqueue(ws: WebSocket) {
-    const { userId, username } = this.who(ws)
+  private async enqueue(ws: WebSocket, kind: MatchKind) {
+    const { userId, username, rated } = this.who(ws)
     // Already at a table: go back to it instead of starting another.
     const active = await this.liveActive(userId)
     if (active) {
@@ -180,12 +200,23 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       this.send(ws, { t: 'matched', matchId: active, resumed: true })
       return this.presence()
     }
+    if (kind === 'hu-rated' && rated !== 'yes')
+      return this.reject(
+        ws,
+        'unverified',
+        rated === 'no'
+          ? 'Rated matches need a confirmed email address.'
+          : 'Could not check your account just now. Try again in a moment.',
+      )
     const key = `queue:${userId}`
-    if (!(await this.ctx.storage.get(key)))
+    const waiting = (await this.ctx.storage.get(key)) as Waiting | undefined
+    // Asking again for the same kind keeps the place; another kind starts over.
+    if (!waiting || kindOf(waiting) !== kind)
       await this.ctx.storage.put(key, {
         userId,
         username,
         since: this.clock(),
+        kind,
       } satisfies Waiting)
     await this.pairUp()
     await this.presence()
@@ -201,7 +232,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     for (const [i, a] of waiting.entries()) {
       if (taken.has(a.userId)) continue
       for (const b of waiting.slice(i + 1)) {
-        if (taken.has(b.userId)) continue
+        if (taken.has(b.userId) || kindOf(b) !== kindOf(a)) continue
         const key = pairKey(today, a.userId, b.userId)
         const count = ((await this.ctx.storage.get(key)) as number) ?? 0
         if (count >= PAIRS_PER_DAY) continue
@@ -232,6 +263,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       creator: { userId: a.userId, username: a.username },
       opponent: { userId: b.userId, username: b.username },
       startWithinMs: START_WITHIN_MS,
+      kind: kindOf(a),
     }
     const created = await tableStub(this.env, matchId).fetch(
       'https://table/init',
@@ -344,9 +376,12 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     await this.ctx.storage.put('seq', this.seq)
     for (const ws of sockets) {
       const { userId } = this.who(ws)
-      const at = queue.findIndex((w) => w.userId === userId)
+      const mine = queue.find((w) => w.userId === userId)
+      // A place in the line for the kind asked for.
+      const line = mine ? queue.filter((w) => kindOf(w) === kindOf(mine)) : []
+      const at = line.findIndex((w) => w.userId === userId)
       if (at >= 0)
-        this.send(ws, { t: 'queued', position: at + 1, since: queue[at].since })
+        this.send(ws, { t: 'queued', position: at + 1, since: line[at].since })
       this.send(ws, { t: 'presence', online, queued: queue.length })
     }
   }

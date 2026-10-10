@@ -97,6 +97,31 @@ describe('LiveTable', () => {
     expect(screen.queryByRole('button', { name: 'Review hand' })).toBeNull()
   })
 
+  it('ends a rated match by its outcome: a forfeit while ahead reads as a loss', async () => {
+    render(<LiveTable matchId={MATCH} identity={alice} />)
+    const socket = await opened()
+    const folded = engineAct(firstHand(), 0, { type: 'fold' })
+    act(() => socket.emit(frame('welcome', 3, 0, folded)))
+    act(() =>
+      socket.emit({
+        t: 'match_end',
+        seq: 4,
+        matchId: MATCH,
+        result: {
+          netBySeat: { 0: 560, 1: -560 },
+          reason: 'forfeit',
+          forfeit: 0,
+          adjustedBySeat: { 0: 560, 1: -560 },
+          outcomeBySeat: { 0: 'loss', 1: 'win' },
+        },
+      }),
+    )
+    expect(
+      screen.getByText('Match over: you lost by forfeit.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/you won/)).toBeNull()
+  })
+
   it('flags a dropped opponent and its own reconnects, and disables moves', async () => {
     render(<LiveTable matchId={MATCH} identity={alice} />)
     const socket = await opened()

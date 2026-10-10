@@ -1,7 +1,12 @@
 // The Worker in front of everything. Static files come from ./dist without
 // reaching this code; only /api/* and /ws/* do (see wrangler.jsonc).
 import { PROTOCOL } from '../../src/shared/protocol'
-import { bearerToken, identify, readSubprotocols } from './auth'
+import {
+  bearerToken,
+  identify,
+  ratedEligibility,
+  readSubprotocols,
+} from './auth'
 import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
 import { describeError, logEvent } from './log'
@@ -97,11 +102,14 @@ export default {
       )
       const who = await identify(offered.token, env)
       if (!who) return json({ error: 'unauthorized' }, 401)
+      // Checked once per lobby socket: the rated queue is refused without it.
+      const rated = await ratedEligibility(offered.token!, who.userId, env)
       return lobbyStub(env).fetch('https://lobby/connect', {
         headers: {
           Upgrade: 'websocket',
           'x-user-id': who.userId,
           'x-username': who.username,
+          'x-rated': rated,
         },
       })
     }

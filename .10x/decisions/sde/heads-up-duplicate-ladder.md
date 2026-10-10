@@ -85,11 +85,25 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
 ### Grace and both gone (P1-01b-2)
 
 - **A `grace` deadline per seat (60 s)** starts when a rated seat's last socket closes. Every close path (normal, error, flood cut-off, illegal frames) goes through `socketGone`. A tab replaced by a new one never starts a grace, because the new socket is already open.
-- **Away seats.** Past the grace, the seat is `away`. A turn of theirs that is pending is played at once, and later turns get a deadline of "now" (`turnFor`). Each counts as a timeout, so three in a row forfeit.
-- **Coming back** ends the grace or the time away, and gives a pending turn its normal clock again (`back`).
+- **Away seats.** Past the grace, the seat is away (`awaySince`). A turn of theirs that is pending is played at once, and later turns get a deadline of "now" (`turnFor`). Each counts as a timeout, so three in a row forfeit. A turn that began while away costs no bank, however late its alarm runs (review fold-in on #14). The turn they left on keeps normal accounting.
+- **Coming back** ends the grace or the time away. A turn still pending starts over with the normal clock from the return (`back`; review fold-in on #14: a late alarm could otherwise play it at once).
 - **Both away** ends the match `abandoned` (void). `result.abandoned` names both seats, and `record_match` v4 writes `leave_mid_hand` for each. Graces due together are handled before any turn, so two players leaving at once void the match instead of auto-playing a hand. The test pins this: the void match's `netBySeat` must be 0/0.
 - **Evidence:** 3 tests in `rated.test.ts`. Mutating the away-seat deadline back to the normal clock turns "played at once" red.
 
 ### Deploy verification gap
 
 `verify-deploy` compares the static files and `/api/health`, so a Worker-only change passes it before the new Worker is live. For #13 the deployed Worker code was read through the Cloudflare connector, which confirmed the new code (`settleLuck`, `flushAgain`, `held:`). A build marker in `/api/health` would close the gap (follow-up).
+
+### Rated queue and the email gate (P1-01b-3)
+
+- **The gate asks Supabase Auth,** `GET /auth/v1/user`, with the player's own token and the publishable key, once per lobby socket.
+  - Eligible means a confirmed email (`email_confirmed_at`) on a permanent account (`is_anonymous` false), for the very account the token verified as.
+  - The access token has no confirmation claim, and `user_metadata` (including any `email_verified` in it) is the user's to edit, so neither is trusted.
+  - The answer is `yes`, `no` or `unknown` (Auth unreachable, so the player is told to try again). It reaches the lobby in a header only the Worker can set.
+  - Positive answers are cached per isolate, because a confirmation does not lapse. Dev tokens are eligible.
+- **The lobby** keeps one queue row per account, now carrying its kind.
+  - It pairs only rows of the same kind, sharing the pair counter (R-25), and inits the table with that kind.
+  - Asking for the other kind starts over in that line. Rows from before rated existed are casual.
+  - A rated queue without eligibility gets `error unverified`. A player who already has a table is sent back to it first.
+- **The end text reads the rated outcome** (`src/net/matchResult.ts`): win, draw or loss, with the luck-adjusted total in bb, or "by forfeit". A forfeit while ahead reads as a loss (review finding on #13). Casual matches keep the chips text.
+- **Still to do (P1-01c):** the lobby's Rated card. Until then nothing in the UI sends `kind: 'hu-rated'`.

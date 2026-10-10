@@ -94,6 +94,60 @@ export async function usernameFor(
   return username
 }
 
+/**
+ * Whether an account may play rated: a confirmed email on a permanent (not
+ * anonymous) account. Asked of Supabase Auth itself with the player's own
+ * token, because the access token carries no confirmation claim and
+ * user_metadata is the user's to edit. `unknown` when Auth cannot be
+ * reached: not a refusal, so the player is told to try again.
+ */
+export type RatedEligibility = 'yes' | 'no' | 'unknown'
+
+/**
+ * A yes is cached this long, then asked again, so a confirmation an
+ * operator revokes lapses within minutes.
+ */
+export const ELIGIBLE_TTL_MS = 300_000
+/** Accounts found eligible in this isolate, and when. */
+const eligible = new Map<string, number>()
+
+export async function ratedEligibility(
+  token: string,
+  userId: string,
+  env: WorkerEnv,
+): Promise<RatedEligibility> {
+  if (devTokensOn(env) && token.startsWith('dev.')) return 'yes'
+  const seen = eligible.get(userId)
+  if (seen !== undefined && now() - seen < ELIGIBLE_TTL_MS) return 'yes'
+  let user: {
+    id?: unknown
+    email_confirmed_at?: unknown
+    is_anonymous?: unknown
+  }
+  try {
+    const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        apikey: env.SUPABASE_PUBLISHABLE_KEY,
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    if (response.status === 401 || response.status === 403) return 'no'
+    if (!response.ok) return 'unknown'
+    user = (await response.json()) as typeof user
+  } catch {
+    return 'unknown'
+  }
+  const ok =
+    user.id === userId &&
+    typeof user.email_confirmed_at === 'string' &&
+    user.is_anonymous !== true
+  eligible.delete(userId)
+  if (!ok) return 'no'
+  if (eligible.size >= MAX_NAMES) eligible.delete(eligible.keys().next().value!)
+  eligible.set(userId, now())
+  return 'yes'
+}
+
 export async function identify(
   token: string | null,
   env: WorkerEnv,

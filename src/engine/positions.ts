@@ -116,7 +116,10 @@ export type Blinds = {
  * 2026-10-10, Phase 2, "Blinds and button"). `dealtIn` are the seats with a
  * player who will be dealt in, at least two. `justSat` are those whose player
  * sat down since the last hand: a small blind falling on one of them is dead
- * (R-20), unless only two are dealt in. `prev` is the last hand's value, or
+ * (R-20), unless only two are dealt in. A player back from sitting out
+ * (`sit_in`) has not just sat: the small blind only falls on last hand's
+ * big-blind seat, so the only such returner there is that big blind, sitting
+ * out for one hand to skip the small blind. `prev` is the last hand's value, or
  * null at the first hand at a table, which everyone has just joined: then
  * blindSeats places the blinds, all live, with the lowest seat as button.
  */
@@ -127,6 +130,12 @@ export function nextBlinds(
 ): Blinds {
   const seats = [...dealtIn].sort((a, b) => a - b)
   if (seats.length < 2) throw new EngineError('Blinds need two players')
+  if (
+    seats.some(
+      (s, i) => !Number.isInteger(s) || s < 0 || s > 5 || s === seats[i - 1],
+    )
+  )
+    throw new EngineError('Dealt-in seats must be distinct seats from 0 to 5')
   if (!prev) {
     const { sb, bb } = blindSeats(seats, seats[0])
     return { button: seats[0], sb, bb, sbSeat: sb }

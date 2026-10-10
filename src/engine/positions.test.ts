@@ -474,6 +474,15 @@ describe('nextBlinds', () => {
     expect(deal([0, 1, 3, 4], h3).toAct).toBe(0)
   })
 
+  it('refuses dealt-in seats that repeat or leave the table', () => {
+    const err = new EngineError(
+      'Dealt-in seats must be distinct seats from 0 to 5',
+    )
+    const prev = { button: 0, sb: 1, bb: 2, sbSeat: 1 }
+    expect(() => nextBlinds(prev, [1, 1, 3])).toThrow(err)
+    expect(() => nextBlinds(prev, [1, 3, 6])).toThrow(err)
+    expect(() => nextBlinds(null, [-1, 3])).toThrow(err)
+  })
   it('3→2 players: no big blind repeats', () => {
     const h1 = nextBlinds(null, [0, 2, 4])
     expect(h1).toEqual({ button: 0, sb: 2, bb: 4, sbSeat: 2 })

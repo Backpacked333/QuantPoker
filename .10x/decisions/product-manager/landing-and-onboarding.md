@@ -2,6 +2,17 @@
 
 Slug: `landing-and-onboarding` · Owner: PM · Aligned with the user 2026-10-10 · Scope **B** · Priority **P0** (runs alongside Phase 1; it does not replace the ladder work) · **Built:** L-1 to L-14 in PR #30 (2026-10-10)
 
+## Landing v2 requirements (2026-10-10, user)
+
+- **V2-1:** cinematic 3D presentation per `.10x/specs/2026-10-10-landing-3d-design.md` (P0).
+- **V2-2:** the page explains what QuantPoker is and how it works: what it is, how grading works, luck removed, rated play against people (P0).
+- **V2-3:** account-first.
+  - A sticky "Create free account" and "Sign in" bar.
+  - A "Your account" section listing what an account gives.
+  - The score card's primary CTA saves the score to a new account.
+
+  Every CTA counts `signup_start` (P0).
+
 ## Problem statement
 
 Ambitious students from top schools (math, finance, physics, CS) aiming for investment banking or quant jobs land on a practice table with no pitch. They never get a quick moment that proves how sharp they are, and account creation is buried in the Online tab, so their competitive drive never turns into a sign-up.

@@ -1,35 +1,58 @@
 # Handoff
 
-## Current handoff: SDE → User (landing page phase 2 built)
+## Current handoff: Architect → SDE (landing v2, cinematic 3D)
+
+Date: 2026-10-10 · Status: **design approved; building.**
+
+### Read first
+
+- The spec: `.10x/specs/2026-10-10-landing-3d-design.md`.
+- ADR-001: `.10x/adrs/001-landing-3d-stage.md`.
+- The architect file's §Landing v2.
+
+### Order
+
+1. The stage: table, lights, cards, chips, dealing, camera, quality tier, fallback.
+2. The decision beats: range cloud (first decision), stamp (middle decisions), slow-motion verdict (last decision).
+3. The score card count-up; the account bar; the How it works and Your account sections; scroll reveals.
+4. Device tuning, e2e on the 3D path, frame time.
+
+### Constraints
+
+- Keep the challenge logic, scoring and accounts unchanged.
+- The entry chunk stays within its 150 kB budget.
+- A live text summary sits next to the canvas for screen readers.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (landing page phase 2 built)
 
 Date: 2026-10-10 · Status: **phases 1 and 2 are built and tested in PR #30, which is not merged.**
 
-### What changed in phase 2
+#### What changed in phase 2
 
 - **Share links (L-12).** "Challenge a friend" on the score card shares `/c/<receipt>`. Its link preview reads "Beat 87/100 on “The nut flush draw”", over a new static card (`public/og-challenge.png`).
 - **Friend challenge (L-13).** The link opens the same hand with the score to beat, and ends with "You beat your friend: 91 to 87" (or the reverse). Links last 30 days and carry no name.
 - **School code by email (L-14).** A player without a badge can verify a school email in onboarding step 2: a six-digit code sent by Resend, only its hash kept, 15 minutes, 5 guesses, 3 sends a day. A right code sets the badge through the outbox (`set_player_school`).
 
-### Decisions I took (reversible)
+#### Decisions I took (reversible)
 
 - **One static share card,** with the numbers in the preview text (P1-16's precedent), not an image rendered per score.
 - **Shared links are anonymous.**
 - **Without the Resend secrets, the school route answers 503** and onboarding says so; nothing else changes.
 
-### User actions
+#### User actions
 
 - **Before launch:** U-9 (Google) and U-10 (SMTP).
 - **For school codes:** U-11 (the two Worker secrets).
 - **For claims and badges to reach Postgres:** U-4.
 - **Merging #30** launches the landing page and applies two migrations (`20261010110000_landing.sql`, `20261010120000_school_email.sql`).
 
-### Next step
+#### Next step
 
 Read `/api/funnel` 2 weeks after launch against the PM targets. Then: school leaderboards once the ladder has data (P2 in the PM file).
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (landing page and onboarding, phase 1 built)
 

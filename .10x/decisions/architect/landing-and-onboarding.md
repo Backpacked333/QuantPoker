@@ -14,6 +14,15 @@ Where the code differs from the design below, the code wins:
 - **Grades use the trainer's Atlas model** (`range`, balanced), not the population model: the opponent is Atlas.
 - **Who sees the landing page:** no trainer progress, no `qp.landed`, no Supabase session in storage, and not returning from a sign-in redirect. This is decided once at boot. Finishing or skipping the challenge sets `qp.landed`.
 
+## As built (phase 2, 2026-10-10)
+
+- **L-12, the share card:** one static card, `public/og-challenge.png` (drawn by `scripts/og-card.ts`), with the score to beat in the preview's title and text. This follows P1-16's cut line instead of rendering an image per score (no Satori or resvg in the Worker). `GET /c/<receipt>` reuses the profile's preview rewriting, now in `worker/src/preview.ts`.
+- **L-13, the friend challenge:** `GET /api/challenge/shared/<receipt>` returns the hand, the score and its current rank. The app routes `/c/<receipt>` to `#c/<receipt>`, deals that hand with the friend's score as a banner, and ends with a head-to-head line. Receipts now live 30 days, so links do too. A shared link is anonymous; it carries no name.
+- **L-14, the school code:** Resend from the Worker (`RESEND_API_KEY`, `SCHOOL_EMAIL_FROM`).
+  - The code is stored only as a SHA-256 hash bound to the account, in `ScoreDO.school_codes`: 15 minutes, 5 guesses, 3 sends a day, and a failed send is refunded.
+  - A right code queues `set_player_school` (migration `20261010120000_school_email.sql`) through the outbox. The address leaves storage once used or expired.
+  - The school lookup reads `school_domains` with the publishable key and falls back to `.edu` or `.ac.uk`, exactly like the SQL trigger.
+
 ## Facts this design rests on (verified 2026-10-10)
 
 - **The entry chunk is 141.5 kB of a 150 kB gzip budget** (`scripts/check-bundle.mjs`). The same check fails if `supabase|gotrue|auth/v1/` reaches the entry chunk.
@@ -200,6 +209,7 @@ All four go through the existing Origin allowlist. `/api/*` already runs the Wor
 - **U-9:** create a Google OAuth client (Google Cloud console → APIs & Services → Credentials → OAuth client ID, type web). Authorized redirect URI: `https://dbkfuxczfkawxqmaieii.supabase.co/auth/v1/callback`. Paste the client ID and secret into Supabase → Authentication → Sign In / Providers → Google. Needed before the landing page launches.
 - **U-10:** connect custom SMTP. Create a Resend account and verify a sending domain, then set Supabase → Authentication → SMTP Settings to Resend's SMTP host, port 465, user `resend`, and the API key as the password. Raise Supabase's email rate limit afterwards. Keep the same API key for the Worker secret `RESEND_API_KEY` (phase 2). Needed before the landing page launches.
 - **U-4** (existing) also gates the claim archive and the phase 2 school code.
+- **U-11 (phase 2):** set the Worker secrets for school codes: `npx wrangler secret put RESEND_API_KEY` (the U-10 Resend key) and `npx wrangler secret put SCHOOL_EMAIL_FROM` (for example `QuantPoker <verify@your-domain>`, a sender on the domain verified at Resend). Use secrets, not dashboard variables, so a deploy never clears them. Until then, onboarding says school emails cannot be sent right now.
 
 ## Out of scope
 

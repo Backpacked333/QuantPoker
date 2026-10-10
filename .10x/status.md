@@ -18,7 +18,7 @@ Merged and deployed, each one verified in production after its merge:
   - the rated-match design: the ADR amendment, P1-00.
 - **PR #12 (`6d1bad4`), the rated-match archive (P1-01, database).** Production recorded `20261010010000 rated_matches` through the Supabase integration on merge, and a read-only check confirmed the final `record_match` v4 body. It also fixed a flaky address-limit test at its cause: the burst straddled a wall-clock minute window.
 
-Built on the branch, with a PR next: **the rated match in the table server (P1-01b-1).**
+**PR #13 (`c7c2558`), the rated match in the table server (P1-01b-1).** The deployed Worker code was confirmed through the Cloudflare connector, because `verify-deploy` cannot see Worker-only changes. **Then the 60 s grace and the both-gone void (P1-01b-2), in a PR next.**
 
 - 40 fresh-deck hands, with the bank refilling at hand 21.
 - The luck is settled after each hand, and the archived record carries it.
@@ -141,5 +141,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [ ] User: Q6 (grade visibility vs the Terms) before P1-09; Q7 (`hands_private` retention) whenever you like
 - [x] SDE: S7-13 (park an archive call that can never succeed; PR #11)
 - [x] SDE: P1-11 Glicko-2 (PR #10), P1-02 luck adjustment (PR #11), P1-00 design (PR #11), P1-01 database (PR #12, live)
-- [x] SDE: P1-01b-1, the rated match in `TableDO` (PR next)
-- [ ] SDE: P1-01b-2 grace and both-gone void; P1-01b-3 rated queue and email gate; P1-01c UI
+- [x] SDE: P1-01b-1, the rated match in `TableDO` (PR #13, live)
+- [x] SDE: P1-01b-2 grace and both-gone void (PR next)
+- [ ] SDE: P1-01b-3 rated queue and email gate, with the outcome in the end text; P1-01c UI
+- [ ] SDE: a build marker in `/api/health` so `verify-deploy` sees Worker-only changes

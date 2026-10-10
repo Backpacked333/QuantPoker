@@ -312,29 +312,42 @@ describe('a six-casual session', () => {
     expect((await players(S)).map((r) => r.user_id)).toEqual([ALICE, BOB])
   })
 
-  it('a hand replayed after the session ended gives a new row its finish time', async () => {
+  it('a hand replayed after the session ended moves no seat and gives a new row its finish time and timeouts', async () => {
     const S = 'cccccccc-0000-4000-8000-000000000017'
     await call('record_match', session(S, { 0: ALICE, 1: BOB }))
+    // Alice moved to seat 4 before the session ended; Carol played hand 2
+    // only, and its call was parked until after the finish.
     await call('record_match', {
-      ...session(S, { 0: ALICE, 1: BOB }),
-      handNo: 0,
-      timeouts: {},
+      ...session(S, { 4: ALICE, 1: BOB }),
+      handNo: 3,
+      timeouts: { [CAROL]: 1 },
       result: { reason: 'complete' },
     })
     await call(
       'record_hand',
-      hand(S, 1, { 0: ALICE, 3: CAROL }, { [ALICE]: 20, [CAROL]: -20 }),
+      hand(
+        S,
+        2,
+        { 0: ALICE, 1: BOB, 3: CAROL },
+        { [ALICE]: 20, [BOB]: -10, [CAROL]: -10 },
+      ),
     )
-    const { rows } = await db.query<{ user_id: string; same: boolean }>(
-      `select mp.user_id, mp.finished_at = m.finished_at as same
+    const { rows } = await db.query<{
+      user_id: string
+      seat: number
+      timeouts: number
+      same: boolean
+    }>(
+      `select mp.user_id, mp.seat, mp.timeouts,
+              mp.finished_at = m.finished_at as same
        from public.match_players mp join public.matches m on m.id = mp.match_id
        where mp.match_id = $1 order by mp.user_id`,
       [S],
     )
     expect(rows).toEqual([
-      { user_id: ALICE, same: true },
-      { user_id: BOB, same: true },
-      { user_id: CAROL, same: true },
+      { user_id: ALICE, seat: 4, timeouts: 0, same: true },
+      { user_id: BOB, seat: 1, timeouts: 0, same: true },
+      { user_id: CAROL, seat: 3, timeouts: 1, same: true },
     ])
   })
 

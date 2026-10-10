@@ -110,8 +110,14 @@ begin
   v_final := case when v_reason in ('engine_fault', 'no_show', 'abandoned')
     then 'void' else 'finished' end;
   -- v5: a link the first call could not make yet is made now.
+  -- A six session's result also keeps its timeout totals by account, so a
+  -- row a parked hand creates after the finish still gets its total.
   update public.matches
-  set status = v_final, result = p -> 'result', finished_at = v_at,
+  set status = v_final, finished_at = v_at,
+      result = case when v_six
+        then p -> 'result' || jsonb_build_object('timeouts',
+          coalesce(p -> 'timeouts', '{}'::jsonb))
+        else p -> 'result' end,
       rematch_of = coalesce(rematch_of,
         (select m.id from public.matches m
          where m.id = (p ->> 'rematchOf')::uuid
@@ -211,12 +217,19 @@ begin
 
   -- A hand parked and replayed after its session ended gives a new row the
   -- session's finish time, like every other row of a finished session.
-  insert into public.match_players as mp (match_id, user_id, seat, finished_at)
+  -- After the finish, a replayed hand only fills in a missing row (with
+  -- the finish time and the session's timeout total) and never moves a
+  -- seat: the finish recorded where everyone sat last.
+  insert into public.match_players as mp
+    (match_id, user_id, seat, finished_at, timeouts)
   select v_match, (s ->> 'userId')::uuid, (s ->> 'seat')::smallint,
-         (select m.finished_at from public.matches m where m.id = v_match)
+         m.finished_at,
+         coalesce((m.result -> 'timeouts' ->> (s ->> 'userId'))::smallint, 0)
   from jsonb_array_elements(p -> 'record' -> 'seats') s
+  cross join (select finished_at, result from public.matches
+              where id = v_match) m
   on conflict (match_id, user_id) do update set seat = excluded.seat
-    where mp.seat <> excluded.seat;
+    where mp.seat <> excluded.seat and excluded.finished_at is null;
 
   update public.match_players mp
   set net_chips = mp.net_chips + n.value::integer

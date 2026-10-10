@@ -14,8 +14,9 @@ import { spotOutcome } from '../lib/model'
 import { act, legalActions } from '../lib/poker'
 import type { Action, Game } from '../lib/poker'
 import { hashString } from '../lib/random'
-import { analyzeSpot } from '../lib/range'
-import { lcg } from '../lib/sim'
+import { analyzeSpot, COMBO_A, COMBO_B, COMBOS } from '../lib/range'
+import type { FullSpot } from '../lib/range'
+import { fromId, lcg } from '../lib/sim'
 import { spotKey } from '../lib/spotKey'
 import { actionOf, codeOf } from './actions'
 import { CHALLENGE_HANDS, STYLE, startGame } from './hands'
@@ -26,7 +27,32 @@ import type {
   ChallengeNode,
   ChallengeTree,
   ChallengeTrees,
+  RangeEntry,
 } from './score'
+
+/** How many of Atlas's likeliest hands the range cloud shows. */
+export const RANGE_CARDS = 36
+
+const RANKS = '23456789TJQKA'
+const label = (id: number) => {
+  const card = fromId(id)
+  return `${RANKS[card.rank - 2]}${card.suit}`
+}
+
+/** Atlas's likeliest hands, heaviest first, with the hero's equity vs each. */
+export function topRange(spot: FullSpot): RangeEntry[] {
+  const order: number[] = []
+  for (let k = 0; k < COMBOS; k++)
+    if (spot.weights[k] > 0 && !Number.isNaN(spot.heroWin[k])) order.push(k)
+  order.sort((a, b) => spot.weights[b] - spot.weights[a] || a - b)
+  return order
+    .slice(0, RANGE_CARDS)
+    .map((k) => [
+      label(COMBO_A[k]) + label(COMBO_B[k]),
+      round(spot.weights[k], 4),
+      round(spot.heroWin[k] + spot.heroTie[k] / 2, 2),
+    ])
+}
 
 const round = (value: number, places: number) =>
   Math.round(value * 10 ** places) / 10 ** places
@@ -63,6 +89,7 @@ export function buildTree(spec: ChallengeSpec): ChallengeTree {
       toCall,
       equity: round(equity, 3),
       options: [],
+      ...(nodes.length === 0 ? { range: topRange(spot) } : {}),
     }
     nodes.push(node)
     // Folding with nothing to call is never offered.

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { forgetTracked } from '../lib/track'
 import { PENDING_CLAIM_KEY, savePendingClaim } from '../lib/landing'
 import { Onboarding } from './Onboarding'
 
@@ -23,6 +24,7 @@ const clientWith = (row: Record<string, unknown> | null) =>
 
 let beacons: string[] = []
 beforeEach(() => {
+  forgetTracked()
   beacons = []
   Object.defineProperty(navigator, 'sendBeacon', {
     configurable: true,

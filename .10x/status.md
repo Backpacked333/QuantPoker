@@ -7,6 +7,18 @@ Last updated: 2026-10-10 by SDE (landing page phases 1 and 2 built in PR #30) an
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
 
+## Landing v2: cinematic 3D (2026-10-10)
+
+- **Approved design:** `.10x/specs/2026-10-10-landing-3d-design.md` and ADR-001.
+- **Built and verified (SDE, QA, security):**
+  - the 3D stage;
+  - the beats;
+  - How it works and Your free account;
+  - the account CTAs in the header and on the score card;
+  - phone tuning.
+- **Tests:** 918 unit and 35 e2e pass, including the 3D path. Three lobby Worker tests fail on `main` too, locally.
+- **Next:** PR, CI, merge (standing instruction).
+
 ## Landing page and onboarding (2026-10-10)
 
 - **Scoped (PM) and designed (architect), scope B / design B:** `.10x/decisions/product-manager/landing-and-onboarding.md`, `.10x/decisions/architect/landing-and-onboarding.md` (see its §As built).

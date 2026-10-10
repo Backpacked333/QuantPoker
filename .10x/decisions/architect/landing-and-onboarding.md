@@ -2,6 +2,22 @@
 
 Status: **Decided 2026-10-10** (user aligned on design B). **Phase 1 built 2026-10-10**, PR #30; see §As built for where the build differs. Requirements: `.10x/decisions/product-manager/landing-and-onboarding.md` (L-1 to L-14, O-1 to O-4).
 
+## Landing v2 (2026-10-10): cinematic 3D, explained, account-first
+
+Spec: `.10x/specs/2026-10-10-landing-3d-design.md`. Decision: `.10x/adrs/001-landing-3d-stage.md`.
+
+- **Components:**
+  - `src/landing/stage/`: the three.js stage, loaded lazily (scene, textures, tweens, quality tier);
+  - `ChallengeHand`: the state, driving the stage or the 2D `Table` fallback;
+  - `AccountBar`, `HowItWorks`, `YourAccount`: new landing sections;
+  - `useReveal`: scroll-in animations.
+- **Data:** each tree node gains `range`, Atlas's top combos by weight, each marked as beating the hero or not, precomputed by `build.ts`. The grades are unchanged, so no `ver` bump, and the server ignores the field.
+- **Account-first:** a sticky account bar, "Sign in" and "Create free account" both going to `#welcome/onboard`. `signup_start` is tracked from every CTA.
+- **Failure modes:**
+  - no WebGL, context loss, or reduced motion: the 2D table;
+  - the stage chunk fails to load: the 2D table;
+  - a slow device: the adaptive tier.
+
 ## As built (phase 1, 2026-10-10)
 
 Where the code differs from the design below, the code wins:

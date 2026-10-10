@@ -31,7 +31,16 @@ export type ChallengeNode = {
   /** The hero's equity against Atlas's modeled range at this decision. */
   equity: number
   options: ChallengeOption[]
+  /**
+   * Atlas's likeliest hands at the hand's first decision, for the landing
+   * page's range cloud: [cards, posterior weight, the hero's equity against
+   * them]. Only on the root node; the grades never read it.
+   */
+  range?: RangeEntry[]
 }
+
+/** e.g. ['AhKc', 0.031, 0.22]: Atlas holds A♥K♣ 3.1% of the time; the hero has 22%. */
+export type RangeEntry = [string, number, number]
 
 export type ChallengeTree = { id: string; ver: number; nodes: ChallengeNode[] }
 export type ChallengeTrees = { grader: string; hands: ChallengeTree[] }

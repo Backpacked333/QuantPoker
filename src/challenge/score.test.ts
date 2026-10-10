@@ -88,6 +88,34 @@ describe('scorePath', () => {
   })
 })
 
+describe('the range cloud', () => {
+  it.each(CHALLENGE_HANDS.map((h) => [h.id, h] as const))(
+    "%s: the first decision carries Atlas's likeliest hands, none of them visible cards",
+    (_, spec) => {
+      const tree = treeFor(spec.id, spec.ver)!
+      const range = tree.nodes[0].range!
+      expect(range.length).toBeGreaterThan(10)
+      expect(range.length).toBeLessThanOrEqual(36)
+      const seen = new Set(
+        [...spec.hero.split(' '), ...spec.board.split(' ').slice(0, 3)].map(
+          (c) => c,
+        ),
+      )
+      for (let i = 0; i < range.length; i++) {
+        const [cards, weight, equity] = range[i]
+        expect(cards).toMatch(/^([2-9TJQKA][shdc]){2}$/)
+        expect(seen.has(cards.slice(0, 2))).toBe(false)
+        expect(seen.has(cards.slice(2))).toBe(false)
+        expect(equity).toBeGreaterThanOrEqual(0)
+        expect(equity).toBeLessThanOrEqual(1)
+        if (i) expect(weight).toBeLessThanOrEqual(range[i - 1][1])
+      }
+      // Only the root carries it.
+      expect(tree.nodes.slice(1).every((n) => !n.range)).toBe(true)
+    },
+  )
+})
+
 describe('model percentile', () => {
   it.each(TREES.hands.map((t) => [t.id, t] as const))(
     '%s: the model histogram is a distribution',

@@ -82,6 +82,7 @@ import { Tour } from './components/Tour'
 import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
 import { isFirstVisit } from './lib/landing'
+import { track } from './lib/track'
 
 type View =
   | 'play'
@@ -871,9 +872,25 @@ export default function App() {
           })}
         </nav>
         <div className="header-tools">
-          <span className="pill">
-            <i /> Play money
-          </span>
+          {view === 'landing' ? (
+            <span className="header-account">
+              <a href="#welcome/onboard" className="header-signin">
+                Sign in
+              </a>
+              <a
+                href="#welcome/onboard"
+                className="btn btn-accent header-join"
+                onClick={() => track('signup_start')}
+              >
+                <span className="header-join-long">Create free account</span>
+                <span className="header-join-short">Join free</span>
+              </a>
+            </span>
+          ) : (
+            <span className="pill">
+              <i /> Play money
+            </span>
+          )}
           <button
             className="icon-btn header-theme"
             onClick={() => updateSettings({ theme: nextTheme })}

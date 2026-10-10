@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (P1-03 live: rated tables show and send nothing to analyse; P1-04 next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (P1-04 live: end of match and rematch; P1-12 ratings next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -27,6 +27,13 @@ Merged and deployed, each one verified in production after its merge:
 - Nobody can start a rated match yet: the lobby queue opens in P1-01b-3, after the grace rule (P1-01b-2). Then comes the UI (P1-01c).
 
 **PR #17 (`d042683`), nothing to analyse on a rated table (P1-03).** A rated table no longer draws the equity ring or the break-even figure. A full 40-hand rated match is proven to send no analysis key and no unshown opponent card, and the frame allowlists are compiler-checked against the protocol. Production serves the build (`verify-deploy`).
+
+**PRs #18 (`cfd0bd0`) and #19 (`6a79a93`): end of match and rematch (P1-04).**
+
+- **#18:** `matches.rematch_of` and `record_match` v5. Recorded in production and checked read-only.
+- **#19:** after a rated match, both players can press Rematch within 60 s for a new rated match with seats swapped, within 2 pairings per pair per day. The end panel reads "+12.5 bb · Win", the luck-adjusted total. A reload after the end shows the result again.
+- **Deploy:** production serves the build (`verify-deploy`), and the deployed Worker carries the new code.
+- **Your call:** one Devin finding about rematch links lost in long archive outages is open on #19 (decline recommended).
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 
@@ -148,5 +155,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: P1-01b-3 rated queue and email gate, with the outcome in the end text (PR #15)
 - [x] SDE: P1-01c, the lobby's Rated card and the match bar (PR #16, live)
 - [x] SDE: P1-03, nothing to analyse on a rated table (PR #17, live)
-- [ ] Next in Phase 1: P1-04 end of match and rematch (in progress), P1-12 ratings (`ratings` migration, Glicko-2 at match end), S7-05 telemetry
+- [x] SDE: P1-04, end of match and rematch (PRs #18, #19, live)
+- [ ] Next in Phase 1: P1-12 ratings (`ratings` migration, Glicko-2 at match end), S7-05 telemetry
+- [ ] User: decide the open rematch-link finding on PR #19 (recommendation: leave it; it only undercounts rematches during an archive outage of about 15 minutes or more)
 - [ ] SDE: a build marker in `/api/health` so `verify-deploy` sees Worker-only changes

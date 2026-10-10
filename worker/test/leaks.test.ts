@@ -25,7 +25,7 @@ import {
   stub,
 } from './helpers'
 import type { Client } from './helpers'
-import { checkFrame } from './frames'
+import { checkFrame, checkFrames, FLOW_TYPES } from './frames'
 
 /** Plays checks and calls (or one fold) from the server's real state. */
 async function play(
@@ -98,18 +98,7 @@ describe('every frame a seat receives', () => {
     await bob.next((f) => f.t === 'match_end')
 
     const all = [...alice.frames, ...bob.frames]
-    expect(new Set(all.map((f) => f.t))).toEqual(
-      new Set([
-        'welcome',
-        'state',
-        'hand_start',
-        'hand_end',
-        'reveal',
-        'match_end',
-        'error',
-      ]),
-    )
-    for (const f of all) checkFrame(f)
+    expect(checkFrames(all)).toEqual(new Set(FLOW_TYPES.casual))
 
     const wire = all.map((f) => JSON.stringify(f)).join('\n')
     for (const handNo of [1, 2]) {

@@ -15,7 +15,7 @@ import { forgetUsernames } from '../src/auth'
 import { GRACE_MS, RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
 import type { InitBody } from '../src/table'
-import { analysisKeys, checkFrame } from './frames'
+import { analysisKeys, checkFrames, FLOW_TYPES } from './frames'
 import {
   connect,
   elapse,
@@ -200,22 +200,9 @@ beforeAll(async () => {
 describe('every frame of a 40-hand rated match', () => {
   it('has exactly the allowed key set for its type, and no analysis key anywhere', () => {
     const all = [...played.frames[0], ...played.frames[1]]
-    expect(new Set(all.map((f) => f.t))).toEqual(
-      new Set([
-        'welcome',
-        'state',
-        'hand_start',
-        'hand_end',
-        'reveal',
-        'match_end',
-        'error',
-        'rematch_state',
-      ]),
-    )
-    for (const f of all) {
-      checkFrame(f)
+    expect(checkFrames(all)).toEqual(new Set(FLOW_TYPES.ratedMatch))
+    for (const f of all)
       expect(analysisKeys(f), `${f.t}: analysis keys`).toEqual([])
-    }
     expect(all.map((f) => JSON.stringify(f)).join('\n')).not.toMatch(
       /"(equity|ev|range|grade|luck|allInAt|accuracy)"/i,
     )

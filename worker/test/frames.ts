@@ -95,9 +95,16 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'next?',
   ]),
 }
-export const RATING_CHANGE_KEYS = keysOf<
-  Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
->()(['before', 'after', 'matches'])
+type Change = Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
+export const RATING_CHANGE_KEYS = keysOf<Change>()([
+  'before',
+  'after',
+  'matches',
+])
+// The public rating and its deviation; volatility and row versions stay in
+// the database.
+const RATING_BEFORE_KEYS = keysOf<Change['before']>()(['rating', 'rd'])
+const RATING_AFTER_KEYS = keysOf<Change['after']>()(['rating', 'rd'])
 type View = NonNullable<Msg<'welcome'>['view']>
 export const VIEW_KEYS = keysOf<View>()([
   'matchId',
@@ -231,4 +238,65 @@ export function checkFrame(f: ServerMsg) {
     for (const s of f.slots) expectKeys(s, SLOT_KEYS, 'slot')
     for (const s of f.own ?? []) expectKeys(s, SLOT_KEYS, 'own')
   }
+  if (f.t === 'rating')
+    for (const [seat, change] of Object.entries(f.change)) {
+      // Keyed by seat, never by account.
+      expect(seat, 'rating.change: key').toMatch(/^[0-5]$/)
+      expectKeys(change, RATING_CHANGE_KEYS, 'rating.change')
+      expectKeys(change.before, RATING_BEFORE_KEYS, 'rating.change.before')
+      expectKeys(change.after, RATING_AFTER_KEYS, 'rating.change.after')
+    }
 }
+
+/** Runs every frame through checkFrame and returns the types that passed. */
+export function checkFrames(frames: ServerMsg[]) {
+  const passed = new Set<ServerMsg['t']>()
+  for (const f of frames) {
+    checkFrame(f)
+    passed.add(f.t)
+  }
+  return passed
+}
+
+/**
+ * The frame types each flow test runs through checkFrames. Each flow
+ * asserts its own entry exactly, and frames.test.ts asserts the entries
+ * together name every FRAME_KEYS type, so a new frame type fails the suite
+ * until some flow sends it and checks it. The lists live here, not in a
+ * recorder shared across files, because vitest gives each test file its own
+ * copy of this module and runs the files in parallel.
+ */
+export const FLOW_TYPES = {
+  /** leaks.test.ts: a casual match with a showdown, a fold and junk. */
+  casual: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'error',
+  ],
+  /** rated-leak.test.ts: 40 rated hands, then a look back after the end. */
+  ratedMatch: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'error',
+    'rematch_state',
+  ],
+  /** rating.test.ts: a completed rated match, its rating and the offer. */
+  rating: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'rating',
+    'rematch_state',
+  ],
+} satisfies Record<string, ServerMsg['t'][]>

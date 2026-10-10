@@ -11,7 +11,9 @@ Last updated: 2026-10-10 by SDE (accuracy: P1-08 and P1-09 live, QA attack run, 
 
 - **Scoped and aligned with the user: scope B, P0.** `.10x/decisions/product-manager/landing-and-onboarding.md`.
 - A landing page for first-time visitors whose hero is a curated, live-graded challenge hand; a score card with an honest percentile; a share card and friend-challenge link; one sign-up surface; onboarding (username → optional school badge → first move); first-party funnel analytics.
-- **Next:** architect answers O-1 to O-4 and plans the build. It runs alongside Phase 1 and does not displace P1-12.
+- **Architecture decided (2026-10-10, design B):** `.10x/decisions/architect/landing-and-onboarding.md`. Challenge hands are pre-scored at build time; a new `ScoreDO` holds the percentile histograms, the crowd counts, the funnel and the claim outbox; one shared `SignIn.tsx` plus `#welcome/onboard`; a database trigger sets `players.school` from a confirmed school email.
+- **New user gates:** U-9 (enable Google sign-in) and U-10 (custom SMTP through Resend), both before launch. U-4 also gates the claim archive.
+- **Next:** engineering, phase 1 (about 5 days, 5 mergeable steps), alongside Phase 1 P1-12.
 
 ## Phase 1 progress (2026-10-10)
 

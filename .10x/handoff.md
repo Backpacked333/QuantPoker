@@ -1,14 +1,57 @@
 # Handoff
 
-## Current handoff: PM → Architect (landing page and onboarding)
+## Current handoff: Architect → Staff Engineer / EM (landing page and onboarding)
 
-Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); architecture next.**
+Date: 2026-10-10 · Status: **architecture decided (design B), user aligned; ready to build phase 1.**
 
 ### Read first
 
+- `.10x/decisions/architect/landing-and-onboarding.md` (the design, contracts, failure modes, tests, build order)
+- `.10x/decisions/product-manager/landing-and-onboarding.md` (requirements L-1 to L-14)
+
+### Components
+
+1. `src/challenge/`: curated hands, `scripts/build-challenges.ts` → `trees.generated.json` (with a regeneration guard), and a pure `scorePath` shared by the browser and the Worker.
+2. `ScoreDO` (SQLite, one instance), with routes `POST /api/challenge/score`, `POST /api/events`, `POST /api/challenge/claim` (Bearer) and `GET /api/funnel`. Binding plus the `v3` migration in `wrangler.jsonc`.
+3. The landing view: a `parseRoute` branch for a first visit or `#start` or `#c/…`, a lazy chunk prefetched at boot, the challenge on `Table`, the score card, the sections, and `track()`.
+4. `src/net/SignIn.tsx`, extracted from `AuthGate`, plus the `#welcome/onboard` steps (username → school → first move) and the claim through `qp.pendingClaim`.
+5. Migrations: `school_domains` with its seed, `players.school`/`school_verified_at`, the `set_player_school` trigger, and `challenge_scores` with `record_challenge_claim` (DBA review).
+
+### Answers to the PM's open questions
+
+- **O-1:** a trigger verifies the school from a confirmed sign-in email or a Google Workspace account (phase 1). A code sent to a second address through Resend comes in phase 2.
+- **O-2:** a client-side `landing` route; every existing hash route is unchanged; `/c/*` goes to the Worker only in phase 2 (OG).
+- **O-3:** first-party `ScoreDO` counters, no third-party analytics.
+- **O-4:** a server-held receipt, kept in localStorage until it is claimed once after sign-in.
+
+### Constraints
+
+- Entry chunk 141.5 kB of 150. Only the route branch, the lazy import and `track()` may enter it.
+- No grader call per request.
+- Write, then reply in `ScoreDO`.
+- Postgres only through the outbox.
+
+### User gates
+
+U-9 (Google OAuth) and U-10 (Resend SMTP) before launch. U-4 is already open and gates the claim archive and the phase 2 school code.
+
+### Next step
+
+EM: turn the 5 phase 1 steps into tickets (about 5 days), alongside P1-12.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — PM → Architect (landing page and onboarding)
+
+Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); architecture next.**
+
+#### Read first
+
 `.10x/decisions/product-manager/landing-and-onboarding.md` (slug `landing-and-onboarding`).
 
-### What was decided
+#### What was decided
 
 - **Audience:** competitive, high-ability students (math, finance, physics, CS) aiming for IB or quant roles, mostly at elite schools. The user's hypothesis, to be validated.
 - **Hook:** the landing page hero is one curated hand against Atlas on the real table, graded per decision, with no account. It ends on a score card (accuracy, percentile, luck versus skill).
@@ -16,27 +59,23 @@ Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); arch
 - **Tone:** trading-desk elite. Dark, precise, monospace figures, no casino imagery.
 - **Scope B:** L-1 to L-11 are P0; the share card, the friend-challenge link and second-email school verification (L-12 to L-14) are P1.
 
-### Priority order
+#### Priority order
 
 1. L-1/L-2/L-3/L-4/L-5 (landing page + challenge hand + score card), with L-10 analytics from the first PR.
 2. L-7/L-8 (one sign-up surface + onboarding), with the score carried over (O-4).
 3. L-6 (real percentile), L-9 (sections), L-11 (a11y, motion, frame time).
 4. P1: L-12 share card, L-13 friend link, L-14 school email sender.
 
-### Open questions for you
+#### Open questions for you
 
 O-1 school verification (auto-verify vs an email sender) · O-2 routing `/` for first-time visitors without breaking hash deep links · O-3 anonymous score and event storage · O-4 carrying the score into the new account. Details and PM preferences are in the feature file.
 
-### Constraints
+#### Constraints
 
 - The entry bundle budget (`scripts/check-bundle.mjs`): the landing page must not pull the lab or `src/net` into the entry chunk.
 - The lab is off during the challenge (same rule as rated play) and on in its review.
 - Play money only; no personal data in analytics events.
 - This runs alongside Phase 1 and does not displace P1-12 ratings.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
 

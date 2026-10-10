@@ -27,7 +27,9 @@ export function buyIn(bb: number) {
 /**
  * The top-up that brings `stack` to exactly 100 bb. `inHand` is true while
  * the player is dealt into the hand being played; a seated player sitting it
- * out may rebuy, and the chips play from the next hand.
+ * out may rebuy, and the chips play from the next hand. `stack` must already
+ * include any top-up granted for the next hand, or a second rebuy in the
+ * same hand would top up again past 100 bb.
  */
 export function rebuyTo(stack: number, bb: number, inHand: boolean): Rebuy {
   const target = buyIn(bb)

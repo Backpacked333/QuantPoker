@@ -10,6 +10,7 @@ Last updated: 2026-10-10
 | `rating-and-leaderboard`    | Phase 1 rating model, ladder and profile (P1-11…P1-16)                                                 | P1-11 **done** 2026-10-09: Glicko-2 pure module, Glickman example reproduced, properties over 10k sequences                                                                                                                                             |
 | `heads-up-duplicate-ladder` | Rated heads-up match: fresh decks with a luck adjustment (Q1 = B), lifecycle, end screen (P1-00…P1-04) | P1-02 engine module **done** 2026-10-09; **P1-01 live** 2026-10-10 (PRs #12–#16: archive, table server, grace, gated queue, UI); **P1-03** (nothing to analyse on a rated table, PR #17); **P1-04** (end of match and rematch, PRs #18–#19); P1-12 next |
 | `accuracy`                  | Accuracy against a model opponent: population model, grading consumer, profile number (P1-08…P1-10)    | **P1-08** (PR #20) and **P1-09** (PRs #21, #23) live 2026-10-10, QA attack run (clock exploit fixed, averaging weakness measured); **P1-10** built (accuracy table, luck series, lobby panel)                                                           |
+| `six-max-tables`            | Casual 6-max (P2-01…P2-08), in the PR order of `engineering-manager/six-max-casual.md`                 | **P2-01** built 2026-10-10 (PR-01): four crafted pot cases, soak at seed 20261010 with 0 failures in 100k hands per size (side pots in 45.6–97.0% for N > 2); CI run link added after the push                                                          |
 
 ## Cross-cutting notes
 
@@ -32,3 +33,4 @@ Last updated: 2026-10-10
 - **A smoke must prove it can fail.** Disable redaction once and watch it report leaks; cut a CPU budget to 50 ms and watch the bench fail.
 - **A busy guard must not drop work.** `if (flushing) return` lost a call queued mid-pass, and the pass then removed the deadline that would have retried it. Record the request and run the pass again instead.
 - **Rate limiters count in wall-clock windows.** A burst test that straddles a window boundary resets halfway. Start the burst in a fresh window, and reproduce by starting 300 ms before a boundary.
+- **A rule about acting again needs a seat that has already acted.** Counting a short all-in call as a raise passed every crafted case until one had a seat act before the short call and then face a short raise.

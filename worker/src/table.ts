@@ -1010,7 +1010,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
       let behind = 0
       // A parked call queues an incident report that this pass did not list.
       let parked = false
+      // Entries parked along with a call (a hand's verification).
+      const dropped = new Set<string>()
       for (const [key, call] of queued) {
+        if (dropped.has(key)) continue
         const outcome: ArchiveOutcome =
           'send' in call
             ? { ok: await this.enqueue(call.send) }
@@ -1021,8 +1024,14 @@ export class TableDO extends DurableObject<WorkerEnv> {
         }
         const attempts = call.attempts + 1
         const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
-        if (!('send' in call) && refused >= OUTBOX_MAX_REFUSALS) {
-          await this.park(key, call, outcome)
+        // An incident report never holds up the flush, so it is never parked:
+        // parking it would only lose its evidence at cleanup.
+        if (
+          !('send' in call) &&
+          call.rpc !== 'record_incident' &&
+          refused >= OUTBOX_MAX_REFUSALS
+        ) {
+          for (const k of await this.park(key, call, outcome)) dropped.add(k)
           parked = true
           continue
         }
@@ -1054,6 +1063,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
    * behind it can go through, and reports it once as an incident. The
    * incident carries the call itself (incidents are for the service role
    * only, like the deck), so it can be replayed once the cause is fixed.
+   * A parked hand takes its verification with it: the verifier would find
+   * no hand and report a false failure. Returns the keys parked with it.
    */
   private async park(
     key: string,
@@ -1061,15 +1072,25 @@ export class TableDO extends DurableObject<WorkerEnv> {
     outcome: ArchiveOutcome,
   ) {
     const rest = key.slice('outbox:'.length)
+    const [n, what] = rest.split(':')
     await this.ctx.storage.put(`parked:${rest}`, call)
     await this.ctx.storage.delete(key)
+    const alongside: string[] = []
+    if (call.rpc === 'record_hand') {
+      const verify = `outbox:${n}:verify`
+      const entry = await this.ctx.storage.get<Outbox>(verify)
+      if (entry) {
+        await this.ctx.storage.put(`parked:${n}:verify`, entry)
+        await this.ctx.storage.delete(verify)
+        alongside.push(verify)
+      }
+    }
     logEvent('outbox_parked', {
       matchId: this.match?.id,
       rpc: call.rpc,
       code: outcome.status,
       detail: outcome.code,
     })
-    if (call.rpc === 'record_incident') return
     const handNo = (call.body as { handNo?: unknown }).handNo
     await this.ctx.storage.put(`${key}:parked`, {
       rpc: 'record_incident',
@@ -1080,7 +1101,9 @@ export class TableDO extends DurableObject<WorkerEnv> {
           call.rpc === 'record_hand' && typeof handNo === 'number'
             ? handNo
             : null,
-        kind: 'archive_parked',
+        // One incident per parked call: the match's start and end both have
+        // no hand number, so the call names the kind (incidents_once).
+        kind: `archive_parked:${what}`,
         detail: {
           rpc: call.rpc,
           status: outcome.status,
@@ -1089,6 +1112,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
         },
       },
     } satisfies Outbox)
+    return alongside
   }
 
   private async retryOutbox(attempts: number) {

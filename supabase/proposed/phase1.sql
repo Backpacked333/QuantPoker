@@ -50,7 +50,12 @@ create index match_players_history on public.match_players (user_id, finished_at
 create table public.ratings (
   user_id uuid not null references public.players (user_id) on delete cascade,
   format text not null check (format in ('hu-duplicate', '6max')),
-  rating double precision not null default 1500 check (rating > 0),
+  -- Glicko-2 ratings are unbounded: a 100 ± 350 player who loses to an
+  -- equal goes below zero (src/rating/glicko2.test.ts), so the check only
+  -- refuses what no model produces (and NaN, which sorts above every
+  -- number). A floor, if wanted, is a product rule for the model, not here.
+  rating double precision not null default 1500
+    check (rating > -100000 and rating < 100000),
   rd double precision not null default 350 check (rd > 0 and rd <= 350),
   sigma double precision not null default 0.06 check (sigma > 0 and sigma < 1),
   matches integer not null default 0 check (matches >= 0),

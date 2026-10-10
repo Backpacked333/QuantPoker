@@ -127,6 +127,23 @@ async function foldHand(matchId: string, seats: Record<number, Client>) {
   await c.next(isState(hand!.config.handNo, 1), from)
 }
 
+/** Gives the table a verify queue that records what it is sent. */
+async function recordQueue(matchId: string) {
+  const sent: { matchId: string; handNo: number }[] = []
+  await runInDurableObject(stub(matchId), (instance: TableDO) => {
+    const self = instance as unknown as { env: Record<string, unknown> }
+    self.env = {
+      ...self.env,
+      HAND_QUEUE: {
+        send: async (m: { matchId: string; handNo: number }) => {
+          sent.push(m)
+        },
+      },
+    }
+  })
+  return sent
+}
+
 const outbox = (matchId: string) =>
   runInDurableObject(stub(matchId), async (instance: TableDO) => {
     const state = (instance as unknown as { ctx: DurableObjectState }).ctx
@@ -329,37 +346,43 @@ describe('the archive', () => {
   it('parks a call refused 12 times for its data, reports it once, and sends what follows', async () => {
     // A hand that can never be stored (a seat's account was deleted, say):
     // Postgres refuses it with a foreign-key violation every time.
-    respond = (rpc) =>
-      rpc === 'record_hand'
-        ? Response.json(
-            { code: '23503', message: 'violates foreign key constraint' },
-            { status: 409 },
-          )
-        : null
-    const { matchId, seats } = await table(1)
+    let refusals = 0
+    respond = (rpc, p) => {
+      if (rpc !== 'record_hand' || p.handNo !== 1) return null
+      refusals++
+      return Response.json(
+        { code: '23503', message: 'violates foreign key constraint' },
+        { status: 409 },
+      )
+    }
+    const { matchId, seats } = await table(2)
+    const toQueue = await recordQueue(matchId)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next(isState(2))
     await foldHand(matchId, seats)
     await elapse(matchId, NEXT_HAND_MS)
     await seats[0].next((f) => f.t === 'match_end')
-    const handTries = () => tried.filter((r) => r === 'record_hand').length
-    for (let i = 0; i < 20 && handTries() < 12; i++) {
-      const before = handTries()
+    for (let i = 0; i < 20 && refusals < 12; i++) {
+      const before = refusals
       await elapse(matchId, 300_000)
-      await until(() => handTries() > before)
+      await until(() => refusals > before)
     }
-    expect(handTries()).toBe(12)
-    // Behind it, the match result goes through, then the incident.
+    expect(refusals).toBe(12)
+    // Behind it, hand 2 and the match result go through, then the incident.
     await elapse(matchId, 300_000)
     await until(() => calls.some((c) => c.rpc === 'record_incident'))
-    expect(calls.map((c) => c.rpc)).toEqual([
-      'record_match',
-      'record_match',
-      'record_incident',
+    expect(calls.map((c) => [c.rpc, c.p.handNo ?? null])).toEqual([
+      ['record_match', null],
+      ['record_hand', 2],
+      ['record_match', 2],
+      ['record_incident', 1],
     ])
     const incident = calls.find((c) => c.rpc === 'record_incident')!.p
     expect(incident).toMatchObject({
       matchId,
       handNo: 1,
-      kind: 'archive_parked',
+      kind: 'archive_parked:hand',
       detail: { rpc: 'record_hand', status: 409, code: '23503' },
     })
     // The parked hand rides in the incident (service role only), so it
@@ -367,8 +390,65 @@ describe('the archive', () => {
     expect((incident.detail as { body: { handNo: number } }).body.handNo).toBe(
       1,
     )
-    expect(handTries()).toBe(12)
+    // Its verification is parked with it: the verifier would only find no
+    // hand and report a false failure. Hand 2 is verified as usual.
+    expect(toQueue.map((m) => m.handNo)).toEqual([2])
+    expect(refusals).toBe(12)
     expect(await outbox(matchId)).toEqual([])
+  })
+
+  it('reports each parked call of a match separately', async () => {
+    // The match row itself is refused: its start and its result both park.
+    respond = (rpc) =>
+      rpc === 'record_match'
+        ? Response.json({ code: '23514' }, { status: 400 })
+        : null
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next((f) => f.t === 'match_end')
+    const matchTries = () => tried.filter((r) => r === 'record_match').length
+    for (let i = 0; i < 40 && matchTries() < 24; i++) {
+      const before = matchTries()
+      await elapse(matchId, 300_000)
+      await until(() => matchTries() > before)
+    }
+    expect(matchTries()).toBe(24)
+    await elapse(matchId, 300_000)
+    await until(
+      () => calls.filter((c) => c.rpc === 'record_incident').length === 2,
+    )
+    // Two incidents, not one: same match, no hand number, distinct kinds.
+    expect(
+      calls
+        .filter((c) => c.rpc === 'record_incident')
+        .map((c) => [c.p.handNo, c.p.kind]),
+    ).toEqual([
+      [null, 'archive_parked:match'],
+      [null, 'archive_parked:end'],
+    ])
+  })
+
+  it('never parks an incident report: it holds nothing up, so it keeps its retries', async () => {
+    respond = (rpc, p) =>
+      (rpc === 'record_hand' && p.handNo === 1) || rpc === 'record_incident'
+        ? Response.json({ code: '23502' }, { status: 400 })
+        : null
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next((f) => f.t === 'match_end')
+    const incidentTries = () =>
+      tried.filter((r) => r === 'record_incident').length
+    for (let i = 0; i < 40 && incidentTries() < 14; i++) {
+      const before = tried.length
+      await elapse(matchId, 300_000)
+      await until(() => tried.length > before)
+    }
+    expect(incidentTries()).toBeGreaterThanOrEqual(14)
+    const queued = await outbox(matchId)
+    expect(queued.map(([key]) => key)).toEqual(['outbox:0001:hand:parked'])
+    expect(queued[0][1].attempts).toBeGreaterThanOrEqual(14)
   })
 
   it('never parks a call that failed for an outage, a key or a missing function', async () => {

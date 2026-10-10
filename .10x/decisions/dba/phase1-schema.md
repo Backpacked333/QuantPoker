@@ -122,7 +122,7 @@ Concurrency is low but real: outbox retries can overlap a slow first call, and t
 
 **D9 · Lock-safe DDL (DB-12).**
 
-- Changing `matches_kind_check` uses `NOT VALID` then `VALIDATE`, so no exclusive-lock table scan.
+- Changing `matches_kind_check` uses `NOT VALID` then `VALIDATE`. In one migration transaction the drop's exclusive lock lasts through the scan (milliseconds over Phase 0's rows); once `matches` is large, `VALIDATE` goes in a migration of its own.
 - New indexes on tables that already hold rows are built in the migration transaction while those tables are small (Phase 0 traffic only).
 - Rule for later: above ≈ 1M rows, create the index `CONCURRENTLY` outside the migration through the SQL editor, and record the migration as `create index if not exists`. Supabase runs a migration in one transaction, where `CONCURRENTLY` is refused.
 

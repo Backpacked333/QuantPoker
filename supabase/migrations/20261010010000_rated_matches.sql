@@ -3,8 +3,11 @@
 -- nullable columns on match_players, one index, and record_match v4, which
 -- accepts every payload v3 did.
 
--- A plain ADD CONSTRAINT CHECK scans matches under an exclusive lock; NOT
--- VALID records the rule at once and VALIDATE scans without blocking writes.
+-- NOT VALID then VALIDATE ends where a plain ADD CONSTRAINT would. Inside
+-- this one migration transaction the drop's exclusive lock is held through
+-- the scan, which over Phase 0's few rows takes milliseconds; once matches
+-- is large, VALIDATE goes in a migration of its own so its scan never
+-- blocks writes.
 alter table public.matches drop constraint matches_kind_check;
 alter table public.matches
   add constraint matches_kind_check check (kind in ('hu-casual', 'hu-rated'))
@@ -36,8 +39,8 @@ create index match_players_history on public.match_players (user_id, finished_at
 -- seat's outcome and adjusted chips from result.outcomeBySeat and
 -- result.adjustedBySeat. A match both players left (reason 'abandoned',
 -- seats in result.abandoned) is void, with a leave_mid_hand row for each.
--- The rules live in the Worker; the checks above refuse anything else, and
--- the whole call rolls back with them.
+-- The rules live in the Worker; the checks above and the completeness check
+-- below refuse anything else, and the whole call rolls back with them.
 create or replace function public.record_match(p jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -81,6 +84,18 @@ begin
       adjusted_chips = case when v_kind = 'hu-rated' and v_final = 'finished'
         then (p -> 'result' -> 'adjustedBySeat' ->> mp.seat::text)::double precision end
   where mp.match_id = v_match;
+
+  -- A rated result missing a seat would archive as finished with a hole in
+  -- it; refused instead (23502), so the Worker retries and then parks the
+  -- call with an incident (S7-13).
+  if v_kind = 'hu-rated' and v_final = 'finished' and exists (
+    select 1 from public.match_players mp
+    where mp.match_id = v_match
+      and (mp.outcome is null or mp.adjusted_chips is null)
+  ) then
+    raise exception 'rated result incomplete for match %', v_match
+      using errcode = '23502';
+  end if;
 
   insert into public.abandonments (user_id, match_id, hand_no, kind)
   select mp.user_id, v_match, (p ->> 'handNo')::integer, 'timeout_x3'

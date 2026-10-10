@@ -218,6 +218,41 @@ describe('rated matches', () => {
     ).rejects.toThrow(/check constraint/)
   })
 
+  it.each([
+    ['outcome', { 0: 'win' }, { 0: 52, 1: -52 }],
+    ['adjusted chips', { 0: 'win', 1: 'loss' }, { 1: -52 }],
+  ])(
+    'refuse a finished rated match missing a seat’s %s, writing nothing',
+    async (_, outcomeBySeat, adjustedBySeat) => {
+      const id = crypto.randomUUID()
+      await call(start(id))
+      // Refused for its data (23502), so the Worker retries, then parks it
+      // with an incident (S7-13) instead of archiving a half result.
+      await expect(
+        call({
+          ...start(id),
+          handNo: 40,
+          timeouts: {},
+          result: {
+            netBySeat: { 0: 52, 1: -52 },
+            reason: 'complete',
+            adjustedBySeat,
+            outcomeBySeat,
+          },
+        }),
+      ).rejects.toThrow(/rated result incomplete/)
+      const { rows } = await db.query<{ status: string }>(
+        'select status from public.matches where id = $1',
+        [id],
+      )
+      expect(rows).toEqual([{ status: 'playing' }])
+      expect(await seats(id)).toEqual([
+        { seat: 0, outcome: null, adjusted_chips: null, finished: false },
+        { seat: 1, outcome: null, adjusted_chips: null, finished: false },
+      ])
+    },
+  )
+
   it('list a player newest first from match_players alone', async () => {
     const plan = (
       await db.query<{ 'QUERY PLAN': string }>(

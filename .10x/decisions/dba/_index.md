@@ -16,5 +16,5 @@ Last updated: 2026-10-09
 - **Counters, not aggregates, for anything a list shows per row.** Maintain them in the same exactly-once transaction as the event that changes them.
 - **Duplicates must be structurally impossible.** A primary key or unique index plus `on conflict`, or a row lock on a state the transaction leaves. Prove it with two real sessions (`supabase/bench/concurrency.ts`), not only with a repeat.
 - **Access rules come with the table.** RLS on and grants revoked in the same migration, then explicit reads. No security definer is callable by a browser. `rls-matrix.test.ts` fails on a new table without its rows.
-- **Lock-safe DDL.** `NOT VALID` + `VALIDATE` for constraints on existing tables; `CONCURRENTLY` outside the migration for indexes once a table passes ≈ 1M rows.
+- **Lock-safe DDL.** `NOT VALID` + `VALIDATE` for constraints on existing tables, with `VALIDATE` in a migration of its own once the table is large (one transaction holds the first statement's lock through the scan); `CONCURRENTLY` outside the migration for indexes once a table passes ≈ 1M rows.
 - **Mutation-check every rule.** Remove it, watch its check fail, put it back.

@@ -1,6 +1,6 @@
 # 10x prompts for what is left
 
-Rewritten 2026-10-10 against `main` at `a3b9aed` (PR #26). It replaces the 2026-10-09 version that lived only on the branch `claude/amazing-ride-4vip4x`. That version's Prompts 1–5 are done, its Prompt 6 was written for the same-deck duplicate format that Q1 = B dropped, and most of its Prompts 7 and 8 is built.
+Rewritten 2026-10-10 against `main` at `a3b9aed` (PR #26), refreshed the same day at `13fe865` (PR #39). It replaces the 2026-10-09 version that lived only on the branch `claude/amazing-ride-4vip4x`. That version's Prompts 1–5 are done, its Prompt 6 was written for the same-deck duplicate format that Q1 = B dropped, and most of its Prompts 7 and 8 is built.
 
 Order: **finish Phase 0 → Phase 1 → Phase 2 → Later.** One prompt per fresh Claude Code session, top to bottom, except where "Runs after" allows two at once. Each prompt names the tickets it closes; the acceptance tests under those tickets in `.10x/tickets.md` are the definition of done.
 
@@ -10,21 +10,23 @@ Order: **finish Phase 0 → Phase 1 → Phase 2 → Later.** One prompt per fres
 | 1   | 0     | Production proof of the rated pipeline         | S7-11               | `/10x-Team:sre`                 | U-4 (your Supabase key)          |
 | 2   | 0     | Queue wait, ack latency and a build marker     | S7-05               | `/10x-Team:sde`                 | nothing; can run beside 3        |
 | 3   | 1     | Live table keyboard, sounds and quality gates  | P1-07               | `/10x-Team:sde`                 | nothing; can run beside 2        |
-| 4   | 1     | Review any finished match                      | P1-05, P1-06        | `/10x-Team:sde`                 | 3 (both edit `src/App.tsx`)      |
-| 5   | 1     | The ladder                                     | P1-14               | `/10x-Team:dba`                 | nothing; can run beside 4        |
-| 6   | 1     | Public profile, share card and Method page     | P1-15, P1-16        | `/10x-Team:sde`                 | 4 and 5                          |
-| 7   | 1     | Reports, sanctions and appeals                 | P1-17, P1-18        | `/10x-Team:sde`                 | 6                                |
-| 8   | 1     | Mistakes to lessons, and what to review first  | P1-19, P1-20        | `/10x-Team:sde`                 | 4; can run beside 6 or 7         |
+| 4   | 1     | Your own review of a finished match            | P1-05, P1-06        | `/10x-Team:sde`                 | 3 (both edit `src/App.tsx`)      |
+| 5   | 1     | ~~The ladder~~ (done, PR #27)                  | P1-14               | —                               | —                                |
+| 6   | 1     | Count profile views and shares (rest of P1-16) | P1-16               | `/10x-Team:sde`                 | nothing; can run beside 2 or 3   |
+| 7   | 1     | Reports, sanctions and appeals                 | P1-17, P1-18        | `/10x-Team:sde`                 | 4                                |
+| 8   | 1     | Mistakes to lessons, and what to review first  | P1-19, P1-20        | `/10x-Team:sde`                 | 4; can run beside 7              |
 | 9   | 1     | Metrics pack and ladder launch                 | P1-21, P1-22        | `/10x-Team:sre`                 | 1–8                              |
-| 10  | 2     | 6-max engine gate, positions, pairwise results | P2-01, P2-02, P2-12 | `/10x-Team:qa-engineer`         | nothing; pure code, any time     |
-| 11  | 2     | Casual 6-max table service                     | P2-03, P2-04, P2-07 | `/10x-Team:sde`                 | 9 and 10                         |
-| 12  | 2     | Six-seat table UI, side pots and table list    | P2-05, P2-06, P2-08 | `/10x-Team:sde`                 | 11                               |
-| 13  | 2     | 6-max review, stats and six-client acceptance  | P2-09, P2-10, P2-11 | `/10x-Team:sde`                 | 12                               |
+| 10  | 2     | Finish the 6-max engine, pairwise results      | P2-02b/c, P2-12     | `/10x-Team:sde`                 | nothing; pure code, any time     |
+| 11  | 2     | Casual 6-max table service                     | P2-03, P2-04        | `/10x-Team:sde`                 | 10                               |
+| 12  | 2     | Six-seat table UI, side pots and table list    | P2-05, P2-06, P2-08 | `/10x-Team:sde`                 | 11 (the UI spike can start now)  |
+| 13  | 2     | 6-max review, stats, bots, acceptance          | P2-07, P2-09–P2-11  | `/10x-Team:sde`                 | 12, and S7-05 (prompt 2)         |
 | 14  | 2     | Arenas and the 6-max rating                    | P2-13, P2-14, P2-15 | `/10x-Team:principal-architect` | 13, and 1,000 human casual hands |
 | 15  | Later | Integrity v2 (only when triggered)             | —                   | `/10x-Team:security-engineer`   | a trigger                        |
 | 16  | Later | Optional: port the AI coach                    | —                   | `/10x-Team:sde`                 | nothing                          |
 
 P2-16 (the trainer onto `src/engine`) stays cut, as the tickets recommend.
+
+**Phase 2 has its own PR plan.** `.10x/decisions/engineering-manager/six-max-casual.md` splits casual 6-max into PR-01…PR-26, and the ADR's "Amendment 2026-10-10: Phase 2 casual 6-max" settles the rules. Both win over the older P2 ticket text. You gave the go-ahead for casual 6-max on 2026-10-10, so it no longer waits for the ladder launch (P1-22). Prompts 10–13 name the plan's PR numbers.
 
 **How to paste.** In a fresh session send, as one message: the prompt's header line (for example `/10x-Team:sde`), a blank line, the operating contract (#0), a blank line, the prompt. The header loads the right 10x role skill first; the prompt names any mid-task role switches inline.
 
@@ -36,6 +38,9 @@ P2-16 (the trainer onto `src/engine`) stays cut, as the tickets recommend.
 - P1-00 the rated-match design; P1-01 the rated queue and match; P1-02 the luck adjustment; P1-03 nothing to analyse on a rated table; P1-04 rematch and the end panel.
 - P1-08 the population model; P1-09 per-decision grades and the grading consumer; P1-10 accuracy, its distribution and luck versus skill (shown in the lobby until the profile exists).
 - P1-11 Glicko-2; P1-12 the rating update at match end; P1-13 pairing near your rating.
+- P1-14 the ladder (`#ladder`, `#ladder/month`) and the rating metrics query; P1-15 the public profile at `/u/<username>`; most of P1-16 (share card, `#method`, Share button); the public match review at `#match/<id>` (showdown cards only); hands of a live match closed to every client (PRs #27, #29, #31).
+- Phase 2: the casual 6-max rules (ADR amendment) and the PR plan; P2-01 the 6-max engine gate (PR-01, PR-02); P2-02a explicit blind seats and the dead button (PR-04); every frame type checked against its allowlist, with leak tests by seat (PR-07, PR-08) (PRs #32, #34, #35, #36, #39).
+- Outside the multiplayer plan: the landing page, onboarding, share links and school codes (PR #30), and the 3D landing (PR #37).
 
 **Not prompts, yours to do or decide:**
 
@@ -43,7 +48,7 @@ P2-16 (the trainer onto `src/engine`) stays cut, as the tickets recommend.
 - **U-8:** the four dashboard checks in `.10x/tickets.md` §User gates.
 - **Q3** (profile URL), **Q4** (where load tests run), **Q5** (public decision times), **Q7** (`hands_private` retention). Each has a recommendation in `.10x/tickets.md` §Questions; the prompts use it, reversibly, until you answer.
 - The open rematch-link finding on PR #19 (recommendation: leave it).
-- PR #22, Devin's animated landing page, is outside this plan: merge, close or fold it in as you see fit.
+- The landing page's own gates (U-9 Google sign-in, U-10 custom SMTP, U-11 for school codes by email): see `.10x/status.md` §Landing page and onboarding.
 
 ---
 
@@ -52,7 +57,7 @@ P2-16 (the trainer onto `src/engine`) stays cut, as the tickets recommend.
 ```
 OPERATING CONTRACT — read fully before touching anything.
 
-Context. QuantPoker: a quant-poker trainer plus online play-money poker with a chess-style rating. One Cloudflare Worker serves the site and the game server (Durable Objects TableDO and LobbyDO, plus Queue consumers that verify every archived hand and grade rated ones); Supabase holds auth and the hand archive. Rated heads-up is live: 40 fresh-deck hands, a luck-adjusted result, per-decision grades, accuracy, Glicko-2 ratings, rematch and pairing near your rating. Solo builder, AI-assisted, shipping fast but trusted: a rating on a résumé is only worth what its fairness is worth.
+Context. QuantPoker: a quant-poker trainer plus online play-money poker with a chess-style rating. One Cloudflare Worker serves the site and the game server (Durable Objects TableDO and LobbyDO, plus Queue consumers that verify every archived hand and grade rated ones); Supabase holds auth and the hand archive. Rated heads-up is live: 40 fresh-deck hands, a luck-adjusted result, per-decision grades, accuracy, Glicko-2 ratings, rematch, pairing near your rating, the ladder, public profiles and a public match review. No client reads the hands of a match that is still playing. Casual 6-max is being built from the plan in .10x/decisions/engineering-manager/six-max-casual.md. Solo builder, AI-assisted, shipping fast but trusted: a rating on a résumé is only worth what its fairness is worth.
 
 Decided, do not reopen:
 - Q1 = B: fresh decks every hand, all-in pots settled at equity. No deck is ever reused, so there is no "same deck" comparison anywhere.
@@ -188,66 +193,44 @@ DONE WHEN: P1-07's acceptance tests pass under their names; you played one live 
 DO NOT: change the trainer's behaviour, add new sounds, or touch worker code.
 ```
 
-## 4. Review any finished match (P1-05, P1-06)
+## 4. Your own review of a finished match (P1-05, P1-06)
 
 **Header:** `/10x-Team:sde`.
 
 ```
-MISSION. Review is where a rated match turns into learning, and today's only review is the in-match list, gone when the session ends. Build the archive review: any finished match, any time, with "Deck verified", the lab and your grades. The profile (P1-15), reports (P1-17) and lesson links (P1-19) all hang off this page.
+MISSION. PR #29 shipped a public match review at #match/<id>: every hand of a finished match with showdown cards only and the server's "verified" mark. What a player still cannot do is review their own match: their own hole cards, a deck check in their own browser, their grades and the lab. That is where a rated match turns into learning, and reports (P1-17) and lesson links (P1-19) hang off it.
 
-READ: .10x/tickets.md P1-05 and P1-06; src/net/{ReviewLive,useDeckCheck,MatchEnd,AccuracyPanel,supabase}.ts(x) and src/net/imports.test.ts; src/components/review/HandReview.tsx; src/components/lab/Lab.tsx; src/engine/project.ts (toHeroGame); src/App.tsx (parseRoute); supabase/migrations/20261010053000_hand_grades.sql and 20261010060000_hand_grades_pot.sql; scripts/check-bundle.mjs.
+READ: .10x/tickets.md P1-05 and P1-06; src/net/{MatchReview,publicMatch,reviewText,ReviewLive,useDeckCheck,MatchEnd,AccuracyPanel}.ts(x) and src/net/imports.test.ts; src/net/profile/Profile.tsx (its links to #match/<id>); src/components/review/HandReview.tsx; src/components/lab/Lab.tsx; src/engine/project.ts (toHeroGame); src/App.tsx (parseRoute); supabase/migrations/20261010053000_hand_grades.sql, 20261010060000_hand_grades_pot.sql and 20261010100000_hands_after_match.sql; scripts/check-bundle.mjs.
 
 BUILD:
-1. P1-05 as ticketed: #review/<matchId>/<handNo> as a lazy chunk in src/review/ (outside src/net, so the lab can load there), the archive loader, "Deck verified", and review_opened_at with its RPC. Link to it from the end panel (MatchEnd) and the lobby's Rated play panel.
-2. P1-06 under Q1 = B: the lab and the grades in review. There is no "compare with opponent on the same deck" view, because no deck repeats; record that under the ticket. Grades show only to the match's two players after it ends (Q6, already enforced by RLS); anyone else sees the hands without grades and a line saying grades are visible to the two players. Grade names Best, Good, Inaccuracy, Mistake, Blunder; the accuracy label exactly "Accuracy vs. a model opponent, not a solver."
+1. P1-05, built on #match/<id> rather than a second route: when the viewer played the match, the page adds their own hole cards (their hand_holes), "Deck verified" checked in the browser for the board, shown hands and their own cards (the same check as the live review), and review_opened_at with its RPC as ticketed. Everyone else keeps today's public view. Link to it from the end panel (MatchEnd) and the lobby's Rated play panel.
+2. P1-06 under Q1 = B: the lab and the grades for the match's two players. The lab cannot load inside src/net (imports.test.ts forbids analysis modules), so put the player view's lab in a lazy chunk outside it, src/review/, as the ticket planned. There is no "compare with opponent on the same deck" view, because no deck repeats; record that under the ticket. Grades show only to the two players, after the match (Q6, already enforced by RLS); others see a line saying grades are visible to the two players. Grade names Best, Good, Inaccuracy, Mistake, Blunder; the accuracy label exactly "Accuracy vs. a model opponent, not a solver."
 3. Q5 is open: the public hand record carries per-action decision times. Review shows none of them except "ran out of time" on clock moves.
-4. The lab never mounts for a match that is still playing (test it).
+4. The lab never mounts for a match that is still playing (test it). hands_after_match already hides the hands of a playing match from every client; keep it that way.
 
-DONE WHEN: P1-05's acceptance tests pass under their names; for P1-06, the lab test passes and the variant A compare test is replaced by tests that no compare view exists and that a non-player sees no grades; imports.test.ts and check-bundle pass with the entry bundle under 150 kB; gates green; merged and verified. Say what you could exercise locally and what needs the real archive (Prompt 1 covers production).
+DONE WHEN: P1-05's acceptance tests pass under their names (adapted to #match/<id>; log the rename); for P1-06, the lab test passes and the variant A compare test is replaced by tests that no compare view exists and that a non-player sees no grades or hole cards; imports.test.ts and check-bundle pass with the entry bundle under 150 kB; gates green; merged and verified. Say what you could exercise locally and what needs the real archive (Prompt 1 covers production).
 
-DO NOT: put supabase-js or the lab in the entry chunk, show hole cards that were not shown at showdown, or build the profile.
+DO NOT: put supabase-js or the lab in the entry chunk, show hole cards that were not shown at showdown to anyone but their owner, or change the public view for non-players.
 ```
 
-## 5. The ladder (P1-14)
+## 5. ~~The ladder (P1-14)~~: done
 
-**Header:** `/10x-Team:dba`. The ladder is a query problem first; the prompt switches to `/10x-Team:sde` for the page.
+Merged as PR #27 on 2026-10-10: `#ladder` and `#ladder/month`, `supabase/metrics/rating-metrics.sql`, and the simulated season (Spearman 0.975). Nothing to paste.
 
-```
-MISSION. The ladder is the number people climb and recruiters read. Ratings exist (P1-12), but nothing ranks them. Build a ladder that shows only players whose rating means something, pages correctly at scale, and ranks a simulated season by true skill.
+## 6. Count profile views and shares (the rest of P1-16)
 
-READ: .10x/tickets.md P1-14 and its DBA fold-in; .10x/decisions/dba/phase1-schema.md (the ladder sections and D6); supabase/proposed/phase1.sql (ladder, ladder_month); what shipped: supabase/migrations/20261010080000_ratings.sql (ratings with wins, draws and abandoned; the ratings_ladder index; rating_history_month) and 20261010070000_accuracy.sql (public.accuracy; the format is 'hu-duplicate'); supabase/bench/plans.ts; src/rating/rules.ts (the provisional rule); src/net/{LiveApp,Lobby,AccuracyPanel}.tsx.
-
-BUILD:
-1. The migration, from the proposed SQL adjusted to what shipped: abandonment_rate, ladder() reading the counters (no per-candidate aggregates), ladder_month() for "this month" (R-16), keyset pagination. Eligibility exactly as ticketed: not provisional, at least 1 rated match in 30 days, abandonment under 10% (exactly 10% excludes). Rows in rls-matrix.test.ts.
-2. EXPLAIN at 10k, 100k and 1M generated rows with supabase/bench/plans.ts; record the plans and timings in your log and flag any that may differ on hosted Postgres 17.
-3. The season test: 200 players and 5,000 matches rank by true skill with Spearman > 0.8.
-4. Invoke /10x-Team:sde for the page: #ladder inside the Online area, linked from the lobby, with no new top-nav item; rank, player, rating ± RD, accuracy, matches, win rate and trend; all-time and this month; "X matches to go" for a provisional viewer. Names stay plain text until the profile (Prompt 6) links them.
-
-DONE WHEN: P1-14's acceptance tests pass under their names; plans recorded at three sizes; gates green; merged and verified.
-
-DO NOT: add a Quant Score ladder, merge formats, hide RD, or build the profile.
-```
-
-## 6. Public profile, share card and Method page (P1-15, P1-16)
-
-**Header:** `/10x-Team:sde`.
+**Header:** `/10x-Team:sde`. Small; it can run beside Prompt 2 or 3.
 
 ```
-MISSION. A profile link is what a player shares and what a recruiter opens. Build it, make it preview well on LinkedIn, explain every number on a public Method page, and count views from outside the app so the PM metric is real.
+MISSION. PR #29 shipped the public profile, the share card, the Method page and the Share button, but nothing counts how often a profile is opened from outside the app or shared. Two PM success metrics ("profile views from outside" and "players who share") read those counts, so they stay "needs instrumentation" until this lands.
 
-PRE-CHECK: the archive review (Prompt 4) and the ladder (Prompt 5) are merged. If not, stop and say which is missing.
+READ: .10x/tickets.md P1-16 (its Status line says what is missing) and §Success metrics; worker/src/index.ts (the /u/<username> handler) and worker/test/profile.test.ts; src/net/profile/{Profile,profile}.ts(x) (the Share button); wrangler.jsonc (run_worker_first already covers /u/*); .10x/decisions/dba/phase1-schema.md and supabase/proposed/phase1.sql (profile_views, if sketched there).
 
-READ: .10x/tickets.md P1-15 and P1-16, and Q3 in §Questions; wrangler.jsonc (run_worker_first, assets); worker/src/index.ts; src/App.tsx; src/net/{players,AccuracyPanel,Ladder}.ts(x); src/review/; src/rating/{glicko2,rules}.ts; src/engine/luck.ts; the ADR's 2026-10-10 amendment (draw band, forfeit and no-show rules); src/info/InfoPages.tsx.
+BUILD (failing test first): the remaining P1-16 pieces as ticketed. A profile_views(user_id, day, views, shares) migration with service-role RPCs and the owner reading only their own counts; the Worker counts a GET of /u/<username> as an external view only without a same-origin Referer and with no bot user agent; the Share button posts /api/profile/share under the existing rate limits; rows in rls-matrix.test.ts; and a query for both metrics next to supabase/metrics/rating-metrics.sql.
 
-BUILD:
-1. Q3 is unanswered: use its recommendation, /u/<username> on the workers.dev host (the path survives a later domain), and record it.
-2. P1-15 as ticketed: /u/<username> served by the Worker with escaped OG tags; #u/<username> in the app; rating ± RD over time from rating_history; the provisional badge; the accuracy panel (it moves here from the lobby, which keeps a link); volume; abandonment rate; the last 20 matches linking to the archive review; an empty sanctions field (P1-18 fills it); country and bio with an Edit profile form. Opponent cards only where shown at showdown. Ladder names now link to profiles.
-3. P1-16 as ticketed: the share card (a static image with a dynamic title and description is the cut line), the Share button, external-view and share counting, and #method. The Method page states what the code does today: glicko2.v1 and τ; one rated match is one rating period; the provisional rule; fresh decks with all-in pots settled at equity; the ±2 bb draw band, inclusive; forfeit = loss; no-show = void and not rated; ladder eligibility; the accuracy label and model version; and what is not measured.
-4. Q5 is open: no per-action decision times on the profile.
+DONE WHEN: P1-16's remaining acceptance tests (the external-view, upsert and owner-read tests) pass under their names; gates green; merged and verified, including one curl of a production /u/<name> that is counted and one with a same-origin Referer that is not.
 
-DONE WHEN: P1-15's and P1-16's acceptance tests pass under their names; in wrangler dev, curl /u/<name> shows the right OG tags and a hostile username or bio injects no markup; gates green; merged and verified, including a curl of a production /u/<name> (an unknown name returns 404).
-
-DO NOT: add avatar uploads, show grades or hole cards beyond the rules, or count same-origin or bot views.
+DO NOT: store IP addresses or user agents, show anyone else's counts, or count the app's own navigation.
 ```
 
 ## 7. Reports, sanctions and appeals (P1-17, P1-18)
@@ -257,12 +240,12 @@ DO NOT: add avatar uploads, show grades or hole cards beyond the rules, or count
 ```
 MISSION. Integrity v1: a cheap, abuse-proof way to report a match, and a logged, manual way to act on a report, with one appeal. Nothing automatic. These make the ladder defensible before any detector exists.
 
-PRE-CHECK: the archive review (Prompt 4), the ladder (Prompt 5) and the profile (Prompt 6) are merged. If not, stop and say which is missing.
+PRE-CHECK: the player review (Prompt 4) is merged; the ladder and the profile already are (PRs #27, #29). If not, stop and say what is missing.
 
-READ: .10x/tickets.md P1-17 and P1-18 and their DBA fold-ins; supabase/proposed/phase1.sql (reports, policy reports_file, the per-reporter daily cap with its advisory lock, sanctions, appeal_sanction with invoker rights); supabase/migrations/20261010080000_ratings.sql (rating_history kind 'reset' is reserved for sanctions; the append-only trigger); the integrity-and-trust PM file (v1 column, Sanctions v1); src/info/InfoPages.tsx and src/info/contact.ts.
+READ: .10x/tickets.md P1-17 and P1-18 and their DBA fold-ins; supabase/migrations/20261010090000_ladder.sql (ladder v1, which P1-18 redefines); src/net/profile/Profile.tsx (its sanctions line reads "None" today); supabase/proposed/phase1.sql (reports, policy reports_file, the per-reporter daily cap with its advisory lock, sanctions, appeal_sanction with invoker rights); supabase/migrations/20261010080000_ratings.sql (rating_history kind 'reset' is reserved for sanctions; the append-only trigger); the integrity-and-trust PM file (v1 column, Sanctions v1); src/info/InfoPages.tsx and src/info/contact.ts.
 
 BUILD:
-1. P1-17 as ticketed: the reports table and policy; a Report button in the archive review of a finished rated match, for its two players only; the triage script and the resolve script (the key comes from the environment and is never printed; resolve needs --confirm).
+1. P1-17 as ticketed: the reports table and policy; a Report button in the player review of a finished rated match (Prompt 4), for its two players only; the triage script and the resolve script (the key comes from the environment and is never printed; resolve needs --confirm).
 2. P1-18 as ticketed: sanctions; apply_sanction for the service role, where a rating reset appends a rating_history row of kind 'reset' and never updates history; appeal_sanction, own row, once; ladder() v2 from the merged v1, excluding active removals; "Sanctioned · <kind> · <date>" on the profile and the one-time appeal field.
 3. Fair Play: replace the interim "how to report" wording with the Report button, and describe sanctions exactly as built.
 4. Rows for both tables in rls-matrix.test.ts.
@@ -281,13 +264,13 @@ DO NOT: auto-sanction anyone, publish report contents or reporter identities, or
 ```
 MISSION. The loop that brings people back: every graded mistake points at the lesson that fixes it, every lesson ends with "Play a rated match", and the end of a match leads with the three hands most worth reviewing.
 
-PRE-CHECK: the archive review with grades (Prompt 4) is merged. If not, stop.
+PRE-CHECK: the player review with grades (Prompt 4) is merged. If not, stop.
 
-READ: .10x/tickets.md P1-19 and P1-20; src/lib/{grading,grader,gradeHand,storage}.ts (grade classes, decision types, LESSON_IDS); src/curriculum/core/routes.ts and src/curriculum/Curriculum.tsx; src/components/learn/LearnView.tsx; src/review/; src/net/MatchEnd.tsx; supabase/migrations/20261010053000_hand_grades.sql and 20261010060000_hand_grades_pot.sql; the multiplayer-platform PM file (the review→lesson loop).
+READ: .10x/tickets.md P1-19 and P1-20; src/lib/{grading,grader,gradeHand,storage}.ts (grade classes, decision types, LESSON_IDS); src/curriculum/core/routes.ts and src/curriculum/Curriculum.tsx; src/components/learn/LearnView.tsx; the player review from Prompt 4 (src/net/MatchReview.tsx and src/review/); src/net/MatchEnd.tsx; supabase/migrations/20261010053000_hand_grades.sql and 20261010060000_hand_grades_pot.sql; the multiplayer-platform PM file (the review→lesson loop).
 
 BUILD:
 1. (Invoke /10x-Team:product-manager for this item.) src/learn/lessonMap.ts as ticketed: every decision type × grade class maps to a lesson or to an explicit "none yet", plus a gap list of what Learn does not teach yet. Choose from what Learn already has; invent no lessons.
-2. P1-19 as ticketed: a lesson link on each graded mistake in the archive review; a pre-loaded situation only where a lab already accepts a spot by URL (otherwise the cut line: links only); "Play a rated match" at the end of every unit, linking to the lobby.
+2. P1-19 as ticketed: a lesson link on each graded mistake in the player review; a pre-loaded situation only where a lab already accepts a spot by URL (otherwise the cut line: links only); "Play a rated match" at the end of every unit, linking to the lobby.
 3. P1-20 as ticketed: match_swings, the three largest EV losses per player for finished matches, readable only by the match's two players (the same rule as grades, Q6); shown on the end panel ("Grading…" while grades land) and at the top of the review, each with its lesson link.
 
 DONE WHEN: P1-19's and P1-20's acceptance tests pass under their names; the time from a match's last hand to its grades is measured and recorded (the end panel polls for 60 s; if grading takes longer, say so and propose the fix); gates green; merged and verified.
@@ -307,7 +290,7 @@ PRE-CHECK: every other Phase 1 ticket has a done Status line in tickets.md, and 
 READ: .10x/tickets.md P1-21, P1-22 and §Success metrics; the success metrics in all five PM files; scripts/smoke-ws.mjs and scripts/smoke/; src/info/InfoPages.tsx; README.md; the latest launch verification review.
 
 BUILD:
-1. (Invoke /10x-Team:dba for this item.) P1-21 as ticketed: supabase/metrics/*.sql, one read-only query per metric, each returning "insufficient data" honestly when it is; a README table; supabase/tests/metrics.test.ts on an empty database and on the simulated season from P1-14. Queue wait and ack latency read S7-05's columns.
+1. (Invoke /10x-Team:dba for this item.) P1-21 as ticketed, extending what exists (supabase/metrics/rating-metrics.sql from P1-14, and the profile-view query from Prompt 6): supabase/metrics/*.sql, one read-only query per metric, each returning "insufficient data" honestly when it is; a README table; supabase/tests/metrics.test.ts on an empty database and on the simulated season from P1-14. Queue wait and ack latency read S7-05's columns.
 2. P1-22 as ticketed: smoke --rated, a 40-hand rated match on wrangler dev with a DO restart in the middle, ending with the right result, archived rows, verified hands, grades and exactly one rating update; a 500-hand smoke with 0 commitment failures; the Fair Play page describes exactly what now exists (fresh decks with the luck adjustment, reports, sanctions, the Method link, and what is still not detected); README.
 3. Then ask me for the go-ahead. With it, I play one production rated match between my two accounts and you check it read-only end to end, as in Prompt 1.
 
@@ -320,44 +303,46 @@ DO NOT: seed fake data into production, run load against production, or claim on
 
 # PHASE 2: 6-max (`six-max-tables` casual, then rated arenas)
 
-## 10. 6-max engine gate, positions and pairwise results (P2-01, P2-02, P2-12)
+Every Phase 2 prompt follows `.10x/decisions/engineering-manager/six-max-casual.md` (the PR plan, PR-01…PR-26) and the ADR's "Amendment 2026-10-10: Phase 2 casual 6-max" (the rules). Where they differ from the P2 tickets, they win. Done: PR-01, PR-02 (P2-01), PR-03 (the amendment), PR-04 (P2-02a), PR-07, PR-08 (frame allowlists).
 
-**Header:** `/10x-Team:qa-engineer`. QA owns the hard correctness gate; the prompt switches to `/10x-Team:sde` once it is green. Pure code, so it can run any time, beside Phase 1 work.
+## 10. Finish the 6-max engine, and pairwise results (P2-02b, P2-02c, P2-12)
 
-```
-MISSION. 6-max is only as good as its chip math. Before any 6-max table exists, prove the engine at six seats, settle the dead-button rule, and build the pure luck-adjusted pairwise results the 6-max rating will need.
-
-READ: .10x/tickets.md P2-01, P2-02 and P2-12; the six-max-tables PM file; src/engine/{engine.test,testing,pots,positions,types,hand}.ts; src/engine/luck.ts and its test (heads-up only today); src/rating/glicko2.ts; the ADR §Engine N-player generalisation.
-
-HARD GATE FIRST (P2-01): 0 failures over at least 100k random 6-max hands against the reference for chip conservation, side-pot sums, legal action sets, award order and the odd chip, plus the ticket's crafted cases. Count the side-pot share of hands already asserted before adding cases. If anything fails, stop and fix the engine. When the gate is green, invoke /10x-Team:sde for:
-
-1. P2-02 as ticketed: the standard dead-button rule, written into the ADR as an amendment; stacks that carry over; rebuy to 100 bb between hands; a joiner dealt in next hand without posting (R-20).
-2. P2-12 as ticketed: extend src/engine/luck.ts to multiway all-ins (bench a 3-way preflop all-in first; if exact enumeration is too slow, use a fixed Monte Carlo budget and say so), and src/rating/pairwise.ts. Heads-up results must not change: the existing luck tests stay green, bit for bit.
-
-DONE WHEN: the three tickets' acceptance tests pass under their names; the soak log (seed, hands, failures) is in your log; gates green; merged and verified.
-
-DO NOT: touch the table service, the UI, or the ratings tables.
-```
-
-## 11. Casual 6-max table service (P2-03, P2-04, P2-07)
-
-**Header:** `/10x-Team:sde`.
+**Header:** `/10x-Team:sde`. Pure code, so it can run any time, beside Phase 1 work.
 
 ```
-MISSION. A casual 6-max table that never ends: players sit, stand and rebuy, the clock and sit-out rules keep it moving, and labelled Atlas bots keep quiet tables playable. Server only; the six-seat UI is the next prompt.
+MISSION. The engine already plays 2 to 6 seats with the dead button and explicit blind seats (P2-01, P2-02a). Two pure pieces are missing before a table service can use it: how the blinds move between hands as players come and go, and the carry-over and rebuy rule. Add the pure luck-adjusted pairwise results the 6-max rating and stats will need.
 
-PRE-CHECK: Prompt 10 is merged and the ladder is launched (P1-22). If not, stop and say which.
+READ: the PR plan's PR-05 and PR-06; the ADR amendment's rows on blinds and button, joining, standing up, and stacks and rebuy; .10x/tickets.md P2-02 and P2-12; .10x/decisions/sde/six-max-tables.md (P2-01, P2-02a); src/engine/{positions,positions.test,types,hand,testing}.ts; src/engine/luck.ts and its test (heads-up only today); src/rating/glicko2.ts.
 
-READ: .10x/tickets.md P2-03, P2-04 and P2-07; the six-max-tables PM file; worker/src/{table,controller,deadlines,lobby,rated}.ts; src/shared/protocol.ts; src/engine/redact.ts and its test; worker/test/rated-leak.test.ts; the latest record_match and the matches kind check in supabase/migrations.
+BUILD (each red first, as the plan names it):
+1. PR-05, P2-02b: nextBlinds as the amendment defines it (the big blind moves to the next seat with a player dealt in; the small blind goes to the seat that had the big blind, dead if empty; joiners dealt in without posting). The plan's test names, including the 10k random join and leave sequences, with the amendment's interpretation written into them.
+2. PR-06, P2-02c: the carry-over and rebuy rule as pure functions (top up to exactly 100 bb, only below 100 bb, only between hands, never an amount from the client).
+3. P2-12 as ticketed: extend src/engine/luck.ts to multiway all-ins (bench a 3-way preflop all-in first; if exact enumeration is too slow, use a fixed Monte Carlo budget and say so), and src/rating/pairwise.ts. Heads-up results must not change: the existing luck tests stay green, bit for bit.
 
-BUILD as ticketed, in order:
-1. P2-03: MatchKind six-casual. In the first hour, decide how a session that never finishes maps onto matches and record_match (the ticket suggests one matches row per table session, closed by the idle deadline) and write it into the ADR. Every new message gets an allowlist and redaction test, including the over-the-wire test that no seat sees another's hole cards at N=6.
-2. P2-04: the per-orbit bank, sit-out, removal and the 60 s reconnect. Pin the definition of an orbit in a test first.
-3. P2-07: labelled bots on casual tables only, filling to 3 occupied seats and leaving as humans sit; never at rated or arena tables. Bench the bot first: it must decide in under 20 ms of CPU inside the Durable Object, so it cannot call analyzeSpot.
+DONE WHEN: the tests named for PR-05, PR-06 and P2-12 pass; gates green; each PR merged and verified.
 
-DONE WHEN: the three tickets' acceptance tests pass under their names; six scripted clients play 200 hands in wrangler dev with chips conserved; heads-up casual and rated behaviour unchanged, with their tests green; gates green; merged and verified.
+DO NOT: touch worker/src/table.ts, the UI, or the ratings tables.
+```
 
-DO NOT: build the six-seat UI, rate anything, or let a bot near a rated table.
+## 11. Casual 6-max table service (P2-03, P2-04)
+
+**Header:** `/10x-Team:sde`. The lane-W work in `worker/src/table.ts`, one PR at a time, in the plan's order.
+
+```
+MISSION. A casual 6-max table that never ends: players sit, stand and rebuy, the clock and sit-out rules keep it moving, sessions archive cleanly, and no seat ever sees another's cards, including through a seat reused after a hand. Server only; the six-seat UI is Prompt 12.
+
+PRE-CHECK: Prompt 10 is merged. If not, stop. You gave the go-ahead for casual 6-max on 2026-10-10, so this does not wait for the ladder launch.
+
+READ: the PR plan's §(1) for worker/src and supabase, PR-09 to PR-17, §(3) contradictions and §(4) security points (seat reuse is the main new leak path); the ADR amendment in full, including its failure matrix; .10x/tickets.md P2-03 and P2-04; worker/src/{table,controller,deadlines,lobby,rated}.ts; src/shared/protocol.ts; worker/test/frames.ts, leaks.test.ts and rated-leak.test.ts; the latest record_match and record_hand migrations.
+
+BUILD, in the plan's order, one PR each, red first:
+- PR-09 (P2-03a) six-casual kind and archive schema; PR-10 (P2-03b) CashController; PR-11 (P2-03c) sit, play and carry-over; PR-12 (P2-03d) stand up and seat reuse; PR-13 (P2-03e) the session lifecycle; PR-14 (P2-03f) rebuy, the cut line.
+- PR-15 (P2-04a) the orbit bank; PR-16 (P2-04b) sit-out and removal; PR-17 (P2-04c) the 60 s reconnect.
+Every new frame or field gets its allowlist and redaction test through worker/test/frames.ts, and the leak tests loop over every (viewer, other) pair by seat. A frame about a hand is built from that hand's seat-to-user map, never from the socket's stored seat.
+
+DONE WHEN: every PR's named tests pass; six scripted clients play 200 hands in wrangler dev with joins, stands, a seat reused by a new player, rebuys and a reconnect, chips conserved and no leak; heads-up casual and rated behaviour unchanged, with their tests green; gates green; each PR merged and verified.
+
+DO NOT: build the six-seat UI, add bots, grade or rate casual hands (R-23; apply_rating must refuse six-casual), or weaken a heads-up assertion.
 ```
 
 ## 12. Six-seat table UI, side pots and table list (P2-05, P2-06, P2-08)
@@ -367,41 +352,43 @@ DO NOT: build the six-seat UI, rate anything, or let a bot near a rated table.
 ```
 MISSION. The user's bar is "highest quality, especially 6-max". Give six seats the trainer's card art, chips and choreography, readable on a phone and playable by keyboard, with side pots that visibly pay out in order, and a lobby list that finds a table in one click.
 
-PRE-CHECK: Prompt 11 is merged. If not, stop.
+PRE-CHECK: PR-11 (sit and play) is merged; PR-19 also needs it. The ring-layout spike (PR-18) can start any time after PR-09.
 
-READ: .10x/tickets.md P2-05, P2-06 and P2-08; the six-max-tables PM file; src/components/table/*; src/motion.ts; src/net/{LiveTable,Lobby}.tsx; src/engine/project.ts (toHeroGame, retired from the live path here); e2e/{live,mobile,motion}.spec.ts.
+READ: the PR plan's §(1) UI section and PR-18 to PR-25; the ADR amendment's rows on the table UI and on the table list and quick-sit; .10x/tickets.md P2-05, P2-06 and P2-08; the six-max-tables PM file; src/components/table/*; src/motion.ts; src/net/{LiveTable,Lobby}.tsx; e2e/{live,mobile,motion}.spec.ts.
 
-BUILD as ticketed:
-1. P2-05: spike six seat plates at 320 px (half a day) before choosing between generalising Table.tsx and forking it, and record the choice. A generic seat plate for humans (Atlas's face is for Atlas only; bots read "Atlas (bot)"); keyboard parity with P1-07.
-2. P2-06: side pots as separate stacks, paid in award order, and the 3-way all-in frame gate. Run the existing frame-time test at six seats first.
-3. P2-08: the table list and Quick sit, with the lobby registry updated at most once per 30 s per table.
+BUILD, in the plan's order, red first:
+- PR-18 (P2-05a) the ring layout and SeatPlate in the lazy online chunk; Table.tsx stays as it is, so the entry bundle is untouched. Spike six plates at 320 px first and record what you chose.
+- PR-19 (P2-05b) six-casual in LiveTable, with keyboard parity (P1-07, Prompt 3) and phone fit. PR-20 (moving heads-up onto the ring) is optional; skip it unless it is free.
+- PR-21 (P2-06a) side-pot stacks without animation, the cut line; PR-22 (P2-06b) per-seat chip motion and the 3-way all-in frame gate. Run the existing frame-time test at six seats first.
+- PR-23 to PR-25 (P2-08) the table registry (counts only, at most every 30 s), quick-sit (fullest table with a free seat; on table_full or sit_cooldown try the next) and TableList.
 
 QUALITY GATES: no long frames through a 3-way all-in runout; no serious axe violations in light and dark; no horizontal scroll at 320 px; heads-up tables look and behave as before, with their e2e green.
 
-DONE WHEN: the three tickets' acceptance tests pass under their names; you played at a six-seat table in two real browsers against wrangler dev, including a side pot, and say what you saw; gates green; merged and verified.
+DONE WHEN: every PR's named tests pass; you played at a six-seat table in two real browsers against wrangler dev, including a side pot, and say what you saw; gates green; each PR merged and verified.
 
-DO NOT: change the heads-up table's look, or ship rated 6-max.
+DO NOT: change the heads-up table's look or the entry bundle, or ship rated 6-max.
 ```
 
-## 13. 6-max review, stats and six-client acceptance (P2-09, P2-10, P2-11)
+## 13. 6-max review, stats, bots and six-client acceptance (P2-07, P2-09, P2-10, P2-11)
 
 **Header:** `/10x-Team:sde`. The prompt switches to `/10x-Team:qa-engineer` for the acceptance run, whose job is to break the tables.
 
 ```
-MISSION. Every 6-max hand reviewable and, where the pot was heads-up at the decision, graded; 6-max stats on the profile; then the evidence that six-player tables are correct and fast enough to open to the public.
+MISSION. Close casual 6-max: every hand reviewable, 6-max stats on the profile, bots so a quiet table is still playable, and the evidence that six-player tables are correct and fast enough to open to the public.
 
-PRE-CHECK: Prompt 12 is merged. If not, stop.
+PRE-CHECK: Prompts 11 and 12 are merged, and S7-05's ack telemetry (Prompt 2) is live, because the acceptance run's p95 reads it. If not, stop and say which.
 
-READ: .10x/tickets.md P2-09, P2-10 and P2-11; src/engine/project.ts; worker/src/grade.ts; src/review/; supabase/migrations (hand_grades, reports); src/engine/luck.ts and src/rating/pairwise.ts from Prompt 10; src/net/profile/; scripts/smoke-ws.mjs.
+READ: .10x/tickets.md P2-07, P2-09, P2-10 and P2-11; the PR plan's PR-26 and §(3) (its point 13: casual hands are not graded); the ADR amendment's row on grading and rating; src/engine/project.ts; src/net/MatchReview.tsx and the player review from Prompt 4; src/engine/luck.ts and src/rating/pairwise.ts from Prompt 10; src/net/profile/; scripts/smoke-ws.mjs.
 
 BUILD:
-1. P2-09 as ticketed: project an N-seat state with exactly two live players to a 2-player Game, folded chips as dead money (hand-compute one case first); grade those decisions and store multiway ones as "not graded" with a count; payout reports for casual 6-max. Q6 still holds: no grade during a live hand, and grades readable only by the hand's players afterwards. Decide whether "afterwards" means the hand or the session, and write it down.
-2. P2-10 as ticketed: hand_stats written at grade time; VPIP, PFR, aggression and luck-adjusted bb/100 on the profile.
-3. Invoke /10x-Team:qa-engineer for P2-11: six clients (scripted Node plus at least two real browsers) play 200 hands with joins, leaves, timeouts and a reconnect: chips conserved, no console errors, ack-to-render p95 under 150 ms from S7-05's telemetry, Safari background tabs documented.
+1. P2-09, without grading: the amendment and R-23 say casual hands are verified and not graded, which replaces the ticket's heads-up-at-decision grading. Every 6-max hand opens in review with the lab for the seat the viewer played (hand-compute one dead-money projection case first); casual 6-max players can report a wrong payout (reason payout).
+2. P2-10 as ticketed: hand_stats written by the hands consumer after verification; VPIP, PFR, aggression and luck-adjusted bb/100 (multiway luck from Prompt 10) on the profile.
+3. P2-07: bots are not in the amendment. First append a short amendment section: when bots sit (fill to 3 occupied seats, R-21), how they leave as humans sit, their label "Atlas (bot)", that they never sit at rated or arena tables, and how the human-seat metric reads them. Then build as ticketed, with the bot benched under 20 ms of CPU per decision inside the Durable Object.
+4. Invoke /10x-Team:qa-engineer for PR-26 (P2-11): six clients (scripted Node plus at least two real browsers) play 200 hands with joins, leaves, timeouts and a reconnect; chips conserved, 0 leaks, no console errors, ack-to-render p95 under 150 ms; Safari background tabs documented.
 
-DONE WHEN: the three tickets' acceptance tests pass under their names; the P2-11 run evidence (hands, failures, leaks, p95) is in the QA log; gates green; merged and verified.
+DONE WHEN: the four tickets' acceptance tests pass (P2-09's grading tests replaced by "casual 6-max hands are not graded", logged); the PR-26 evidence is in the QA log; gates green; each PR merged and verified.
 
-DO NOT: rate 6-max, or grade multiway decisions.
+DO NOT: grade or rate casual hands, or let a bot near a rated or arena table.
 ```
 
 ## 14. Arenas and the 6-max rating (P2-13, P2-14, P2-15)
@@ -411,9 +398,9 @@ DO NOT: rate 6-max, or grade multiway decisions.
 ```
 MISSION. Give 6-max a rating people can believe: scheduled humans-only arenas, pairwise luck-adjusted results into a separate Glicko-2 rating, provisional until the data supports it.
 
-PRE-CHECK (stop if it fails): Prompt 13 is merged, and production shows 0 invariant failures over the first 1,000 human casual 6-max hands (hands.verified and incidents, read-only). Report the counts.
+PRE-CHECK (stop if it fails): Prompt 13 is merged, and production shows 0 invariant failures over the first 1,000 human casual 6-max hands (hands.verified and incidents, read-only). Report the counts. This check already stopped once, on 2026-10-10, with 0 of 1,000 hands: see .10x/decisions/architect/six-max-arena.md. It cannot pass before casual 6-max is live and U-4 is done.
 
-READ: .10x/tickets.md P2-13, P2-14 and P2-15; the six-max-tables PM file §Format (Arena) and §Gates; the rating-and-leaderboard PM file §6-max; src/rating/{glicko2,pairwise}.ts; worker/src/{rating,lobby,table}.ts; supabase/migrations/20261010080000_ratings.sql (the format '6max' is already allowed); the ladder and profile code.
+READ: .10x/decisions/architect/six-max-arena.md; .10x/tickets.md P2-13, P2-14 and P2-15; the six-max-tables PM file §Format (Arena) and §Gates; the rating-and-leaderboard PM file §6-max; the casual 6-max ADR amendment (table ids versus session ids); src/rating/{glicko2,pairwise}.ts; worker/src/{rating,lobby,table}.ts; supabase/migrations/20261010080000_ratings.sql (the format '6max' is already allowed); the ladder and profile code.
 
 DESIGN NOTE (at most half a page, appended to the ADR): ArenaDO's ownership of seating, the rating-band rules, the rebalancing algorithm, what happens to a hand in progress during a rebalance, and the failure matrix. Spike the claim and release handover between TableDOs (half a day) before committing to it. Then invoke /10x-Team:sde for BUILD.
 
@@ -463,7 +450,7 @@ DO NOT: auto-sanction, publish raw suspicion scores, or ship anything whose fals
 ```
 MISSION. Bring back the AI coach on the new stack without weakening fairness or exposing keys. It explains finished hands; it must be impossible to use as real-time assistance.
 
-READ: git show archive/context-aware-coach for server/coach.ts, src/lib/coach.ts, coach-stream.ts and their tests; .10x/status.md §Repository; worker/src/index.ts; hand_grades and the archive review (src/review/); the security reviews.
+READ: git show archive/context-aware-coach for server/coach.ts, src/lib/coach.ts, coach-stream.ts and their tests; .10x/status.md §Repository; worker/src/index.ts; hand_grades and the player review (src/net/MatchReview.tsx, src/review/); the security reviews.
 
 BUILD: a Worker route with streaming; per-account usage limits in Postgres (an additive migration with its RLS test); the model key as a Worker secret, never sent to the client; grounded only in finished-hand data the requester may see (their own hole cards, shown cards, and grades under Q6); refused server-side whenever the requester has a live rated hand, including races where a hand starts mid-request (test them); a lazy chunk that keeps the entry bundle under budget; the ported tests. Then invoke /10x-Team:security-engineer for abuse tests: rate limits; prompt injection through opponent usernames, bios, report notes or hand text cannot widen data access or tool use; output never echoes secrets.
 

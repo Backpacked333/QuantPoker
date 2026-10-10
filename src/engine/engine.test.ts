@@ -146,17 +146,17 @@ describe('engine invariants over random hands', () => {
           } catch (error) {
             throw atHand(error, n, h)
           }
-        // Any failing hand has thrown by now. The soak log records how much
-        // of the walk reached showdown and side pots (the P2-01 gate).
+        // The walk must actually exercise showdowns and side pots.
+        expect(showdowns).toBeGreaterThan(HANDS_PER_N / 20)
+        if (n > 2) expect(sidePots).toBeGreaterThan(HANDS_PER_N / 100)
+        // Printed only once every hand and both coverage checks have passed,
+        // so the line is the soak's record of the P2-01 gate.
         if (SOAK)
           console.log(
             `${n} players: ${HANDS_PER_N.toLocaleString()} hands passed, ` +
               `showdown ${((100 * showdowns) / HANDS_PER_N).toFixed(1)}%, ` +
               `side pot ${((100 * sidePots) / HANDS_PER_N).toFixed(1)}%`,
           )
-        // The walk must actually exercise showdowns and side pots.
-        expect(showdowns).toBeGreaterThan(HANDS_PER_N / 20)
-        if (n > 2) expect(sidePots).toBeGreaterThan(HANDS_PER_N / 100)
       },
       WALK_TIMEOUT,
     )
@@ -714,6 +714,7 @@ describe('crafted cases', () => {
       4: -60,
       5: 0,
     })
+    assertInvariants(state, 10013)
     // Folded round to the big blind: facing only a short all-in it has
     // nothing to decide (a raise could never be called), so the board runs
     // out at once and its 7 above the short stack comes back.
@@ -724,6 +725,7 @@ describe('crafted cases', () => {
     expect(alone.board).toHaveLength(5)
     expect(alone.players.map((p) => p.invested)).toEqual([0, 10, 13, 13, 0, 0])
     expect(alone.pots).toEqual([{ amount: 36, eligible: [2, 3] }])
+    expect(alone.pots).toEqual(referencePots(alone.players))
     expect(alone.result!.netBySeat).toEqual({
       0: 0,
       1: -10,
@@ -732,5 +734,70 @@ describe('crafted cases', () => {
       4: 0,
       5: 0,
     })
+    assertInvariants(alone, 10013)
+  })
+  it('calling all in for less than the bet does not reopen the betting', () => {
+    // Button 0 with 35 chips, blinds in seats 1 and 2. UTG 3 calls 20, seat 4 calls
+    // all in for 13 and the button raises all in to 35: 15 more, short of a
+    // full raise. Neither all-in reopens the betting, so UTG, who has acted,
+    // may only call or fold; the big blind has not acted yet and may raise.
+    const cfg = config([35, 2000, 2000, 2000, 13, 2000], 0)
+    const deck = deckWith(
+      cfg,
+      { 0: 'Ks Kh', 2: 'Jd 4c', 3: '8c 5d', 4: 'As Ah' },
+      '2c 7d 9h Tc 3s',
+    )
+    let state = startHand(cfg, deck)
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 4, { type: 'call' })
+    expect(seatOf(state, 4).allIn).toBe(true)
+    state = act(state, 5, { type: 'fold' })
+    expect(legalActions(state)).toMatchObject({
+      seat: 0,
+      toCall: 20,
+      canRaise: true,
+      minRaiseTo: 35,
+      maxRaiseTo: 35,
+    })
+    state = act(state, 0, { type: 'raise', to: 35 })
+    expect(seatOf(state, 0).allIn).toBe(true)
+    state = act(state, 1, { type: 'fold' })
+    expect(legalActions(state)).toMatchObject({
+      seat: 2,
+      toCall: 15,
+      canRaise: true,
+      minRaiseTo: 55,
+    })
+    state = act(state, 2, { type: 'call' })
+    expect(legalActions(state)).toMatchObject({
+      seat: 3,
+      toCall: 15,
+      canRaise: false,
+    })
+    expect(() => act(state, 3, { type: 'raise', to: 55 })).toThrow(EngineError)
+    state = act(state, 3, { type: 'call' })
+    expect(state.street).toBe('flop')
+    // 13 from four seats plus the folded small blind's 10; 22 from three.
+    expect(state.pots).toEqual([
+      { amount: 62, eligible: [0, 2, 3, 4] },
+      { amount: 66, eligible: [0, 2, 3] },
+    ])
+    while (!isOver(state)) state = act(state, state.toAct!, { type: 'check' })
+    expect(state.pots).toEqual(referencePots(state.players))
+    // The aces win the main pot; the kings take the side pot.
+    expect(state.result!.awards.map((a) => [a.pot, a.seat, a.amount])).toEqual([
+      [1, 0, 66],
+      [0, 4, 62],
+    ])
+    expect(stacks(state)).toEqual([66, 1990, 1965, 1965, 62, 2000])
+    expect(state.result!.netBySeat).toEqual({
+      0: 31,
+      1: -10,
+      2: -35,
+      3: -35,
+      4: 49,
+      5: 0,
+    })
+    assertInvariants(state, 8048)
   })
 })

@@ -146,6 +146,14 @@ describe('engine invariants over random hands', () => {
           } catch (error) {
             throw atHand(error, n, h)
           }
+        // Any failing hand has thrown by now. The soak log records how much
+        // of the walk reached showdown and side pots (the P2-01 gate).
+        if (SOAK)
+          console.log(
+            `${n} players: ${HANDS_PER_N.toLocaleString()} hands passed, ` +
+              `showdown ${((100 * showdowns) / HANDS_PER_N).toFixed(1)}%, ` +
+              `side pot ${((100 * sidePots) / HANDS_PER_N).toFixed(1)}%`,
+          )
         // The walk must actually exercise showdowns and side pots.
         expect(showdowns).toBeGreaterThan(HANDS_PER_N / 20)
         if (n > 2) expect(sidePots).toBeGreaterThan(HANDS_PER_N / 100)
@@ -490,5 +498,239 @@ describe('crafted cases', () => {
     expect(buildPots(players)).toEqual(referencePots(players))
     expect(buildPots(players).map((p) => p.amount)).toEqual([250, 280, 440])
     expect(potTotal({ players } as unknown as HandState)).toBe(970)
+  })
+  it('6-max: all-ins on three streets with odd-chip splits award in order', () => {
+    // Button 3, blinds 4 and 5, UTG 0. Seat 0 is all in pre-flop, seat 3 on
+    // the flop and seat 5 on the turn; seats 1 and 4 check the river. The
+    // four jacks all make the same Broadway straight and seat 5's nines lose,
+    // so every pot splits among the jacks eligible for it. The button sits
+    // mid-table so that clockwise order differs from seat order.
+    const cfg = config([103, 2000, 2000, 303, 2000, 704], 3)
+    const deck = deckWith(
+      cfg,
+      {
+        0: 'Js 2c',
+        1: 'Jh 3c',
+        2: '7s 8s',
+        3: 'Jd 5c',
+        4: 'Jc 6d',
+        5: '9d 9h',
+      },
+      'As Kd Qh Tc 4s',
+    )
+    let state = startHand(cfg, deck)
+    state = act(state, 0, { type: 'raise', to: 103 })
+    expect(seatOf(state, 0).allIn).toBe(true)
+    state = act(state, 1, { type: 'call' })
+    state = act(state, 2, { type: 'fold' })
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 4, { type: 'call' })
+    state = act(state, 5, { type: 'call' })
+    expect(state.street).toBe('flop')
+    state = act(state, 4, { type: 'check' })
+    state = act(state, 5, { type: 'check' })
+    state = act(state, 1, { type: 'check' })
+    state = act(state, 3, { type: 'raise', to: 200 })
+    expect(seatOf(state, 3).allIn).toBe(true)
+    state = act(state, 4, { type: 'call' })
+    state = act(state, 5, { type: 'call' })
+    state = act(state, 1, { type: 'call' })
+    expect(state.street).toBe('turn')
+    state = act(state, 4, { type: 'check' })
+    state = act(state, 5, { type: 'raise', to: 401 })
+    expect(seatOf(state, 5).allIn).toBe(true)
+    state = act(state, 1, { type: 'call' })
+    state = act(state, 4, { type: 'call' })
+    expect(state.street).toBe('river')
+    state = act(state, 4, { type: 'check' })
+    state = act(state, 1, { type: 'check' })
+    expect(isOver(state)).toBe(true)
+    expect(state.result!.showdown).toBe(true)
+    // 103 from five seats; 200 more from four; 401 more from three.
+    expect(state.pots).toEqual([
+      { amount: 515, eligible: [0, 1, 3, 4, 5] },
+      { amount: 800, eligible: [1, 3, 4, 5] },
+      { amount: 1203, eligible: [1, 4, 5] },
+    ])
+    expect(state.pots).toEqual(referencePots(state.players))
+    // Last side pot first. Within a pot the winners are paid clockwise from
+    // the seat after the button (4, 5, 0, 1, 2, 3), and the odd chips go to
+    // the earliest: 1203 = 2 × 601 + 1, 800 = 3 × 266 + 2, 515 = 4 × 128 + 3.
+    expect(state.result!.awards.map((a) => [a.pot, a.seat, a.amount])).toEqual([
+      [2, 4, 602],
+      [2, 1, 601],
+      [1, 4, 267],
+      [1, 1, 267],
+      [1, 3, 266],
+      [0, 4, 129],
+      [0, 0, 129],
+      [0, 1, 129],
+      [0, 3, 128],
+    ])
+    expect(stacks(state)).toEqual([129, 2293, 2000, 394, 2294, 0])
+    expect(state.result!.netBySeat).toEqual({
+      0: 26,
+      1: 293,
+      2: 0,
+      3: 91,
+      4: 294,
+      5: -704,
+    })
+    assertInvariants(state, 7110)
+  })
+  it('folded dead money stays in the pot it entered', () => {
+    // Button 5, blinds 0 and 1, UTG 2 all in for 75. Three seats fold after
+    // putting chips in: the small blind pre-flop (10), the big blind on the
+    // flop (250) and the button on the river (700). Folded chips fill each
+    // pot up to the folder's own investment, so the short stack wins 75
+    // from every seat that paid that much, folders included.
+    const cfg = config([2000, 2000, 75, 2000, 400, 2000], 5)
+    const deck = deckWith(
+      cfg,
+      { 2: 'As Ah', 3: 'Qs Qh', 4: 'Ks Kh' },
+      '2c 7d 9h Tc 3s',
+    )
+    let state = startHand(cfg, deck)
+    state = act(state, 2, { type: 'raise', to: 75 })
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 4, { type: 'call' })
+    state = act(state, 5, { type: 'raise', to: 250 })
+    state = act(state, 0, { type: 'fold' })
+    state = act(state, 1, { type: 'call' })
+    state = act(state, 3, { type: 'call' })
+    state = act(state, 4, { type: 'call' })
+    // 75 from five seats plus the folded small blind's 10; 175 from four.
+    expect(state.pots).toEqual([
+      { amount: 385, eligible: [1, 2, 3, 4, 5] },
+      { amount: 700, eligible: [1, 3, 4, 5] },
+    ])
+    state = act(state, 1, { type: 'check' })
+    state = act(state, 3, { type: 'check' })
+    state = act(state, 4, { type: 'raise', to: 150 })
+    state = act(state, 5, { type: 'call' })
+    state = act(state, 1, { type: 'fold' })
+    // A fold mid-street loses eligibility, never chips.
+    expect(state.pots).toEqual([
+      { amount: 385, eligible: [2, 3, 4, 5] },
+      { amount: 700, eligible: [3, 4, 5] },
+    ])
+    state = act(state, 3, { type: 'call' })
+    // The big blind's 175 above the main pot stays in the next one: the
+    // 250 level is gone, so that pot now runs up to seat 4's 400.
+    expect(state.pots).toEqual([
+      { amount: 385, eligible: [2, 3, 4, 5] },
+      { amount: 1150, eligible: [3, 4, 5] },
+    ])
+    state = act(state, 3, { type: 'raise', to: 300 })
+    state = act(state, 5, { type: 'call' })
+    state = act(state, 3, { type: 'raise', to: 500 })
+    state = act(state, 5, { type: 'fold' })
+    expect(isOver(state)).toBe(true)
+    expect(state.result!.showdown).toBe(true)
+    // The button's 700 is split 75 / 325 / 300 across the three pots.
+    expect(state.pots).toEqual([
+      { amount: 385, eligible: [2, 3, 4] },
+      { amount: 1150, eligible: [3, 4] },
+      { amount: 600, eligible: [3] },
+    ])
+    expect(state.pots).toEqual(referencePots(state.players))
+    expect(state.result!.awards.map((a) => [a.pot, a.seat, a.amount])).toEqual([
+      [2, 3, 600],
+      [1, 4, 1150],
+      [0, 2, 385],
+    ])
+    expect(stacks(state)).toEqual([1990, 1750, 385, 1900, 1150, 1300])
+    expect(state.result!.netBySeat).toEqual({
+      0: -10,
+      1: -250,
+      2: 310,
+      3: -100,
+      4: 750,
+      5: -700,
+    })
+    assertInvariants(state, 8475)
+  })
+  it('a short stack all-in below the big blind', () => {
+    // Button 0, blinds 1 and 2, UTG 3 with 13 chips. Calling all in for less
+    // than the big blind is not a raise: the bet to match stays 20, the
+    // minimum raise stays 40 and the big blind keeps its option.
+    const cfg = config([2000, 2000, 2000, 13, 2000, 2000], 0)
+    const deck = deckWith(
+      cfg,
+      { 0: 'Ks Kh', 2: 'Jd 4c', 3: 'As Ah', 4: 'Qs Qh' },
+      '2c 7d 9h Tc 3s',
+    )
+    let state = startHand(cfg, deck)
+    expect(legalActions(state)).toMatchObject({
+      seat: 3,
+      toCall: 13,
+      canRaise: false,
+    })
+    state = act(state, 3, { type: 'call' })
+    expect(seatOf(state, 3).allIn).toBe(true)
+    expect(legalActions(state)).toMatchObject({
+      seat: 4,
+      toCall: 20,
+      minRaiseTo: 40,
+    })
+    state = act(state, 4, { type: 'call' })
+    state = act(state, 5, { type: 'fold' })
+    state = act(state, 0, { type: 'call' })
+    state = act(state, 1, { type: 'fold' })
+    expect(legalActions(state)).toMatchObject({
+      seat: 2,
+      canCheck: true,
+      canRaise: true,
+      minRaiseTo: 40,
+    })
+    state = act(state, 2, { type: 'check' })
+    // 13 from four seats plus the folded small blind's 10; 7 from three.
+    expect(state.pots).toEqual([
+      { amount: 62, eligible: [0, 2, 3, 4] },
+      { amount: 21, eligible: [0, 2, 4] },
+    ])
+    state = act(state, 2, { type: 'check' })
+    state = act(state, 4, { type: 'raise', to: 40 })
+    state = act(state, 0, { type: 'call' })
+    state = act(state, 2, { type: 'fold' })
+    while (!isOver(state)) state = act(state, state.toAct!, { type: 'check' })
+    // The big blind's fold leaves its 13 in the main pot and 7 in the side.
+    expect(state.pots).toEqual([
+      { amount: 62, eligible: [0, 3, 4] },
+      { amount: 101, eligible: [0, 4] },
+    ])
+    expect(state.pots).toEqual(referencePots(state.players))
+    // The aces win only the main pot; the kings take the side pot.
+    expect(state.result!.awards.map((a) => [a.pot, a.seat, a.amount])).toEqual([
+      [1, 0, 101],
+      [0, 3, 62],
+    ])
+    expect(stacks(state)).toEqual([2041, 1990, 1980, 62, 1940, 2000])
+    expect(state.result!.netBySeat).toEqual({
+      0: 41,
+      1: -10,
+      2: -20,
+      3: 49,
+      4: -60,
+      5: 0,
+    })
+    // Folded round to the big blind: facing only a short all-in it has
+    // nothing to decide (a raise could never be called), so the board runs
+    // out at once and its 7 above the short stack comes back.
+    let alone = startHand(cfg, deck)
+    alone = act(alone, 3, { type: 'call' })
+    for (const seat of [4, 5, 0, 1]) alone = act(alone, seat, { type: 'fold' })
+    expect(isOver(alone)).toBe(true)
+    expect(alone.board).toHaveLength(5)
+    expect(alone.players.map((p) => p.invested)).toEqual([0, 10, 13, 13, 0, 0])
+    expect(alone.pots).toEqual([{ amount: 36, eligible: [2, 3] }])
+    expect(alone.result!.netBySeat).toEqual({
+      0: 0,
+      1: -10,
+      2: -13,
+      3: 23,
+      4: 0,
+      5: 0,
+    })
   })
 })

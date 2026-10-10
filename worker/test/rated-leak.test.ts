@@ -178,10 +178,14 @@ beforeAll(async () => {
   await alice2.next((f) => f.t === 'match_end')
   await bob2.next((f) => f.t === 'match_end')
 
-  // Alice looks back at the finished table: a welcome and the last hand.
+  // Alice looks back at the finished table: the last hand, the result and
+  // the rematch offer.
+  await alice2.next((f) => f.t === 'rematch_state')
   const alice3 = await connect(matchId, ALICE)
   sockets.push(alice3)
   await alice3.next((f) => f.t === 'reveal' && f.handNo === 40)
+  await alice3.next((f) => f.t === 'match_end')
+  await alice3.next((f) => f.t === 'rematch_state')
 
   played = {
     frames: {
@@ -205,6 +209,7 @@ describe('every frame of a 40-hand rated match', () => {
         'reveal',
         'match_end',
         'error',
+        'rematch_state',
       ]),
     )
     for (const f of all) {

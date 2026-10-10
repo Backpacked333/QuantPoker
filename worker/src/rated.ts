@@ -21,6 +21,9 @@ export const RATED_CONFIG: MatchConfig = {
  */
 export const GRACE_MS = 60_000
 
+/** After a rated match, both players must press Rematch within this. */
+export const REMATCH_MS = 60_000
+
 /** A luck-adjusted lead of at most this many big blinds is a draw (R-8). */
 export const DRAW_BAND_BB = 2
 

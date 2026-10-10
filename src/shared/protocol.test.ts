@@ -22,6 +22,7 @@ describe('parseClientMsg', () => {
       })
     expect(parseClientMsg(frame({ t: 'resync' }))).toEqual({ t: 'resync' })
     expect(parseClientMsg(frame({ t: 'dequeue' }))).toEqual({ t: 'dequeue' })
+    expect(parseClientMsg(frame({ t: 'rematch' }))).toEqual({ t: 'rematch' })
     expect(parseClientMsg(frame({ t: 'queue', kind: 'hu-casual' }))).toEqual({
       t: 'queue',
       kind: 'hu-casual',
@@ -50,6 +51,7 @@ describe('parseClientMsg', () => {
       frame({ ...act, action: { type: 'call', to: 60 } }),
       frame({ ...act, action: { type: 'shove' } }),
       frame({ t: 'resync', x: 1 }),
+      frame({ t: 'rematch', matchId: 'x' }),
       frame({ t: 'queue', kind: 'six-max' }),
       frame({ t: 'hello' }),
       frame({ ...act, reqId: 'a'.repeat(MAX_FRAME) }),
@@ -102,7 +104,10 @@ describe('parseClientMsg', () => {
           ? 'x' + JSON.stringify(value(0))
           : JSON.stringify(value(0))
       const msg = parseClientMsg(raw ?? 'undefined')
-      if (msg) expect(['act', 'resync', 'queue', 'dequeue']).toContain(msg.t)
+      if (msg)
+        expect(['act', 'resync', 'queue', 'dequeue', 'rematch']).toContain(
+          msg.t,
+        )
     }
   })
 })

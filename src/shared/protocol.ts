@@ -62,6 +62,8 @@ export type ClientMsg =
   | { t: 'resync' }
   | { t: 'queue'; kind: MatchKind }
   | { t: 'dequeue' }
+  /** At a finished rated table: play the same opponent again. */
+  | { t: 'rematch' }
 
 export type ErrorCode =
   | 'not_your_turn'
@@ -173,6 +175,20 @@ export type Reveal = {
   own?: { slot: number; card: number; salt: string }[]
 }
 
+/**
+ * A finished rated match's rematch offer (P1-04). `open`: nobody has
+ * pressed yet. `waiting`: one player has, until `until`. `starting`: both
+ * did, and `next` is the new table. `declined`: the press expired, or a
+ * player is already at another table. `limit`: the pair has met
+ * PAIRS_PER_DAY times today.
+ */
+export type RematchState =
+  | 'open'
+  | 'waiting'
+  | 'starting'
+  | 'declined'
+  | 'limit'
+
 /** `abandoned`: both players were gone past the grace (rated; void). */
 export type MatchEndReason =
   | 'complete'
@@ -218,6 +234,16 @@ export type ServerMsg = { seq: number; matchId: string } & (
       }
     }
   | { t: 'error'; code: ErrorCode; reqId?: string; message: string }
+  | {
+      t: 'rematch_state'
+      state: RematchState
+      /** Seats that pressed Rematch. */
+      pressed: SeatId[]
+      /** Server epoch milliseconds when an unanswered press expires. */
+      until?: number
+      /** The new table, once starting. */
+      next?: string
+    }
 )
 
 export type LobbyMsg = { seq: number } & (
@@ -293,6 +319,7 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     }
     case 'resync':
     case 'dequeue':
+    case 'rematch':
       return onlyKeys(v, ['t']) ? { t: v.t } : null
     case 'queue':
       return onlyKeys(v, ['t', 'kind']) &&

@@ -32,6 +32,7 @@ import type {
   MatchInfo,
   MatchKind,
   Outcome,
+  RematchState,
   Reveal,
   ServerMsg,
 } from '../../src/shared/protocol'
@@ -53,8 +54,9 @@ import type { Deadline } from './deadlines'
 import type { WorkerEnv } from './env'
 import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
+import type { RematchAnswer } from './lobby'
 import { describeError, logEvent } from './log'
-import { GRACE_MS, outcomes, RATED_CONFIG } from './rated'
+import { GRACE_MS, outcomes, RATED_CONFIG, REMATCH_MS } from './rated'
 import { archive, refusedForData } from './supabase'
 import type { ArchiveCall, ArchiveOutcome } from './supabase'
 import type { HandMessage } from './verify'
@@ -113,6 +115,16 @@ type Match = {
   adjustedThrough?: number
   /** Rated, once finished and not void. */
   outcome?: Record<SeatId, Outcome>
+  /** Rated: the match this one is a rematch of. */
+  rematchOf?: string
+  /** Rated, finished with a result: the rematch offer (P1-04). */
+  rematch?: Rematch
+}
+type Rematch = {
+  state: RematchState
+  pressed: SeatId[]
+  until?: number
+  next?: string
 }
 /** The hand in progress: its commitment and per-action timing. */
 type Current = {
@@ -154,6 +166,8 @@ export type InitBody = {
   handsTotal?: number
   /** Set by the lobby: a rated match plays RATED_CONFIG (no handsTotal). */
   kind?: MatchKind
+  /** Set by the lobby: the rated match this one is a rematch of. */
+  rematchOf?: string
 }
 /**
  * For the lobby's one-table-per-account rule: `playing`, or `starting` (a
@@ -255,6 +269,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
       handNo: 0,
       net: { 0: 0, 1: 0 },
       ...(rated ? { adjusted: { 0: 0, 1: 0 }, adjustedThrough: 0 } : {}),
+      ...(rated && body.rematchOf ? { rematchOf: body.rematchOf } : {}),
     }
     this.match.players.push(this.newPlayer(0, body.creator))
     if (body.opponent) this.match.players.push(this.newPlayer(1, body.opponent))
@@ -338,6 +353,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } satisfies Attachment)
     this.send(server, this.frame('welcome', player.seat))
     this.sendEnded(server)
+    this.sendMatchEnd(server)
     if (match.status === 'waiting' && this.seated(0) && this.seated(1)) {
       match.status = 'playing'
       await this.startNextHand()
@@ -386,8 +402,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
     if (!msg) return this.illegal(ws, seat, 'Malformed message')
     if (msg.t === 'resync') {
       this.send(ws, this.frame('welcome', seat))
-      return this.sendEnded(ws)
+      this.sendEnded(ws)
+      return this.sendMatchEnd(ws)
     }
+    if (msg.t === 'rematch') return this.pressRematch(ws, seat)
     if (msg.t !== 'act') return this.illegal(ws, seat, 'Not a table message')
 
     // A retry of the action we already applied: acknowledge it again.
@@ -577,6 +595,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
         if (d.kind === 'idle') {
           // Deleted: nothing is left to arm.
           if (await this.idle()) return
+          continue
+        }
+        if (d.kind === 'rematch') {
+          await this.rematchExpired()
           continue
         }
         if (this.match?.status !== 'playing') continue
@@ -971,7 +993,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
   private setGameDeadline(deadline: Deadline | null) {
     this.deadlines = [
       ...this.deadlines.filter(
-        (d) => d.kind === 'outbox' || d.kind === 'grace',
+        (d) =>
+          d.kind === 'outbox' || d.kind === 'grace' || d.kind === 'rematch',
       ),
       ...(deadline ? [deadline] : []),
     ]
@@ -1122,6 +1145,123 @@ export class TableDO extends DurableObject<WorkerEnv> {
         detail: describeError(error),
       })
     }
+    await this.offerRematch()
+  }
+
+  // ---- Rematch (P1-04) -------------------------------------------------------
+
+  /**
+   * A rated match with a result may be played again by the same two players.
+   * The lobby says whether they may still meet today (R-9). It is asked once
+   * the result is stored and sent, so the result never waits on it.
+   */
+  private async offerRematch() {
+    const match = this.match!
+    if (!match.outcome) return
+    let left = 1
+    try {
+      left = await lobbyStub(this.env).pairsLeft(
+        match.players.map((p) => p.userId),
+      )
+    } catch (error) {
+      // Asked again when both players press.
+      logEvent('error', {
+        matchId: match.id,
+        reason: 'lobby_pairs',
+        detail: describeError(error),
+      })
+    }
+    await this.setRematch({ state: left > 0 ? 'open' : 'limit', pressed: [] })
+  }
+
+  /** Both press within REMATCH_MS and the lobby starts a new rated table. */
+  private async pressRematch(ws: WebSocket, seat: SeatId) {
+    const match = this.match!
+    const offer = match.rematch
+    if (!offer) {
+      // Finished with a result: the offer is on its way.
+      if (match.outcome) return
+      return this.illegal(ws, seat, 'There is no rematch at this table')
+    }
+    // Pressed already, or nothing left to press: how it stands.
+    if (
+      (offer.state !== 'open' && offer.state !== 'waiting') ||
+      offer.pressed.includes(seat)
+    )
+      return this.send(ws, this.rematchFrame())
+    const pressed = [...offer.pressed, seat].sort((a, b) => a - b)
+    if (pressed.length < 2) {
+      const until = this.clock() + REMATCH_MS
+      this.deadlines.push({ kind: 'rematch', at: until })
+      return this.setRematch({ state: 'waiting', pressed, until })
+    }
+    // Both pressed. Marked first, so neither the expiry nor another press
+    // changes the offer while the lobby answers.
+    match.rematch = { state: 'starting', pressed }
+    this.deadlines = this.deadlines.filter((d) => d.kind !== 'rematch')
+    let answer: RematchAnswer
+    try {
+      // Seats swap, so the other player has the first hand's button.
+      const players = [...match.players]
+        .sort((a, b) => b.seat - a.seat)
+        .map(({ userId, username }) => ({ userId, username }))
+      answer = await lobbyStub(this.env).rematch(players, match.id)
+    } catch (error) {
+      logEvent('error', {
+        matchId: match.id,
+        reason: 'lobby_rematch',
+        detail: describeError(error),
+      })
+      answer = { refused: 'busy' }
+    }
+    await this.setRematch(
+      'matchId' in answer
+        ? { state: 'starting', pressed, next: answer.matchId }
+        : { state: answer.refused === 'limit' ? 'limit' : 'declined', pressed },
+    )
+  }
+
+  private async rematchExpired() {
+    const offer = this.match?.rematch
+    if (offer?.state !== 'waiting') return
+    await this.setRematch({ state: 'declined', pressed: offer.pressed })
+  }
+
+  /** Stores the offer, then tells both seats. */
+  private async setRematch(offer: Rematch) {
+    const match = this.match!
+    match.rematch = offer
+    this.seq++
+    await this.ctx.storage.put({ match, seq: this.seq })
+    await this.armAlarm()
+    for (const ws of this.openSockets()) this.send(ws, this.rematchFrame())
+  }
+
+  private rematchFrame(): ServerMsg {
+    const match = this.match!
+    const { state, pressed, until, next } = match.rematch!
+    return {
+      t: 'rematch_state',
+      seq: this.seq,
+      matchId: match.id,
+      state,
+      pressed: [...pressed],
+      ...(until !== undefined ? { until } : {}),
+      ...(next ? { next } : {}),
+    }
+  }
+
+  /** A finished match's result and offer, for a socket that (re)joins. */
+  private sendMatchEnd(ws: WebSocket) {
+    const match = this.match
+    if (match?.status !== 'finished') return
+    this.send(ws, {
+      t: 'match_end',
+      seq: this.seq,
+      matchId: match.id,
+      result: this.result(),
+    })
+    if (match.rematch) this.send(ws, this.rematchFrame())
   }
 
   private logFinish(
@@ -1163,6 +1303,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
         kind: match.config.kind,
         config: match.config,
         players: match.players.map(({ seat, userId }) => ({ seat, userId })),
+        ...(match.rematchOf ? { rematchOf: match.rematchOf } : {}),
         ...(match.status === 'finished'
           ? {
               handNo: match.handNo,

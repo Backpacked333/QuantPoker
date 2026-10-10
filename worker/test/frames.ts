@@ -1,5 +1,6 @@
-// What each frame type may carry on the wire, shared by the redaction
-// tests (leaks.test.ts, rated-leak.test.ts). The compiler checks every
+// What each frame type may carry on the wire, shared by the tests that
+// check frames (leaks, rated-leak, rating, rematch) and by frames.test.ts,
+// which checks that every type is covered. The compiler checks every
 // list against src/shared/protocol.ts: a field added to a frame without a
 // line here fails `npm run typecheck:worker`, so no field reaches a client
 // unreviewed.
@@ -260,11 +261,12 @@ export function checkFrames(frames: ServerMsg[]) {
 
 /**
  * The frame types each flow test runs through checkFrames. Each flow
- * asserts its own entry exactly, and frames.test.ts asserts the entries
- * together name every FRAME_KEYS type, so a new frame type fails the suite
- * until some flow sends it and checks it. The lists live here, not in a
- * recorder shared across files, because vitest gives each test file its own
- * copy of this module and runs the files in parallel.
+ * asserts its own entry exactly, as `new Set(FLOW_TYPES.<entry>)`, and
+ * frames.test.ts asserts the entries together name every FRAME_KEYS type
+ * and that some flow test's source asserts each entry, so a new frame type
+ * fails the suite until some flow sends it and checks it. The lists live
+ * here, not in a recorder shared across files, because vitest gives each
+ * test file its own copy of this module and runs the files in parallel.
  */
 export const FLOW_TYPES = {
   /** leaks.test.ts: a casual match with a showdown, a fold and junk. */

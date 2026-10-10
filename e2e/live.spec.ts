@@ -108,8 +108,10 @@ test('two browsers play a hand against each other', async ({ browser }) => {
     expect(views.length).toBeGreaterThan(5)
     for (const view of views) {
       // By seat, not list position: with empty seats they differ.
-      const mine = view.players.find((p) => p.seat === view.you)!
-      const opponent = view.players.find((p) => p.seat !== view.you)!
+      const mine = view.players.find((p) => p.seat === view.you)
+      const opponent = view.players.find((p) => p.seat !== view.you)
+      if (!mine || !opponent)
+        throw new Error(`hand ${view.handNo}: you or the opponent is missing`)
       if (!opponent.shown) expect(opponent.cards).toBeNull()
       expect(mine.cards).not.toBeNull()
     }
@@ -248,8 +250,10 @@ test('during a rated hand neither browser receives analysis keys or opponent car
     )
     for (const view of views) {
       // By seat, not list position: with empty seats they differ.
-      const mine = view.players.find((p) => p.seat === view.you)!
-      const opponent = view.players.find((p) => p.seat !== view.you)!
+      const mine = view.players.find((p) => p.seat === view.you)
+      const opponent = view.players.find((p) => p.seat !== view.you)
+      if (!mine || !opponent)
+        throw new Error(`hand ${view.handNo}: you or the opponent is missing`)
       if (!opponent.shown) expect(opponent.cards).toBeNull()
       expect(mine.cards).not.toBeNull()
     }

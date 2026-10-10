@@ -44,13 +44,14 @@ const raiseTo =
     to: to === 'max' ? legalActions(hand).maxRaiseTo : to,
   })
 
-/** Each seat's two hole cards, read from the table's real hand. */
+/** The seats dealt in and their two hole cards, from the table's real hand. */
 const holesOf = (hand: HandState) => {
   const { holes } = dealSlots(hand.config)
+  const seats = hand.config.seats.map((s) => s.seat)
   const cards: Record<SeatId, number[]> = {}
-  for (const { seat } of hand.config.seats)
+  for (const seat of seats)
     cards[seat] = holes[seat].map((slot) => hand.deck[slot])
-  return { slots: holes as Record<SeatId, number[]>, cards }
+  return { seats, slots: holes as Record<SeatId, number[]>, cards }
 }
 
 type Played = {
@@ -242,8 +243,8 @@ describe('every frame of a 40-hand rated match', () => {
           f.record.shown.map((s) => s.seat),
         )
     let hidden = 0
-    const seats = Object.keys(played.frames).map(Number)
-    for (const [seat, other] of seatPairs(seats)) {
+    // The seats the table dealt in, not the ones this test kept frames for.
+    for (const [seat, other] of seatPairs(played.dealt[1].seats)) {
       for (const f of played.frames[seat]) {
         if ((f.t === 'welcome' || f.t === 'state') && f.view) {
           const { cards } = played.dealt[f.view.handNo]

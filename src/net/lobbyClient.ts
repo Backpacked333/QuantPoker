@@ -7,13 +7,17 @@ import {
   CLOSE_REPLACED,
   PROTOCOL,
 } from '../shared/protocol'
-import type { LobbyMsg } from '../shared/protocol'
+import type { LobbyMsg, MatchKind } from '../shared/protocol'
 import { socketOrigin } from './client'
 
 export type LobbyState = {
   status: 'connecting' | 'open' | 'reconnecting' | 'replaced' | 'failed'
   /** True from "Find a match" until matched or cancelled. */
   looking: boolean
+  /** The queue asked for: casual, or rated. */
+  kind: MatchKind
+  /** Why the server refused the last rated queue (no confirmed email). */
+  refused: string | null
   queued: { position: number; since: number } | null
   presence: { online: number; queued: number } | null
   matched: { matchId: string; resumed: boolean } | null
@@ -25,6 +29,8 @@ const LIMITED = 'Too many messages, reconnecting…'
 export const INITIAL_LOBBY: LobbyState = {
   status: 'connecting',
   looking: false,
+  kind: 'hu-casual',
+  refused: null,
   queued: null,
   presence: null,
   matched: null,
@@ -79,9 +85,24 @@ export class LobbyConnection {
   }
 
   /** Joins the queue (now, or as soon as the socket is open). */
-  find() {
-    this.set({ looking: true, matched: null, error: null })
+  find(kind: MatchKind = 'hu-casual') {
+    // The Worker checks rated eligibility once per socket, so a refused
+    // player who retries (after confirming, or once Auth is back) needs a
+    // fresh socket for a fresh answer.
+    const recheck = kind === 'hu-rated' && this.state.refused !== null
+    this.set({ looking: true, kind, matched: null, error: null, refused: null })
+    if (recheck) return this.reopen()
     if (this.state.status === 'open') this.sendQueue()
+  }
+
+  /** A new socket now; the old one's close is not a drop to recover from. */
+  private reopen() {
+    const old = this.socket
+    this.socket = null
+    if (this.timer) clearTimeout(this.timer)
+    old?.close(1000, 'recheck')
+    this.set({ status: 'connecting' })
+    void this.open()
   }
 
   cancel() {
@@ -91,7 +112,7 @@ export class LobbyConnection {
   }
 
   private sendQueue() {
-    this.socket?.send(JSON.stringify({ t: 'queue', kind: 'hu-casual' }))
+    this.socket?.send(JSON.stringify({ t: 'queue', kind: this.state.kind }))
   }
 
   private set(patch: Partial<LobbyState>) {
@@ -165,7 +186,10 @@ export class LobbyConnection {
           matched: { matchId: msg.matchId, resumed: !!msg.resumed },
         })
       case 'error':
-        return this.set({ error: msg.message })
+        // A rated queue refused: not looking any more, and the card says why.
+        return msg.code === 'unverified'
+          ? this.set({ looking: false, queued: null, refused: msg.message })
+          : this.set({ error: msg.message })
     }
   }
 }

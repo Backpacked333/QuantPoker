@@ -120,7 +120,9 @@ function MatchBar({
   return (
     <div className="live-matchbar" role="status" aria-live="polite">
       <span>
-        {view ? `Hand ${view.handNo} of ${table.handsTotal}` : 'Waiting room'}
+        {view
+          ? `${table.kind === 'hu-rated' ? 'Rated · ' : ''}Hand ${view.handNo} of ${table.handsTotal}`
+          : 'Waiting room'}
       </span>
       {opponent && (
         <span className={opponent.connected ? '' : 'live-warn'}>

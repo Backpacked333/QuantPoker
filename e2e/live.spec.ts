@@ -145,6 +145,26 @@ test('a third person cannot take a full table', async ({ browser }) => {
   for (const p of [alice, bob, carol]) await p.close()
 })
 
+test('two players find a rated match and both see Hand 1 of 40', async ({
+  browser,
+}) => {
+  const rae = await player(browser, named('rae'))
+  const ray = await player(browser, named('ray'))
+  for (const { page } of [rae, ray]) await page.goto('/#lobby')
+  await expect(
+    rae.page.getByRole('heading', { name: 'Play rated 1v1' }),
+  ).toBeVisible()
+  await rae.page.getByRole('button', { name: 'Find a rated match' }).click()
+  await expect(rae.page.getByText('Looking for an opponent')).toBeVisible()
+  await ray.page.getByRole('button', { name: 'Find a rated match' }).click()
+  for (const { page } of [rae, ray]) {
+    await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
+    await expect(page.getByText('Rated · Hand 1 of 40')).toBeVisible()
+  }
+  expect(rae.page.url()).toBe(ray.page.url())
+  for (const p of [rae, ray]) await p.close()
+})
+
 test('two players find each other with quick match', async ({ browser }) => {
   const ann = await player(browser, named('ann'))
   const ben = await player(browser, named('ben'))

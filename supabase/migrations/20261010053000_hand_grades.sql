@@ -46,7 +46,9 @@ create policy hand_grades_players_after_match on public.hand_grades
 
 -- The grading consumer's write: a redelivery adds nothing and changes
 -- nothing. A hand not archived yet is refused (P0002), so the consumer
--- retries it. Each grade's player is the hand's player in that seat.
+-- retries it. Only a verified hand of a rated match is graded: the consumer
+-- grades after verifying, and this holds even if it did not. Each grade's
+-- player is the hand's player in that seat.
 -- p: { handId, format, modelVersion,
 --      grades: [{ seat, idx, grade, evLost, accuracy }] }
 create function public.record_grades(p jsonb) returns void
@@ -54,10 +56,20 @@ language plpgsql security definer set search_path = '' as $$
 declare
   v_hand text := p ->> 'handId';
   v_match uuid;
+  v_verified boolean;
+  v_kind text;
 begin
-  select match_id into v_match from public.hands where id = v_hand;
+  select h.match_id, h.verified, m.kind into v_match, v_verified, v_kind
+  from public.hands h join public.matches m on m.id = h.match_id
+  where h.id = v_hand;
   if v_match is null then
     raise exception 'hand % is not archived', v_hand using errcode = 'P0002';
+  end if;
+  if not v_verified then
+    raise exception 'hand % is not verified', v_hand;
+  end if;
+  if v_kind <> 'hu-rated' then
+    raise exception 'hand % is not rated', v_hand;
   end if;
   insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade,
                                   ev_lost, accuracy, model_version)

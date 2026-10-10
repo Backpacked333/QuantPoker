@@ -155,10 +155,16 @@ end $$;
 -- (P1-09), readable by the match's two players once it is over (Q6). What
 -- follows is what P1-10 and P1-12 add on top.
 
--- Accuracy over the latest 500 graded decisions of finished matches. The
--- status filter is explicit, so the service role (which bypasses RLS) and a
--- client compute the same number.
-create function public.player_accuracy(p_user uuid, p_format text default 'hu-duplicate')
+-- Accuracy over the latest 500 graded decisions of finished matches.
+-- Private, and never called by a browser: a player's raw grades are readable
+-- only by the two players of each match (hand_grades RLS), so under invoker
+-- rights anon would average nothing and another player only their shared
+-- matches; and a security definer callable by browsers breaks the RLS-matrix
+-- rule. The public number is the stored aggregate that the definer
+-- private.refresh_accuracy writes (ratings.accuracy here; P1-10 decides where
+-- it lives until P1-12 creates ratings), tested as anon and as an unrelated
+-- player. The status filter keeps a match in play out of it.
+create function private.player_accuracy(p_user uuid, p_format text default 'hu-duplicate')
 returns table (accuracy real, graded integer)
 language sql stable set search_path = '' as $$
   select avg(l.accuracy)::real, count(*)::int from (
@@ -176,7 +182,7 @@ language sql security definer set search_path = '' as $$
   insert into public.ratings (user_id, format) values (p_user, p_format)
   on conflict do nothing;
   update public.ratings r set accuracy = a.accuracy, graded = a.graded
-  from public.player_accuracy(p_user, p_format) a
+  from private.player_accuracy(p_user, p_format) a
   where r.user_id = p_user and r.format = p_format;
 $$;
 
@@ -189,11 +195,21 @@ language plpgsql security definer set search_path = '' as $$
 declare
   v_hand text := p ->> 'handId';
   v_match uuid;
+  v_verified boolean;
+  v_kind text;
   v_user uuid;
 begin
-  select match_id into v_match from public.hands where id = v_hand;
+  select h.match_id, h.verified, m.kind into v_match, v_verified, v_kind
+  from public.hands h join public.matches m on m.id = h.match_id
+  where h.id = v_hand;
   if v_match is null then
     raise exception 'hand % is not archived', v_hand using errcode = 'P0002';
+  end if;
+  if not v_verified then
+    raise exception 'hand % is not verified', v_hand;
+  end if;
+  if v_kind <> 'hu-rated' then
+    raise exception 'hand % is not rated', v_hand;
   end if;
   insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade,
                                   ev_lost, accuracy, model_version)

@@ -65,8 +65,8 @@ beforeAll(async () => {
     insert into public.matches (id, kind, config) values ('${M}', 'hu-rated', '{}');
     insert into public.match_players (match_id, user_id, seat)
       values ('${M}', '${ALICE}', 0), ('${M}', '${BOB}', 1);
-    insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record)
-      values ('${H}', '${M}', 1, 0, repeat('b', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}');
+    insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record, verified)
+      values ('${H}', '${M}', 1, 0, repeat('b', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true);
   `)
   await recordGrades(GRADES)
 }, 60_000)
@@ -124,8 +124,8 @@ describe('hand grades', () => {
   it("takes each grade's player from the seat, not from the payload", async () => {
     const id = `${M}:2`
     await db.exec(`
-      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record)
-        values ('${id}', '${M}', 2, 1, repeat('c', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}');
+      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record, verified)
+        values ('${id}', '${M}', 2, 1, repeat('c', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true);
     `)
     await recordGrades({
       ...GRADES,
@@ -150,6 +150,37 @@ describe('hand grades', () => {
     await expect(
       recordGrades({ ...GRADES, handId: `${M}:99` }),
     ).rejects.toThrow(/not archived/)
+  })
+
+  it('refuses grades for a hand that failed or has not had verification, and for a casual hand', async () => {
+    const CASUAL = '66666666-6666-4666-8666-666666666666'
+    await db.exec(`
+      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record)
+        values ('${M}:3', '${M}', 3, 0, repeat('d', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}');
+      insert into public.matches (id, kind, config) values ('${CASUAL}', 'hu-casual', '{}');
+      insert into public.match_players (match_id, user_id, seat)
+        values ('${CASUAL}', '${ALICE}', 0), ('${CASUAL}', '${BOB}', 1);
+      insert into public.hands (id, match_id, hand_no, button, commitment, leaves, reveal, record, verified)
+        values ('${CASUAL}:1', '${CASUAL}', 1, 0, repeat('e', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true);
+    `)
+    await expect(recordGrades({ ...GRADES, handId: `${M}:3` })).rejects.toThrow(
+      /not verified/,
+    )
+    await expect(
+      recordGrades({ ...GRADES, handId: `${CASUAL}:1` }),
+    ).rejects.toThrow(/not rated/)
+    const rows = await as(
+      'service_role',
+      '',
+      async () =>
+        (
+          await db.query(
+            'select 1 from public.hand_grades where hand_id in ($1, $2)',
+            [`${M}:3`, `${CASUAL}:1`],
+          )
+        ).rows,
+    )
+    expect(rows).toEqual([])
   })
 
   it('only the server writes: record_grades and inserts are refused to every browser role', async () => {

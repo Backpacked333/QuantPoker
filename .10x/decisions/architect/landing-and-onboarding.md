@@ -1,6 +1,18 @@
 # landing-and-onboarding: architecture
 
-Status: **Decided 2026-10-10** (user aligned on design B). Requirements: `.10x/decisions/product-manager/landing-and-onboarding.md` (L-1 to L-14, O-1 to O-4).
+Status: **Decided 2026-10-10** (user aligned on design B). **Phase 1 built 2026-10-10**, PR #30; see §As built for where the build differs. Requirements: `.10x/decisions/product-manager/landing-and-onboarding.md` (L-1 to L-14, O-1 to O-4).
+
+## As built (phase 1, 2026-10-10)
+
+Where the code differs from the design below, the code wins:
+
+- **The school list is our own.** The Hipo `university-domains-list` turned out to have no license, so nothing was copied. `school_domains` holds about 90 schools written for the audience (Ivies, top US, UK, Canada, Europe, Asia, a few elite high schools). Any other confirmed `.edu` or `.ac.uk` address still verifies and shows its registrable domain (`smallcollege.edu`). `players` gains `school`, `school_domain` and `school_verified_at`.
+- **No separate `SignIn.tsx`.** `AuthGate` already was the one sign-in surface. The landing page's CTA goes to `#welcome/onboard`, a live route that renders through `AuthGate` with `onboarding`. The sign-in heading names the score ("Save your 67 and get rated"), and the username step reads "Step 1 of 3".
+- **The claim checks the token only** (`verifyToken`, no username lookup), so it never waits on Supabase.
+- **Model players are read from the graded accuracy, not raw EV.** An ungraded overbet's EV is biased upward, so a shove would dominate. Temperature 0.15, as a share of the pot given up.
+- **Two hands were replaced** before shipping (`bluff-catcher`, `set-wet-board`). One raise dominated so heavily that every model player found it, which made the percentile meaningless. Their replacements are `underpair` and `open-ender`.
+- **Grades use the trainer's Atlas model** (`range`, balanced), not the population model: the opponent is Atlas.
+- **Who sees the landing page:** no trainer progress, no `qp.landed`, no Supabase session in storage, and not returning from a sign-in redirect. This is decided once at boot. Finishing or skipping the challenge sets `qp.landed`.
 
 ## Facts this design rests on (verified 2026-10-10)
 

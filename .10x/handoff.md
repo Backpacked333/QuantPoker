@@ -1,15 +1,46 @@
 # Handoff
 
-## Current handoff: Architect → Staff Engineer / EM (landing page and onboarding)
+## Current handoff: SDE → User (landing page and onboarding, phase 1 built)
+
+Date: 2026-10-10 · Status: **phase 1 is built and tested in PR #30, which is not merged.**
+
+### What changed
+
+- **The landing page.** A first visit to the bare URL plays one of six curated hands against Atlas, graded per decision, with no account. The score card shows accuracy, a percentile ranked by the server, luck shown apart from skill, and Atlas's reasoning. `#start` reopens it.
+- **The server.** `ScoreDO` re-scores every line from the pre-scored trees, so a score cannot be forged. It keeps the percentile histograms and the "x% of players chose this" counts, counts funnel events once per visitor per day (`GET /api/funnel`), and queues score claims to Postgres.
+- **The database** (`20261010100000_landing.sql`): `school_domains` (our own list), a trigger that sets `players.school` from a confirmed school email, and `challenge_scores` with `record_challenge_claim`.
+- **Onboarding** (`#welcome/onboard`): the sign-in screen names the score, then username, school badge and first move. The score is attached after sign-in.
+
+### Decisions I took (reversible)
+
+- **Our own school list** of about 90 schools, plus any `.edu` or `.ac.uk` address shown by its domain. The public dataset has no license.
+- **Two challenge hands replaced:** one raise dominated, so the percentile meant nothing.
+- **Model players are read from the graded accuracy, not raw EV,** so shoves do not dominate.
+- **`AuthGate` stays the single sign-in surface;** no separate `SignIn.tsx`.
+
+### User actions
+
+- **U-9** (Google sign-in) and **U-10** (custom SMTP) before launch. **U-4** for claimed scores to reach Postgres. Steps: `.10x/decisions/architect/landing-and-onboarding.md` §User gates.
+- **Your call:** merging #30 launches the landing page and applies the migration to production. It works on email links alone, but sign-up is slower until U-9 and U-10 are done.
+
+### Next step
+
+Phase 2 when you want it: the share card and link previews (L-12), the friend challenge (L-13), and a school code to a second email (L-14). Read the funnel at `/api/funnel` 2 weeks after launch against the PM targets.
+
+---
+
+## Handoff history
+
+### 2026-10-10 — Architect → Staff Engineer / EM (landing page and onboarding)
 
 Date: 2026-10-10 · Status: **architecture decided (design B), user aligned; ready to build phase 1.**
 
-### Read first
+#### Read first
 
 - `.10x/decisions/architect/landing-and-onboarding.md` (the design, contracts, failure modes, tests, build order)
 - `.10x/decisions/product-manager/landing-and-onboarding.md` (requirements L-1 to L-14)
 
-### Components
+#### Components
 
 1. `src/challenge/`: curated hands, `scripts/build-challenges.ts` → `trees.generated.json` (with a regeneration guard), and a pure `scorePath` shared by the browser and the Worker.
 2. `ScoreDO` (SQLite, one instance), with routes `POST /api/challenge/score`, `POST /api/events`, `POST /api/challenge/claim` (Bearer) and `GET /api/funnel`. Binding plus the `v3` migration in `wrangler.jsonc`.
@@ -17,31 +48,27 @@ Date: 2026-10-10 · Status: **architecture decided (design B), user aligned; rea
 4. `src/net/SignIn.tsx`, extracted from `AuthGate`, plus the `#welcome/onboard` steps (username → school → first move) and the claim through `qp.pendingClaim`.
 5. Migrations: `school_domains` with its seed, `players.school`/`school_verified_at`, the `set_player_school` trigger, and `challenge_scores` with `record_challenge_claim` (DBA review).
 
-### Answers to the PM's open questions
+#### Answers to the PM's open questions
 
 - **O-1:** a trigger verifies the school from a confirmed sign-in email or a Google Workspace account (phase 1). A code sent to a second address through Resend comes in phase 2.
 - **O-2:** a client-side `landing` route; every existing hash route is unchanged; `/c/*` goes to the Worker only in phase 2 (OG).
 - **O-3:** first-party `ScoreDO` counters, no third-party analytics.
 - **O-4:** a server-held receipt, kept in localStorage until it is claimed once after sign-in.
 
-### Constraints
+#### Constraints
 
 - Entry chunk 141.5 kB of 150. Only the route branch, the lazy import and `track()` may enter it.
 - No grader call per request.
 - Write, then reply in `ScoreDO`.
 - Postgres only through the outbox.
 
-### User gates
+#### User gates
 
 U-9 (Google OAuth) and U-10 (Resend SMTP) before launch. U-4 is already open and gates the claim archive and the phase 2 school code.
 
-### Next step
+#### Next step
 
 EM: turn the 5 phase 1 steps into tickets (about 5 days), alongside P1-12.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
 

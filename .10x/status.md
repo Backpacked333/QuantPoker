@@ -1,19 +1,29 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE/architect (rating: P1-12 to P1-14 live; P1-15/16 in PR #29; 6-max arenas blocked at the pre-check; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (landing page phase 1 built in PR #30; ratings work unchanged)
 
 **Standing instructions from the user (2026-10-09):**
 
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
 
-## Landing page and onboarding (PM, 2026-10-10)
+## Landing page and onboarding (2026-10-10)
 
-- **Scoped and aligned with the user: scope B, P0.** `.10x/decisions/product-manager/landing-and-onboarding.md`.
-- A landing page for first-time visitors whose hero is a curated, live-graded challenge hand; a score card with an honest percentile; a share card and friend-challenge link; one sign-up surface; onboarding (username → optional school badge → first move); first-party funnel analytics.
-- **Architecture decided (2026-10-10, design B):** `.10x/decisions/architect/landing-and-onboarding.md`. Challenge hands are pre-scored at build time; a new `ScoreDO` holds the percentile histograms, the crowd counts, the funnel and the claim outbox; one shared `SignIn.tsx` plus `#welcome/onboard`; a database trigger sets `players.school` from a confirmed school email.
-- **New user gates:** U-9 (enable Google sign-in) and U-10 (custom SMTP through Resend), both before launch. U-4 also gates the claim archive.
-- **Next:** engineering, phase 1 (about 5 days, 5 mergeable steps), alongside Phase 1 P1-12.
+- **Scoped (PM) and designed (architect), scope B / design B:** `.10x/decisions/product-manager/landing-and-onboarding.md`, `.10x/decisions/architect/landing-and-onboarding.md` (see its §As built).
+- **Phase 1 built (SDE), PR #30, not merged:**
+  - the landing page with six pre-scored challenge hands and the score card;
+  - `ScoreDO` with `/api/challenge/score`, `/api/events`, `/api/challenge/claim` and `/api/funnel`;
+  - migration `20261010100000_landing.sql` (school badges, `challenge_scores`);
+  - `#welcome/onboard` (score claim, username, school, first move).
+- **Checks run locally:** 883 unit, 200 worker, 120 SQL and 33 e2e tests; entry bundle 142.9 kB of 150.
+- **Before launch (yours):**
+  - U-9 Google sign-in;
+  - U-10 custom SMTP;
+  - U-4 for claimed scores to reach Postgres.
+
+  Merging #30 launches the landing page and applies the migration to production.
+
+- **Phase 2 (not started):** the share card and `/c/*` link previews (L-12), the friend challenge (L-13), and a school code to a second email (L-14).
 
 ## Phase 1 progress (2026-10-10)
 

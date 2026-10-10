@@ -27,7 +27,7 @@ Verified against code on 2026-10-08:
 | `rating-and-leaderboard`    | Hybrid rating (Glicko-2 on luck-adjusted results + decision accuracy), public profile, ladder                                                  | Aligned 2026-10-08                 | P0                        |
 | `six-max-tables`            | 6-max casual tables (bot back-fill) **and** rated scheduled arenas, shipped together on the N-player engine                                    | Aligned 2026-10-08 (gates relaxed) | P1 (engine groundwork P0) |
 | `integrity-and-trust`       | v1: near-free protections that also make the game correct. v2: collusion/RTA/verification, growth-triggered                                    | v1 aligned; v2 deferred            | v1 P0 · v2 P2             |
-| `landing-and-onboarding`    | Landing page whose hero is a graded challenge hand, score card + percentile, share link, 1-click sign-up, username → school badge → first move | Aligned 2026-10-10 (scope B)       | P0 (L-12–L-14 P1)         |
+| `landing-and-onboarding`    | Landing page whose hero is a graded challenge hand, score card + percentile, share link, 1-click sign-up, username → school badge → first move | Phase 1 built 2026-10-10 (PR #30)  | P0 (L-12–L-14 P1)         |
 
 Order of delivery: platform → HU duplicate ladder (+ rating v1, integrity v1) → 6-max casual + rated arenas → integrity v2 when a growth trigger fires. See `.10x/handoff.md`.
 

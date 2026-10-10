@@ -294,6 +294,77 @@ describe('a six-casual session', () => {
     expect(left).toEqual([])
   })
 
+  it('a call after the session ended adds nobody', async () => {
+    const S = 'cccccccc-0000-4000-8000-000000000016'
+    await call('record_match', session(S, { 0: ALICE, 1: BOB }))
+    const end = {
+      ...session(S, { 0: ALICE, 1: BOB }),
+      handNo: 0,
+      timeouts: {},
+      result: { reason: 'complete' },
+    }
+    await call('record_match', end)
+    // A late retry that names a new account changes nothing.
+    await call('record_match', {
+      ...end,
+      players: entries({ 0: ALICE, 2: DAVE }),
+    })
+    expect((await players(S)).map((r) => r.user_id)).toEqual([ALICE, BOB])
+  })
+
+  it('a hand replayed after the session ended gives a new row its finish time', async () => {
+    const S = 'cccccccc-0000-4000-8000-000000000017'
+    await call('record_match', session(S, { 0: ALICE, 1: BOB }))
+    await call('record_match', {
+      ...session(S, { 0: ALICE, 1: BOB }),
+      handNo: 0,
+      timeouts: {},
+      result: { reason: 'complete' },
+    })
+    await call(
+      'record_hand',
+      hand(S, 1, { 0: ALICE, 3: CAROL }, { [ALICE]: 20, [CAROL]: -20 }),
+    )
+    const { rows } = await db.query<{ user_id: string; same: boolean }>(
+      `select mp.user_id, mp.finished_at = m.finished_at as same
+       from public.match_players mp join public.matches m on m.id = mp.match_id
+       where mp.match_id = $1 order by mp.user_id`,
+      [S],
+    )
+    expect(rows).toEqual([
+      { user_id: ALICE, same: true },
+      { user_id: BOB, same: true },
+      { user_id: CAROL, same: true },
+    ])
+  })
+
+  it('one account twice in a call is refused as data (23505)', async () => {
+    const S = 'cccccccc-0000-4000-8000-000000000018'
+    const refused = async (fn: 'record_match' | 'record_hand', p: object) => {
+      const error = await call(fn, p).then(
+        () => null,
+        (e: { code?: string }) => e,
+      )
+      expect(error?.code, fn).toBe('23505')
+    }
+    await refused('record_match', {
+      ...session(S, {}),
+      players: [
+        { seat: 0, userId: ALICE },
+        { seat: 1, userId: ALICE },
+      ],
+    })
+    await call('record_match', session(S, { 0: ALICE, 1: BOB }))
+    const twice = hand(S, 1, { 0: ALICE, 1: BOB }, { [ALICE]: 0, [BOB]: 0 })
+    twice.record.seats[1].userId = ALICE
+    await refused('record_hand', twice)
+    const { rows } = await db.query(
+      'select id from public.hands where match_id = $1',
+      [S],
+    )
+    expect(rows).toEqual([])
+  })
+
   it('apply_rating still refuses six-casual', async () => {
     const S = 'cccccccc-0000-4000-8000-000000000006'
     await call('record_match', session(S, { 0: ALICE, 1: BOB }))

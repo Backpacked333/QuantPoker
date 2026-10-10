@@ -400,6 +400,9 @@ Risks:
   - `rotation keeps seats and stacks and starts a new matches row`
   - `deck keys do not accumulate`
 - **Risk:** stacks and seats must survive the rotation. It also interacts with `hands_after_match`.
+- **Contracts from PR-09's migration** (`20261010130000_six_casual.sql`):
+  - `record_match` reads six-casual `timeouts` keyed by **userId** (session totals). `table.ts` sends them keyed by seat today, so PR-13 must switch the key for six tables, or every timeout is stored as 0.
+  - Before the first six session is archived, the public review page (`src/net/publicMatch.ts`, `src/net/MatchReview.tsx`) must name players from each hand's `record.seats`, not `match_players.seat`. `(match_id, seat)` is no longer unique, so a six review would show the wrong names. This lands as its own small PR before PR-13.
 
 **PR-14 · P2-03f rebuy (cut line)**
 

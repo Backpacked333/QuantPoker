@@ -23,7 +23,10 @@
 --     add constraint matches_kind_check check (kind in ('hu-casual', 'hu-rated'));
 --   then restore the functions: the record_match statement of
 --   20261010043000_rematch.sql (v5) and the record_hand statement of
---   20261008134322_record_hand.sql (v1, as create or replace).
+--   20261008134322_record_hand.sql (v1, as create or replace); and
+--   delete from supabase_migrations.schema_migrations
+--     where version = '20261010130000';
+--   so a later db push does not treat this migration as applied.
 set local lock_timeout = '5s';
 
 -- The same NOT VALID then VALIDATE as rated_matches: matches is small, so
@@ -70,6 +73,13 @@ declare
   v_at timestamptz := now();
   v_six boolean;
 begin
+  -- One account twice would make the upsert below fail with 21000, which
+  -- the Worker retries forever; 23505 is refused as data and parked.
+  if (select count(*) <> count(distinct s ->> 'userId')
+      from jsonb_array_elements(p -> 'players') s) then
+    raise exception 'duplicate account in match %', v_match
+      using errcode = '23505';
+  end if;
   select status, kind into v_status, v_kind
   from public.matches where id = v_match for update;
   if v_status is null then
@@ -171,6 +181,12 @@ declare
   v_hand text := p ->> 'id';
   v_match uuid := (p ->> 'matchId')::uuid;
 begin
+  -- As in record_match: refused as data (23505), never retried forever.
+  if (select count(*) <> count(distinct s ->> 'userId')
+      from jsonb_array_elements(p -> 'record' -> 'seats') s) then
+    raise exception 'duplicate account in hand %', v_hand
+      using errcode = '23505';
+  end if;
   insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record)
   values (
     v_hand, v_match, (p ->> 'handNo')::integer, (p ->> 'segment')::smallint,
@@ -193,8 +209,11 @@ begin
          array(select jsonb_array_elements_text(h -> 'cards'))::smallint[]
   from jsonb_array_elements(p -> 'holesByUser') h;
 
-  insert into public.match_players as mp (match_id, user_id, seat)
-  select v_match, (s ->> 'userId')::uuid, (s ->> 'seat')::smallint
+  -- A hand parked and replayed after its session ended gives a new row the
+  -- session's finish time, like every other row of a finished session.
+  insert into public.match_players as mp (match_id, user_id, seat, finished_at)
+  select v_match, (s ->> 'userId')::uuid, (s ->> 'seat')::smallint,
+         (select m.finished_at from public.matches m where m.id = v_match)
   from jsonb_array_elements(p -> 'record' -> 'seats') s
   on conflict (match_id, user_id) do update set seat = excluded.seat
     where mp.seat <> excluded.seat;

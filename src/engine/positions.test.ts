@@ -13,12 +13,21 @@ describe('table size', () => {
   it('validateConfig rejects 7 seats', () => {
     // SeatId is 0..5 and positionNames has labels for at most six.
     const seven = config([2000, 2000, 2000, 2000, 2000, 2000, 2000])
-    expect(() => startHand(seven, deckWith(seven, {}, ''))).toThrow(EngineError)
     expect(() => startHand(seven, deckWith(seven, {}, ''))).toThrow(
-      'A hand needs 2 to 6 players',
+      new EngineError('A hand needs 2 to 6 players'),
     )
     const six = config([2000, 2000, 2000, 2000, 2000, 2000])
     expect(startHand(six, deckWith(six, {}, '')).players).toHaveLength(6)
+  })
+  it('refuses a seat id above 5', () => {
+    const base = config([2000, 2000])
+    const wide = {
+      ...base,
+      seats: [base.seats[0], { ...base.seats[1], seat: 8 }],
+    }
+    expect(() => startHand(wide, deckWith(base, {}, ''))).toThrow(
+      new EngineError('Seats must be integers from 0 to 5'),
+    )
   })
 })
 
@@ -74,5 +83,11 @@ describe('nextButton', () => {
     expect(nextButton(seats, 0)).toBe(2)
     expect(nextButton(seats, 2)).toBe(5)
     expect(nextButton(seats, 5)).toBe(0)
+  })
+  it('moves on from a button seat that has emptied', () => {
+    // The P2-02 dead-button rule is the change most likely to move this.
+    expect(nextButton([0, 2, 5], 3)).toBe(5)
+    expect(nextButton([0, 2, 5], 4)).toBe(5)
+    expect(nextButton([0, 2], 5)).toBe(0)
   })
 })

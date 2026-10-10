@@ -237,6 +237,10 @@ describe('rated play', () => {
     expect(await bob.next((f) => f.t === 'queued')).toMatchObject({
       position: 1,
     })
+    // Presence counts each line: two waiting, one of them rated.
+    expect(
+      await bob.next((f) => f.t === 'presence' && f.queued === 2),
+    ).toMatchObject({ queued: 2, rated: 1 })
     expect([...alice.frames, ...bob.frames].some(matched)).toBe(false)
     const carol = await lobby('carol')
     carol.send({ t: 'queue', kind: 'hu-rated' })

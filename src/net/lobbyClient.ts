@@ -19,7 +19,8 @@ export type LobbyState = {
   /** Why the server refused the last rated queue (no confirmed email). */
   refused: string | null
   queued: { position: number; since: number } | null
-  presence: { online: number; queued: number } | null
+  /** `rated`: of those queued, how many wait for rated. */
+  presence: { online: number; queued: number; rated: number } | null
   matched: { matchId: string; resumed: boolean } | null
   error: string | null
 }
@@ -50,6 +51,11 @@ export class LobbyConnection {
   private attempts = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private stopped = false
+  /**
+   * This socket's rated answer was no. The Worker checks once per socket,
+   * so a later rated search goes over a fresh one, whatever came between.
+   */
+  private unverified = false
   private readonly options: Required<Options>
 
   constructor(
@@ -89,7 +95,7 @@ export class LobbyConnection {
     // The Worker checks rated eligibility once per socket, so a refused
     // player who retries (after confirming, or once Auth is back) needs a
     // fresh socket for a fresh answer.
-    const recheck = kind === 'hu-rated' && this.state.refused !== null
+    const recheck = kind === 'hu-rated' && this.unverified
     this.set({ looking: true, kind, matched: null, error: null, refused: null })
     if (recheck) return this.reopen()
     if (this.state.status === 'open') this.sendQueue()
@@ -132,6 +138,7 @@ export class LobbyConnection {
     this.socket = socket
     socket.onopen = () => {
       this.attempts = 0
+      this.unverified = false
       this.set({
         status: 'open',
         ...(this.state.error === LIMITED ? { error: null } : {}),
@@ -173,7 +180,11 @@ export class LobbyConnection {
     switch (msg.t) {
       case 'presence':
         return this.set({
-          presence: { online: msg.online, queued: msg.queued },
+          presence: {
+            online: msg.online,
+            queued: msg.queued,
+            rated: msg.rated ?? 0,
+          },
         })
       case 'queued':
         return this.state.looking
@@ -187,9 +198,9 @@ export class LobbyConnection {
         })
       case 'error':
         // A rated queue refused: not looking any more, and the card says why.
-        return msg.code === 'unverified'
-          ? this.set({ looking: false, queued: null, refused: msg.message })
-          : this.set({ error: msg.message })
+        if (msg.code !== 'unverified') return this.set({ error: msg.message })
+        this.unverified = true
+        return this.set({ looking: false, queued: null, refused: msg.message })
     }
   }
 }

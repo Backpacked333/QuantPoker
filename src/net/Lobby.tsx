@@ -204,7 +204,14 @@ function QuickMatch({
     )
 
   const waited = startedAt === null ? 0 : now - startedAt
-  const alone = (state.presence?.queued ?? 1) <= 1
+  // Only this card's line can pair: count it alone.
+  const counts = state.presence
+  const inLine = counts
+    ? kind === 'hu-rated'
+      ? counts.rated
+      : counts.queued - counts.rated
+    : 1
+  const alone = inLine <= 1
   return (
     <div className="live-looking" role="status" aria-live="polite">
       <p>

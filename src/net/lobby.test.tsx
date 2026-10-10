@@ -173,6 +173,33 @@ describe('LobbyConnection: rated', () => {
     expect(connection.getState().refused).toBeNull()
   })
 
+  it('asks again over a fresh socket for rated after a refusal, even with a casual search between', async () => {
+    const connection = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    connection.find('hu-rated')
+    socket.emit(
+      lobbyFrame({
+        t: 'error',
+        code: 'unverified',
+        message: 'Rated matches need a confirmed email address.',
+      }),
+    )
+    connection.find() // a casual search clears the message, not the socket's answer
+    connection.cancel()
+    connection.find('hu-rated')
+    await flush()
+    const again = FakeSocket.last()
+    expect(again).not.toBe(socket)
+    again.open()
+    expect(sent(again)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+    // The fresh socket's answer is the one that counts from now on.
+    connection.cancel()
+    connection.find('hu-rated')
+    expect(FakeSocket.last()).toBe(again)
+  })
+
   it('asks again over a fresh socket when a refused player retries rated', async () => {
     const connection = connect()
     await flush()
@@ -226,6 +253,22 @@ describe('Lobby: Play rated 1v1', () => {
     expect(screen.getByRole('button', { name: 'Find a match' })).toBeDisabled()
     act(() => socket.emit(lobbyFrame({ t: 'matched', matchId: MATCH })))
     expect(window.location.hash).toBe(`#play/${MATCH}`)
+  })
+
+  it('offers Atlas after a minute alone in the rated line, whoever waits for casual', async () => {
+    const socket = await lobbyPage()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    act(() =>
+      screen.getByRole('button', { name: 'Find a rated match' }).click(),
+    )
+    // Two waiting, but one of them for casual: nobody to pair with.
+    act(() =>
+      socket.emit(
+        lobbyFrame({ t: 'presence', online: 2, queued: 2, rated: 1 }),
+      ),
+    )
+    await act(async () => vi.advanceTimersByTime(61_000))
+    expect(screen.getByText(/Nobody else is looking right now/)).toBeVisible()
   })
 
   it('tells an account without a confirmed email why it cannot play rated', async () => {

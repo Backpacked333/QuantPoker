@@ -163,3 +163,57 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
 - 713 unit tests (69 files) and 143 worker tests (15 files).
 - Entry bundle 141.5 kB.
 - 21 e2e tests.
+
+## P1-04 · End of match and rematch (2026-10-10, PRs #18 and #19)
+
+### Database (PR #18, live)
+
+- **`20261010043000_rematch.sql`:** `matches.rematch_of`, a foreign key with a partial index, and `record_match` v5.
+- **v5 is v4 plus the link.** It stores the link only when the earlier match is in the archive as a finished rated match: on the call that creates the row or, failing that, on the finish.
+- **Review fold-in on #18.** Archives arriving out of order used to lose the link for good. They now repair it on the finish, and a rematch never links to a match still playing, or to a casual one.
+- **VERIFIED in production (read-only):**
+  - the version is recorded;
+  - the column and index exist;
+  - the v5 lookup and repair are in the function body;
+  - `record_match` is callable by `service_role` only.
+
+### Table, lobby and screen (PR #19)
+
+- **The offer.** After a rated match with a result, the table asks the lobby `pairsLeft`. It then offers `open`, or `limit` at the pair cap (R-9). The question is asked after the result is stored and sent, so the result never waits on the lobby.
+- **The presses.**
+  - One press waits `REMATCH_MS` (60 s), using a `rematch` deadline, then becomes `declined`.
+  - Both presses call the lobby's `rematch`. It refuses at the cap (checked again, since the count can change after the offer) and when either player is now at another table. Otherwise it starts a new rated table: counted as a pairing, seats swapped so the other player has the first button, `rematchOf` set.
+  - The offer is marked `starting` in memory before the lobby call, so neither the expiry nor another press can change it meanwhile.
+- **Frames.**
+  - `rematch` (client) and `rematch_state` (server), with the allowlist the compiler required in `frames.ts`.
+  - A socket that joins or resyncs after the end now gets `match_end` and the offer again (the gap P1-03 found).
+- **Screen.** `MatchEnd` shows:
+  - "+12.5 bb · Win" (the luck-adjusted total), and the chips actually won;
+  - the offer as the server holds it, from the Rematch button to "Rematch limit reached (2 per day)".
+
+  "Starting" opens the new table. Casual tables keep their end line.
+
+- **Not built:**
+  - the rating change, which comes with P1-12;
+  - the swings, which come with P1-20. There is no placeholder; the panel grows when they exist.
+- **Accepted edge.** A rematch does not repeat the lobby's email check. Both players passed it when they queued, minutes earlier.
+
+### Evidence
+
+- **`worker/test/rematch.test.ts`, 8 tests:**
+  - both press → a new rated table with seats swapped, the lobby holding both, and `rematchOf` in its archive call;
+  - a lone press declines;
+  - the cap at the offer, and again at the press;
+  - busy elsewhere;
+  - the redaction of every frame;
+  - `match_end` and the offer resent on reconnect and resync;
+  - casual is illegal.
+- **Mutations caught:** the lobby ignoring the cap fails 2 tests; a press that never expires fails 1.
+- **Client tests:** `src/net/MatchEnd.test.tsx` (6), the headline in `matchResult.test.ts`, and a `LiveTable` test that clicks Rematch.
+- **No e2e.** A rated match needs 40 hands or three 80 s timeouts in real time. The worker tests drive real sockets through the real Worker.
+- **Gates:**
+  - typecheck 0, typecheck:worker 0, lint 0;
+  - 728 unit tests (71 files) and 151 worker tests (16 files);
+  - SQL: 60 tests; plans 12/12;
+  - entry bundle 141.5 kB;
+  - 21 e2e tests.

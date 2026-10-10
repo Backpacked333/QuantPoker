@@ -606,6 +606,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-04 · End of match and rematch
 
+**Status 2026-10-10: done** (PR #18 database, live; PR #19 table, lobby and screen). Under B, the headline is the luck-adjusted total ("+12.5 bb · Win") and the chips actually won appear beside it. The rating change waits for P1-12 and the swings for P1-20, with no placeholder. The acceptance tests exist under their names, plus `match_end` resent on reconnect; details are in the SDE log §P1-04.
+
 - **Goal.** After a rated match each player sees the result in bb, W/D/L, the rating change (P1-12), the top swings (P1-20), and a rematch button that obeys the pair cap (R-9).
 - **User-visible outcome.**
   - "Rematch": both press within 60 s and a new rated match starts.

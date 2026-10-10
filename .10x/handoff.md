@@ -1,6 +1,45 @@
 # Handoff
 
-## Current handoff: SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
+## Current handoff: SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
+
+Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12 and P1-13 are merged and verified live; P1-14 is PR #27; P1-15/16 are committed locally and go up as the next PR once #27 merges.
+
+### What changed
+
+- **The number moves after every match** (P1-12, live). The end screen shows the real change and why: "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92."
+- **Matchmaking near rating** (P1-13, live). The window starts at ±100 and widens by 50 a minute; the ≤ 2 pairings per pair per day cap holds.
+- **The ladder** (P1-14, PR #27).
+  - `#ladder` and `#ladder/month`, public, with keyset pages and RD always shown.
+  - Eligibility: not provisional, a match in 30 days, abandonment under 10%.
+  - Provisional viewers see "X rated matches to go".
+- **Metrics you can run today:** `supabase/metrics/rating-metrics.sql` (read-only). Production says "insufficient data" for all three. The simulated season meets them: 65.4%, 13.4 and 0.860.
+- **Profile, review and method** (P1-15/16).
+  - `/u/<username>` carries a link preview.
+  - The profile shows rating ± RD over time, volume, abandonment, an empty sanctions field, accuracy, and the last 20 rated matches.
+  - `#match/<id>` reviews a match hand by hand with showdown cards only.
+  - `#method` states the formulas and versions.
+  - A generic share card.
+
+### Decisions I took (reversible)
+
+- **Win rate counts wins only;** draws are visible as the gap. This is stated under the table and on Method.
+- **Profiles list rated matches only.** ToS consent covers rated hand histories.
+- **The public review leaves out decision times,** the recommendation of Q5, which is still yours.
+- **Link previews use one static card** (the ticket's cut line); the player's numbers are in the preview text.
+- **Counting profile views from outside the app is deferred** (P1-16's `profile_views`).
+
+### User actions
+
+- **Unchanged:** U-4 (until then no rated match is archived or rated in production), U-8, Q7, and the open rematch-link finding on #19.
+- **Optional:** say if you want profile-view counting built next.
+
+### Next step
+
+Merge #27 when green and verify the migration. Then push P1-15/16 as its own PR, merge when green, and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
 
 Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going through its PR.**
 
@@ -32,8 +71,6 @@ Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going
 Me: open the P1-10 PR, merge when green, verify the deploy, then P1-12 ratings.
 
 ---
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (P1-04 live; P1-12 next)
 

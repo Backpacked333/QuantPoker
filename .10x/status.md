@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (accuracy: P1-08 and P1-09 live, QA attack run, P1-10 built; P1-12 ratings next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (rating: P1-12 and P1-13 live; P1-14 ladder in PR #27; P1-15/16 profile, Method and share card built; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -46,7 +46,16 @@ Merged and deployed, each one verified in production after its merge:
 
   The mission's sanity order holds.
 
-**P1-10 (built, PR next):** the public accuracy number with its distribution, the luck-versus-skill series across rated matches, and the "Rated play" panel in the lobby.
+**PR #24 (`c69fbf1`): accuracy, its grade distribution and luck versus skill (P1-10).** Live and verified.
+
+**PRs #25 (`ba8ffaf`) and #26 (`a3b9aed`): the rating (P1-12, P1-13).**
+
+- **#25:** a finished rated match changes both Glicko-2 ratings once (`ratings`, an append-only `rating_history`, `apply_rating` with compare-and-set). The end screen shows "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player". Production holds `20261010080000` (checked read-only: anon cannot apply, the abandonment trigger is present). The Worker carries the rating outbox, and `verify-deploy` passed. No rated match had finished before the deploy, so none is unrated.
+- **#26:** rated quick-match pairs the closest rating within 100 + 50 per minute of waiting, re-pairing every 15 s, under the 2-a-day pair cap. Devin found a real race (a search cancelled during the rating read could come back as a ghost), fixed in the same PR. The deployed Worker carries both, and `verify-deploy` passed. Simulated median wait: 29 s at 10 players online.
+
+**PR #27 (open): the ladder, the metrics query and a simulated season (P1-14).** `#ladder` and `#ladder/month` are public; `supabase/metrics/rating-metrics.sql` reports "insufficient data" on production today. A 200-player, 5,000-match season in PGlite ranks players by hidden skill with Spearman 0.975 and meets all three PM targets.
+
+**P1-15/16 (built, PR after #27):** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 

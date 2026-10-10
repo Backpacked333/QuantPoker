@@ -1,31 +1,44 @@
 # Handoff
 
-## Current handoff: Architect → SDE (landing v2, cinematic 3D)
+## Current handoff: SDE → DevOps / User (landing v2 ready to ship)
+
+Date: 2026-10-10 · Status: **built, verified locally; PR next, merge when CI is green.**
+
+- **What:** the cinematic 3D landing, the explanation sections, account-first CTAs. Records:
+  - `.10x/decisions/sde/landing-and-onboarding.md`;
+  - `.10x/decisions/qa/landing-and-onboarding.md`;
+  - `.10x/decisions/security/landing-and-onboarding.md`;
+  - `.10x/decisions/devops/landing-and-onboarding.md`;
+  - `.10x/decisions/sre/landing-and-onboarding.md`.
+- **Watch after launch:** the `/api/funnel` start and complete rates against the earlier landing page.
+- **Open:** three `lobby.test.ts` tests fail on `main` locally (not this change).
+
+---
+
+## Handoff history
+
+### 2026-10-10 — Architect → SDE (landing v2, cinematic 3D)
 
 Date: 2026-10-10 · Status: **design approved; building.**
 
-### Read first
+#### Read first
 
 - The spec: `.10x/specs/2026-10-10-landing-3d-design.md`.
 - ADR-001: `.10x/adrs/001-landing-3d-stage.md`.
 - The architect file's §Landing v2.
 
-### Order
+#### Order
 
 1. The stage: table, lights, cards, chips, dealing, camera, quality tier, fallback.
 2. The decision beats: range cloud (first decision), stamp (middle decisions), slow-motion verdict (last decision).
 3. The score card count-up; the account bar; the How it works and Your account sections; scroll reveals.
 4. Device tuning, e2e on the 3D path, frame time.
 
-### Constraints
+#### Constraints
 
 - Keep the challenge logic, scoring and accounts unchanged.
 - The entry chunk stays within its 150 kB budget.
 - A live text summary sits next to the canvas for screen readers.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (landing page phase 2 built)
 

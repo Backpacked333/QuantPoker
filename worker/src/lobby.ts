@@ -2,7 +2,7 @@
 // account is at, and how often two accounts were paired today. Everything
 // is in storage, so hibernation or eviction never loses a waiting player.
 //
-//   queue:<userId>          { userId, username, since, kind }  (connected + asked)
+//   queue:<userId>          { userId, username, since, kind, rating? }  (connected + asked)
 //   active:<userId>         matchId                      (one table each)
 //   pairs:<day>:<a>:<b>     times paired that UTC day    (limit 2)
 //   creates:<day>:<userId>  invite tables made that day  (limit 30)
@@ -20,12 +20,17 @@ import { now } from './clock'
 import type { WorkerEnv } from './env'
 import { FrameBudget, MATCH_CREATES_PER_DAY } from './limits'
 import { logEvent } from './log'
+import { ratingWindow, REPAIR_MS } from './pairing'
 import type { InitBody, Liveness } from './table'
 
 /** The same two accounts meet at most this often per UTC day. */
 export const PAIRS_PER_DAY = 2
 /** Both players must open a paired table within this time. */
 export const START_WITHIN_MS = 30_000
+export { RATING_WINDOW, ratingWindow, REPAIR_MS } from './pairing'
+
+/** A player with no rated match yet queues at the default rating. */
+const UNRATED = 1500
 
 /** `kind` is absent on rows queued before rated play existed: casual. */
 type Waiting = {
@@ -33,7 +38,10 @@ type Waiting = {
   username: string
   since: number
   kind?: MatchKind
+  /** Rated: the player's rating when they queued. */
+  rating?: number
 }
+
 type Attachment = {
   userId: string
   username: string
@@ -67,6 +75,9 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   private seq = 0
   /** The lobby's clock; tests move it. */
   clock: () => number = now
+  /** A player's current rating; tests replace it. */
+  ratingOf: (userId: string) => Promise<number> = (userId) =>
+    currentRating(this.env, userId)
   /** Every player shares this object: each account gets a frame budget. */
   private budget = new FrameBudget(() => this.clock())
 
@@ -133,6 +144,12 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       webSocket: client,
       headers: { 'Sec-WebSocket-Protocol': PROTOCOL },
     })
+  }
+
+  /** Rated players still apart: widen their windows and try again. */
+  async alarm() {
+    await this.pairUp()
+    await this.presence()
   }
 
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
@@ -220,32 +237,58 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
         username,
         since: this.clock(),
         kind,
+        ...(kind === 'hu-rated' ? { rating: await this.ratingOf(userId) } : {}),
       } satisfies Waiting)
     await this.pairUp()
     await this.presence()
   }
 
-  /** Oldest first: each waiting player meets the oldest one they still may. */
+  /**
+   * Oldest first: each waiting player meets an opponent they still may.
+   * Casual: the oldest one. Rated: the closest rating within the window
+   * (the longer waiter's), the oldest on a tie.
+   */
   private async pairUp() {
-    const today = day(this.clock())
+    const at = this.clock()
+    const today = day(at)
     const waiting = [
       ...(await this.ctx.storage.list<Waiting>({ prefix: 'queue:' })).values(),
     ].sort((a, b) => a.since - b.since)
     const taken = new Set<string>()
     for (const [i, a] of waiting.entries()) {
       if (taken.has(a.userId)) continue
+      const kind = kindOf(a)
+      let best: { b: Waiting; key: string; count: number; gap: number } | null =
+        null
       for (const b of waiting.slice(i + 1)) {
-        if (taken.has(b.userId) || kindOf(b) !== kindOf(a)) continue
+        if (taken.has(b.userId) || kindOf(b) !== kind) continue
         const key = pairKey(today, a.userId, b.userId)
         const count = ((await this.ctx.storage.get(key)) as number) ?? 0
         if (count >= PAIRS_PER_DAY) continue
-        if (await this.startMatch(a, b, key, count, kindOf(a))) {
-          taken.add(a.userId)
-          taken.add(b.userId)
-        }
-        break
+        const gap =
+          kind === 'hu-rated'
+            ? Math.abs((a.rating ?? UNRATED) - (b.rating ?? UNRATED))
+            : 0
+        // `a` queued first, so it has waited longest.
+        if (gap > ratingWindow(at - a.since)) continue
+        if (!best || gap < best.gap) best = { b, key, count, gap }
+        if (kind !== 'hu-rated' || gap === 0) break
+      }
+      if (
+        best &&
+        (await this.startMatch(a, best.b, best.key, best.count, kind))
+      ) {
+        taken.add(a.userId)
+        taken.add(best.b.userId)
       }
     }
+    // The rating windows widen as players wait: look again soon while two
+    // rated players are still apart, and sleep otherwise.
+    const rated = waiting.filter(
+      (w) => kindOf(w) === 'hu-rated' && !taken.has(w.userId),
+    ).length
+    if (rated >= 2) await this.ctx.storage.setAlarm(at + REPAIR_MS)
+    else await this.ctx.storage.deleteAlarm()
     // Yesterday's pair counts are no longer needed.
     const old = await this.ctx.storage.list({
       prefix: 'pairs:',
@@ -447,3 +490,25 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   ? Omit<T, K>
   : never
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/**
+ * A player's heads-up rating (public.ratings), or the default for a player
+ * with none yet, a dev account, or a read that fails: queueing never waits
+ * on a lookup that cannot succeed.
+ */
+async function currentRating(env: WorkerEnv, userId: string) {
+  if (!UUID.test(userId) || !env.SUPABASE_URL) return UNRATED
+  try {
+    const response = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/ratings?select=rating&format=eq.hu-duplicate&user_id=eq.${userId}`,
+      { headers: { apikey: env.SUPABASE_SECRET_KEY ?? '' } },
+    )
+    if (!response.ok) return UNRATED
+    const rows = (await response.json()) as { rating: number }[]
+    return typeof rows[0]?.rating === 'number' ? rows[0].rating : UNRATED
+  } catch {
+    return UNRATED
+  }
+}

@@ -94,3 +94,31 @@ The test asserts what does hold for every sequence: **after playing a period, RD
 ### Not done here
 
 - Rated matches archived before this deploy are not rated retroactively. Production had none as of this ticket; the count is checked read-only after deploy.
+
+## P1-13 · Rated quick-match near your rating (2026-10-10)
+
+- **The window** (`worker/src/pairing.ts`, pure): two rated players may meet across `100 + 50 × minutes` rating points. The minutes are the longer waiter's (the oldest player in the scan), so a long wait finds someone.
+- **Queue rows.** A rated row stores the player's rating at queue time (`public.ratings` through PostgREST). A player with no row, a dev account, or a failed read queues at 1500; queueing never waits on a failing lookup. The lookup is a seam (`ratingOf`) so tests set ratings.
+- **The choice.** Oldest player first. Among the opponents within the window, the closest rating wins, and a tie goes to the one who has waited longer. Casual pairing is unchanged (oldest first). The ≤ 2 pairings per pair per day cap applies to both kinds, and nothing pairs a capped pair even when they are alone in the queue.
+- **The alarm.** While two or more rated players are still waiting after a pass, the lobby sets an alarm for 15 s (`REPAIR_MS`) and pairs again with the wider windows. With fewer than two it deletes the alarm and hibernates.
+- **Client.** After a minute of a rated search with others in line: "Widening search… opponents further from your rating now qualify."
+- **Tests.**
+  - **`worker/test/lobby.test.ts › rated pairing by rating`:**
+    - 400 apart pair at exactly 6:00 and not at 5:59;
+    - the closest eligible opponent is chosen, with ties going to the longer waiter;
+    - a capped pair never re-pairs today even alone, 55 minutes later;
+    - no alarm with fewer than 2 rated players waiting (a casual player doesn't count).
+
+    Mutation-checked: taking the first eligible opponent instead of the closest fails the closest-opponent test.
+
+  - **`src/net/lobby.test.tsx`:** the widening line appears after a minute.
+
+- **Liquidity check** (the ticket's riskiest assumption), `node scripts/pairing-sim.ts`: seeded Poisson arrivals, ratings 1500 ± 200, each player re-queueing after about a 12-minute match, 200 simulated hours.
+
+  | online | median wait | p90 wait | waits > 60 s | mean gap |
+  | -----: | ----------: | -------: | -----------: | -------: |
+  |     10 |        29 s |    222 s |          40% |      129 |
+  |     20 |        16 s |    148 s |          30% |      102 |
+  |     30 |        10 s |    111 s |          23% |       90 |
+
+  The median stays under 60 s from 10 players online. At 10 online the tail is long (p90 3.7 min), the cost of matching within about 130 points. If launch liquidity is lower, widen faster (`perMinute`) rather than starting wider.

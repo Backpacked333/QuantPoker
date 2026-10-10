@@ -339,6 +339,22 @@ describe('Lobby: Play 1v1', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeVisible()
   })
 
+  it('says the rated search is widening after a minute with others waiting', async () => {
+    const socket = await lobbyPage()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    act(() =>
+      screen.getByRole('button', { name: 'Find a rated match' }).click(),
+    )
+    act(() =>
+      socket.emit(
+        lobbyFrame({ t: 'presence', online: 4, queued: 2, rated: 2 }),
+      ),
+    )
+    expect(screen.queryByText(/Widening search/)).toBeNull()
+    await act(async () => vi.advanceTimersByTime(61_000))
+    expect(screen.getByText(/Widening search…/)).toBeVisible()
+  })
+
   it('starts looking at once when sent back to find another match', async () => {
     const socket = await lobbyPage({ autoFind: true })
     expect(sent(socket)).toEqual([{ t: 'queue', kind: 'hu-casual' }])

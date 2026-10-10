@@ -10,6 +10,8 @@ import { useLobby } from './useLobby'
 
 /** With nobody else queued this long, offer a way out. */
 export const BAIL_OUT_MS = 60_000
+/** Rated: the rating window has visibly widened (worker/src/pairing.ts). */
+export const WIDEN_AFTER_MS = 60_000
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -229,6 +231,11 @@ function QuickMatch({
       {state.status === 'reconnecting' && (
         <p className="live-warn">
           {state.error ?? 'Reconnecting to the lobby…'}
+        </p>
+      )}
+      {kind === 'hu-rated' && waited >= WIDEN_AFTER_MS && !alone && (
+        <p className="live-muted">
+          Widening search… opponents further from your rating now qualify.
         </p>
       )}
       {waited >= BAIL_OUT_MS && alone && !keepWaiting ? (

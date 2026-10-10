@@ -6,40 +6,12 @@
 -- self-check the rules below. Rationale, alternatives and rollback:
 -- .10x/decisions/dba/phase1-schema.md.
 
--- ---- P1-01 / P1-04: rated matches ------------------------------------------
--- A plain ADD CONSTRAINT CHECK scans matches under an exclusive lock. NOT
--- VALID takes the lock only to record the rule (new rows are checked from
--- then on); VALIDATE scans existing rows without blocking writes.
-alter table public.matches drop constraint matches_kind_check;
-alter table public.matches
-  add constraint matches_kind_check check (kind in ('hu-casual', 'hu-rated'))
-  not valid;
-alter table public.matches validate constraint matches_kind_check;
+-- ---- P1-04: rematches ------------------------------------------------------------
+-- P1-01's part (the rated kind, match_players.outcome, adjusted_chips,
+-- finished_at and match_players_history) shipped as
+-- supabase/migrations/*_rated_matches.sql.
 alter table public.matches
   add column rematch_of uuid references public.matches (id) on delete set null;
-
--- record_match v4 (P1-01) sets these with the result, in the statement that
--- already sets timeouts and abandoned. matches.result keeps netBb and the
--- per-user outcome as JSON for the record; the columns serve the queries.
-alter table public.match_players
-  -- W/D/L after the draw band (DRAW_BAND_BB in code); null for casual and
-  -- void matches.
-  add column outcome text check (outcome in ('win', 'draw', 'loss')),
-  -- The luck-adjusted net (Q1 = B: all-in pots settled at equity,
-  -- src/engine/luck.ts); outcome comes from it with the draw band. net_chips
-  -- stays the chips actually won. Null for casual and void matches. bb are
-  -- chips / config.blinds.bb.
-  add column adjusted_chips double precision,
-  -- A copy of matches.finished_at. Profiles and match history list a
-  -- player's matches newest first; with the time only on matches every page
-  -- joins and sorts all of that player's matches (142 ms for the heaviest
-  -- player at 1M matches in supabase/bench). Here, the index hands over the
-  -- 20 newest seats. Backfill for Phase 0 rows, in the same migration:
-  --   update public.match_players mp set finished_at = m.finished_at
-  --   from public.matches m where m.id = mp.match_id and m.finished_at is not null;
-  add column finished_at timestamptz;
-create index match_players_history on public.match_players (user_id, finished_at desc)
-  where finished_at is not null;
 
 -- ---- P1-12: ratings ----------------------------------------------------------
 -- Glicko-2 state per format, stored on the display scale: rating = 1500 +
@@ -62,8 +34,10 @@ create table public.ratings (
   wins integer not null default 0,
   draws integer not null default 0,
   -- Rated matches abandoned (forfeit or three timeouts), counted by
-  -- apply_rating, plus rated no-shows (R-14: void and unrated, but counted),
-  -- counted by record_match v4 in the branch that voids the match, which
+  -- apply_rating, plus rated no-shows (R-14: void and unrated, but counted)
+  -- and rated matches both players left (void, one each), counted by
+  -- P1-12's record_match (and backfilled from abandonments when
+  -- the ratings table ships) in the branch that voids the match, which
   -- runs once under the match row lock. The ladder rule is abandoned /
   -- matches over the lifetime (R-13: "until it falls" works by dilution).
   abandoned integer not null default 0 check (abandoned >= 0),

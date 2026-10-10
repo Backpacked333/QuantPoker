@@ -195,7 +195,15 @@ try {
     ...start,
     handNo: 7,
     timeouts: { 1: 3 },
-    result: { netBySeat: { 0: 80, 1: -80 }, reason: 'forfeit', forfeit: 1 },
+    // A rated finish carries every seat's outcome and adjusted chips, or
+    // record_match v4 refuses it.
+    result: {
+      netBySeat: { 0: 80, 1: -80 },
+      reason: 'forfeit',
+      forfeit: 1,
+      adjustedBySeat: { 0: 80, 1: -80 },
+      outcomeBySeat: { 0: 'win', 1: 'loss' },
+    },
   }
   const r3 = await race(
     `select public.record_match(${lit(end)})`,

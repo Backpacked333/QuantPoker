@@ -370,6 +370,17 @@ describe('new tables', () => {
   })
 })
 
+/**
+ * Wait, if need be, until the limiter's current window has at least `needMs`
+ * left. It counts in windows aligned to the wall clock (Miniflare:
+ * floor(now / period)), so a burst that straddles a boundary starts a fresh
+ * count halfway and its last request is let through.
+ */
+async function freshWindow(periodMs: number, needMs: number) {
+  const left = periodMs - (Date.now() % periodMs)
+  if (left < needMs) await new Promise((r) => setTimeout(r, left + 100))
+}
+
 describe('one address', () => {
   it('is let through when the rate limiter itself fails (a backstop never blocks sign-in)', async () => {
     const request = new Request(`${ORIGIN}/api/me`, {
@@ -387,6 +398,7 @@ describe('one address', () => {
 
   it(`gets ${UPGRADES_PER_IP_PER_MINUTE} sign-in requests a minute, then 429 before any token check`, async () => {
     const from = { 'CF-Connecting-IP': '203.0.113.7' }
+    await freshWindow(60_000, 5_000)
     const statuses: number[] = []
     for (let i = 0; i <= UPGRADES_PER_IP_PER_MINUTE; i++)
       statuses.push(
@@ -406,5 +418,5 @@ describe('one address', () => {
       },
     })
     expect(other.status).toBe(200)
-  })
+  }, 20_000)
 })

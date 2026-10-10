@@ -581,6 +581,14 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-03 · Nothing to analyse during a rated match
 
+**Status 2026-10-10: done (PR #17).**
+
+- **Built.** The five acceptance tests exist under their names. The allowlists moved to `worker/test/frames.ts`, checked against the protocol by the compiler.
+- **One UI gap closed.** Rated tables no longer draw the locked equity ring or the break-even figure.
+- **Recorded in the SDE log** (`.10x/decisions/sde/heads-up-duplicate-ladder.md` §P1-03):
+  - `?motion=off` stays a cosmetic switch, since it equals the OS reduced-motion setting;
+  - the face-up all-in runout equity stays, shown only after the server decided the hand.
+
 - **Goal.** Prove that during a rated match no client receives or renders analysis, and that debug params change nothing. This is the integrity metric "analysis data during a live rated hand = 0 (network test in CI)".
 - **User-visible outcome.** A rated table has no equity ring numbers, EV labels, lab, or guess bar.
 - **Files.** New `worker/test/rated-leak.test.ts`; `src/net/LiveTable.tsx`; `src/env.ts` (`motionOff`/seed ignored when a rated welcome arrives); `src/net/LiveTable.test.tsx`; `e2e/live.spec.ts`.

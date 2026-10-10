@@ -2,7 +2,7 @@
 
 ## Current handoff: SDE → User (P1-01 database live; rated match in the table server)
 
-Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10–#14 are merged, and each deploy was verified in production; for #13 and #14 that meant reading the deployed Worker code. The rated queue with its email gate comes next.
+Date: 2026-10-10 · Status: **Phase 1 is moving under "merge when green".** PRs #10–#15 are merged, and each deploy was verified in production; for the Worker-only #13 and #14 that meant reading the deployed Worker code. The lobby's Rated card comes next, and it opens rated play to people.
 
 ### What changed
 
@@ -38,8 +38,10 @@ Unchanged:
 
 Me:
 
-1. P1-01b-3's PR, merged when green. It holds the rated queue, the confirmed-email gate checked against Supabase Auth, and the end text reading the rated outcome;
-2. P1-01c, the lobby's Rated card and the match bar. After that a real person can play rated.
+1. P1-01c's PR (the Rated card, the refusal message, the match bar), merged when green. After it, a signed-in player with a confirmed email can play rated from the lobby;
+2. then P1-04 (rematch) and P1-12 (ratings: the `ratings` migration and Glicko-2 at match end).
+
+For you: once U-4 is done, play one rated match between two real accounts. It checks the gate against real Supabase Auth and archives the outcome. Until U-4, rated matches play but are not archived.
 
 ---
 

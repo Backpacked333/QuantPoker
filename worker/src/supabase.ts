@@ -7,7 +7,12 @@ import { describeError, logEvent } from './log'
 
 export type ArchiveCall = {
   /** apply_rating's payload is computed when it is sent (worker/src/rating.ts). */
-  rpc: 'record_match' | 'record_hand' | 'record_incident' | 'apply_rating'
+  rpc:
+    | 'record_match'
+    | 'record_hand'
+    | 'record_incident'
+    | 'apply_rating'
+    | 'record_challenge_claim'
   body: Record<string, unknown>
 }
 

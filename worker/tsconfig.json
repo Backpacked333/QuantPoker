@@ -10,6 +10,7 @@
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
+    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noUnusedLocals": true,
@@ -20,7 +21,10 @@
     "src",
     "test",
     "../src/engine",
-    "../src/shared"
+    "../src/shared",
+    "../src/challenge/score.ts",
+    "../src/challenge/trees.ts",
+    "../src/challenge/events.ts"
   ],
   "exclude": ["../src/**/*.test.ts", "../src/engine/testing.ts"]
 }

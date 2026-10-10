@@ -18,12 +18,14 @@
     "bindings": [
       { "name": "TABLE", "class_name": "TableDO" },
       { "name": "LOBBY", "class_name": "LobbyDO" },
+      { "name": "SCORES", "class_name": "ScoreDO" },
     ],
   },
   // The storage backend is fixed when a class is first created: SQLite.
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["TableDO"] },
     { "tag": "v2", "new_sqlite_classes": ["LobbyDO"] },
+    { "tag": "v3", "new_sqlite_classes": ["ScoreDO"] },
   ],
   // Every archived hand is re-verified off the game path: the table sends
   // { matchId, handNo } once Postgres has the hand; this Worker consumes it

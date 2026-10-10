@@ -384,6 +384,47 @@ describe('rated pairing by rating', () => {
     expect([...alice.frames, ...bob.frames].some(matched)).toBe(false)
   })
 
+  it('a search cancelled or closed while its rating is read never comes back', async () => {
+    for (const leaveBy of ['cancel', 'close'] as const) {
+      // Alice's rating read hangs until the test lets it finish.
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) => {
+        const slow = l as LobbyDO & { finish?: () => void }
+        l.ratingOf = (userId) =>
+          userId === 'alice'
+            ? new Promise((done) => (slow.finish = () => done(1500)))
+            : Promise.resolve(1500)
+      })
+      const reading = () =>
+        runInDurableObject(
+          lobbyStub(env),
+          (l: LobbyDO) => !!(l as LobbyDO & { finish?: () => void }).finish,
+        )
+      await setLobbyClock(T0)
+      const alice = await lobby('alice')
+      const watcher = await lobby('watcher')
+      ratedQueue(alice)
+      while (!(await reading())) await new Promise((r) => setTimeout(r, 5))
+      // She leaves while the read is still out; the lobby sees her go.
+      const seen = watcher.frames.length
+      if (leaveBy === 'cancel') alice.send({ t: 'dequeue' })
+      else alice.ws.close()
+      await watcher.next((f) => f.t === 'presence', seen)
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) =>
+        (l as LobbyDO & { finish: () => void }).finish(),
+      )
+      // Bob, at the same rating, finds nobody: no ghost of alice to meet.
+      const bob = await lobby('bob')
+      ratedQueue(bob)
+      const answer = await bob.next((f) => f.t === 'queued' || matched(f))
+      expect(answer.t).toBe('queued')
+      expect(Object.keys(await lobbyState())).not.toContain('queue:alice')
+      for (const c of [alice, watcher, bob]) c.ws.close()
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) => {
+        delete (l as LobbyDO & { finish?: () => void }).finish
+      })
+    }
+  })
+
   it('no alarm is armed while fewer than 2 rated players wait', async () => {
     await ratings({ alice: 1500, bob: 2100 })
     const alice = await waiting('alice', T0)

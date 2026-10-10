@@ -80,6 +80,14 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     currentRating(this.env, userId)
   /** Every player shares this object: each account gets a frame budget. */
   private budget = new FrameBudget(() => this.clock())
+  /**
+   * Each player's latest queue request. A request awaits lookups (the
+   * table's liveness, the rating) before it writes its row, and other
+   * frames run meanwhile: cancelling, leaving or asking again replaces or
+   * drops the entry, so an older request that wakes up writes nothing.
+   */
+  private requests = new Map<string, number>()
+  private lastRequest = 0
 
   constructor(ctx: DurableObjectState, env: WorkerEnv) {
     super(ctx, env)
@@ -169,6 +177,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     const msg = typeof message === 'string' ? parseClientMsg(message) : null
     if (msg?.t === 'queue') return this.enqueue(ws, msg.kind)
     if (msg?.t === 'dequeue') {
+      this.requests.delete(this.who(ws).userId)
       await this.ctx.storage.delete(`queue:${this.who(ws).userId}`)
       return this.presence()
     }
@@ -204,8 +213,10 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
   /** A closed socket takes its queue row with it (unless a newer tab is open). */
   private async leave(ws: WebSocket) {
     const { userId } = this.who(ws)
-    if (!this.sockets(ws).some((s) => this.who(s).userId === userId))
+    if (!this.sockets(ws).some((s) => this.who(s).userId === userId)) {
+      this.requests.delete(userId)
       await this.ctx.storage.delete(`queue:${userId}`)
+    }
     await this.presence(ws)
   }
 
@@ -213,8 +224,13 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
 
   private async enqueue(ws: WebSocket, kind: MatchKind) {
     const { userId, username, rated } = this.who(ws)
+    const request = ++this.lastRequest
+    this.requests.set(userId, request)
+    const current = () =>
+      this.requests.get(userId) === request && ws.readyState === OPEN
     // Already at a table: go back to it instead of starting another.
     const active = await this.liveActive(userId)
+    if (!current()) return
     if (active) {
       await this.ctx.storage.delete(`queue:${userId}`)
       this.send(ws, { t: 'matched', matchId: active, resumed: true })
@@ -231,14 +247,18 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     const key = `queue:${userId}`
     const waiting = (await this.ctx.storage.get(key)) as Waiting | undefined
     // Asking again for the same kind keeps the place; another kind starts over.
-    if (!waiting || kindOf(waiting) !== kind)
+    if (!waiting || kindOf(waiting) !== kind) {
+      const rating = kind === 'hu-rated' ? await this.ratingOf(userId) : null
+      // Cancelled, gone or superseded while the rating was read.
+      if (!current()) return
       await this.ctx.storage.put(key, {
         userId,
         username,
         since: this.clock(),
         kind,
-        ...(kind === 'hu-rated' ? { rating: await this.ratingOf(userId) } : {}),
+        ...(rating === null ? {} : { rating }),
       } satisfies Waiting)
+    }
     await this.pairUp()
     await this.presence()
   }

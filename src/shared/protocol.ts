@@ -72,6 +72,8 @@ export type ErrorCode =
   | 'replaced'
   | 'halted'
   | 'unauthorized'
+  /** Rated play needs a confirmed email on a permanent account. */
+  | 'unverified'
 
 /**
  * Everything one seat may know about the table. There is deliberately no
@@ -292,8 +294,9 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
     case 'dequeue':
       return onlyKeys(v, ['t']) ? { t: v.t } : null
     case 'queue':
-      return onlyKeys(v, ['t', 'kind']) && v.kind === 'hu-casual'
-        ? { t: 'queue', kind: 'hu-casual' }
+      return onlyKeys(v, ['t', 'kind']) &&
+        (v.kind === 'hu-casual' || v.kind === 'hu-rated')
+        ? { t: 'queue', kind: v.kind }
         : null
     default:
       return null

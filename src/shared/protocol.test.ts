@@ -26,6 +26,10 @@ describe('parseClientMsg', () => {
       t: 'queue',
       kind: 'hu-casual',
     })
+    expect(parseClientMsg(frame({ t: 'queue', kind: 'hu-rated' }))).toEqual({
+      t: 'queue',
+      kind: 'hu-rated',
+    })
   })
 
   it('rejects malformed messages', () => {

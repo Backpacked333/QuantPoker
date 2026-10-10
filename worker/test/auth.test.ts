@@ -5,12 +5,24 @@ import { env, SELF } from 'cloudflare:test'
 import { exportJWK, exportSPKI, generateKeyPair, SignJWT } from 'jose'
 import type { JWTPayload } from 'jose'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { identify, verifyToken } from '../src/auth'
+import { identify, ratedEligibility, verifyToken } from '../src/auth'
 import type { WorkerEnv } from '../src/env'
 import { DEV_SECRET, ORIGIN } from './helpers'
 
 const USER = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
 const NO_PROFILE = '00000000-0000-4000-8000-000000000000'
+// Accounts for the rated gate: what Supabase Auth says about each.
+const UNCONFIRMED = '7a1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+const ANONYMOUS = '8b1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+const AUTH_DOWN = '9c1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b'
+const NAMES: Record<string, string> = {
+  [USER]: 'alice',
+  [UNCONFIRMED]: 'una',
+  [ANONYMOUS]: 'anon',
+  [AUTH_DOWN]: 'dana',
+}
+/** The apikey each request to Supabase Auth's user endpoint carried. */
+const authKeys: string[] = []
 const ISSUER = `${env.SUPABASE_URL}/auth/v1`
 const KID = 'qp-test-key'
 // Production never sets DEV_AUTH_SECRET.
@@ -45,12 +57,26 @@ beforeAll(async () => {
         return realFetch(input, init)
       if (url.pathname === '/auth/v1/.well-known/jwks.json')
         return Response.json({ keys: [jwk] })
-      if (url.pathname === '/rest/v1/players')
-        return Response.json(
-          url.searchParams.get('user_id') === `eq.${USER}`
-            ? [{ username: 'alice' }]
-            : [],
-        )
+      if (url.pathname === '/rest/v1/players') {
+        const name = NAMES[url.searchParams.get('user_id')!.slice(3)]
+        return Response.json(name ? [{ username: name }] : [])
+      }
+      if (url.pathname === '/auth/v1/user') {
+        const headers = new Headers(init?.headers)
+        authKeys.push(headers.get('apikey') ?? '')
+        const jwt = (headers.get('Authorization') ?? '').slice(7)
+        const { sub } = JSON.parse(
+          atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')),
+        ) as { sub: string }
+        if (sub === AUTH_DOWN) return new Response('down', { status: 503 })
+        return Response.json({
+          id: sub,
+          email_confirmed_at: sub === USER ? '2026-10-01T00:00:00Z' : null,
+          is_anonymous: sub === ANONYMOUS,
+          // Editable by the user, so never trusted.
+          user_metadata: { email_verified: true },
+        })
+      }
       return new Response('not stubbed', { status: 599 })
     },
   )
@@ -203,6 +229,65 @@ describe('Supabase access tokens', () => {
     expect((await upgrade(await sign({}, { key: strangerKey }))).status).toBe(
       401,
     )
+  })
+})
+
+describe('the rated gate', () => {
+  it('asks Supabase Auth itself: a confirmed, permanent account only', async () => {
+    expect(await ratedEligibility(await sign(), USER, prodEnv)).toBe('yes')
+    for (const sub of [UNCONFIRMED, ANONYMOUS])
+      expect(await ratedEligibility(await sign({ sub }), sub, prodEnv)).toBe(
+        'no',
+      )
+    // Auth unreachable: not a refusal, just unknown for now.
+    expect(
+      await ratedEligibility(
+        await sign({ sub: AUTH_DOWN }),
+        AUTH_DOWN,
+        prodEnv,
+      ),
+    ).toBe('unknown')
+    // The answer must be about the account the token verified as.
+    expect(await ratedEligibility(await sign(), UNCONFIRMED, prodEnv)).toBe(
+      'no',
+    )
+    // The browser-safe key, never the secret one.
+    expect(new Set(authKeys)).toEqual(new Set([env.SUPABASE_PUBLISHABLE_KEY]))
+  })
+
+  it('refuses a rated queue to an unconfirmed account, which can still queue casual', async () => {
+    const response = await SELF.fetch(`${ORIGIN}/ws/lobby`, {
+      headers: {
+        Upgrade: 'websocket',
+        Origin: ORIGIN,
+        'Sec-WebSocket-Protocol': `qp.v1, bearer.${await sign({ sub: UNCONFIRMED })}`,
+      },
+    })
+    expect(response.status).toBe(101)
+    const ws = response.webSocket!
+    const frames: { t: string; code?: string; message?: string }[] = []
+    ws.addEventListener('message', (e) =>
+      frames.push(JSON.parse(e.data as string)),
+    )
+    ws.accept()
+    const next = async (t: string) => {
+      for (let i = 0; i < 400; i++) {
+        const f = frames.find((x) => x.t === t)
+        if (f) return f
+        await new Promise((r) => setTimeout(r, 5))
+      }
+      throw new Error(`no ${t}`)
+    }
+    ws.send(JSON.stringify({ t: 'queue', kind: 'hu-rated' }))
+    expect(await next('error')).toMatchObject({
+      code: 'unverified',
+      message: expect.stringMatching(/confirmed email/),
+    })
+    expect(frames.some((f) => f.t === 'queued')).toBe(false)
+    ws.send(JSON.stringify({ t: 'queue', kind: 'hu-casual' }))
+    expect(await next('queued')).toMatchObject({ position: 1 })
+    ws.send(JSON.stringify({ t: 'dequeue' }))
+    ws.close(1000)
   })
 })
 

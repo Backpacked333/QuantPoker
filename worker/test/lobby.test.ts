@@ -228,6 +228,41 @@ describe('the pair limiter', () => {
   })
 })
 
+describe('rated play', () => {
+  it('pairs rated players only with each other, at a rated table', async () => {
+    const [alice, bob] = [await lobby('alice'), await lobby('bob')]
+    alice.send({ t: 'queue', kind: 'hu-rated' })
+    await alice.next((f) => f.t === 'queued')
+    await queue(bob) // casual
+    expect(await bob.next((f) => f.t === 'queued')).toMatchObject({
+      position: 1,
+    })
+    expect([...alice.frames, ...bob.frames].some(matched)).toBe(false)
+    const carol = await lobby('carol')
+    carol.send({ t: 'queue', kind: 'hu-rated' })
+    const m = await carol.next(matched)
+    expect(idOf(await alice.next(matched))).toBe(idOf(m))
+    const { match } = await peek(idOf(m))
+    expect(
+      (match as unknown as { config: { kind: string; handsTotal: number } })
+        .config,
+    ).toMatchObject({ kind: 'hu-rated', handsTotal: 40 })
+    // Bob is still waiting for a casual opponent.
+    expect(bob.frames.some(matched)).toBe(false)
+    const dave = await lobby('dave')
+    await queue(dave)
+    const casual = await dave.next(matched)
+    expect(idOf(await bob.next(matched))).toBe(idOf(casual))
+    expect(
+      (
+        (await peek(idOf(casual))).match as unknown as {
+          config: { kind: string }
+        }
+      ).config.kind,
+    ).toBe('hu-casual')
+  })
+})
+
 describe('no-shows', () => {
   it('ends a paired table nobody else opened, and frees both players', async () => {
     const { matchId, la } = await pair('alice', 'bob')

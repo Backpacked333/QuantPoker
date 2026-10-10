@@ -299,6 +299,15 @@ describe('explicit blind seats', () => {
     const next = 'The big blind must be the next player after the small blind'
     refuses(explicit(seats, 1, 2, 5), next)
     refuses(explicit(seats, 3, 5, 2), next)
+    refuses(explicit([0, 2, 4], 1, 2, 0), next)
+    // The button comes before the small blind's seat: never between a live
+    // small blind and the big blind, never just before the big blind when
+    // the small blind is dead (that blind's seat lies between them).
+    const before = 'The button must come before the small blind'
+    refuses(explicit([0, 2, 4], 3, 2, 4), before)
+    refuses(explicit([0, 1, 2, 3, 4], 5, 4, 0), before)
+    refuses(explicit([0, 1, 2, 3, 4], 5, null, 0), before)
+    refuses(explicit(seats, 2, null, 3), before)
     // Seats and the button are 0..5.
     const button = 'The button must be a seat from 0 to 5'
     refuses(explicit(seats, 6, 2, 3), button)
@@ -334,6 +343,17 @@ describe('positionNames with explicit blinds', () => {
           positionNames(seats, button),
         )
     }
+  })
+  it('labels without throwing even for a placement the engine refuses', () => {
+    // Four players between the big blind and the button have no names to
+    // take; the engine refuses that button, and positionNames must not crash.
+    expect(() =>
+      positionNames([0, 1, 2, 3, 4], 5, { sb: 4, bb: 0 }),
+    ).not.toThrow()
+    expect(positionNames([0, 1, 2, 3, 4], 5, { sb: 4, bb: 0 })).toMatchObject({
+      0: 'BB',
+      4: 'SB',
+    })
   })
   it('names nobody BTN on an empty seat and nobody SB when it is dead', () => {
     // Button on empty seat 4, live small blind 5, big blind 0, then 1, 2, 3.

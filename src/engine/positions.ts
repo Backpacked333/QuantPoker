@@ -50,7 +50,8 @@ const NAMES: Record<number, string[]> = {
 }
 
 /** Clockwise distance on the six-seat ring, empty seats included. */
-const ringDistance = (from: SeatId, to: SeatId) => (to - from + 6) % 6
+/** Seats clockwise from `from` to `to` around the six-seat ring. */
+export const ringDistance = (from: SeatId, to: SeatId) => (to - from + 6) % 6
 
 /**
  * Position labels keyed by seat, starting from the button. Six-casual hands
@@ -79,9 +80,12 @@ export function positionNames(
   const early = clockwiseFrom(seats, bb)
     .slice(0, -1)
     .filter((s) => ringDistance(bb, s) < ringDistance(bb, button))
-  const labels: Record<SeatId, string> = Object.fromEntries(
-    early.map((s, i) => [s, NAMES[early.length + 3][i + 3]]),
-  )
+  // The engine refuses a button that leaves four players before it, so
+  // `tail` exists; the guard keeps a bad caller to missing labels.
+  const tail = NAMES[early.length + 3]
+  const labels: Record<SeatId, string> = tail
+    ? Object.fromEntries(early.map((s, i) => [s, tail[i + 3]]))
+    : {}
   labels[bb] = 'BB'
   if (sb !== null) labels[sb] = 'SB'
   // Heads-up the button posts the small blind and is labelled BTN.

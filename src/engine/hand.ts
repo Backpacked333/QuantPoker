@@ -3,7 +3,7 @@
 // engine has no randomness and no clock: the deck is an input.
 import { score } from '../lib/sim'
 import { dealSlots, isValidDeck } from './deck'
-import { blindSeats, clockwiseFrom, seatAfter } from './positions'
+import { blindSeats, clockwiseFrom, ringDistance, seatAfter } from './positions'
 import { buildPots, returnUncalled } from './pots'
 import { EngineError } from './types'
 import type {
@@ -111,6 +111,16 @@ function validateBlindSeats({ seats, button, sb, bb }: HandConfig) {
     throw new EngineError(
       'With three or more players the button posts no blind',
     )
+  // The button comes before the small blind's seat, which comes before the
+  // big blind: never between a live small blind and the big blind, and with
+  // a dead small blind at least one seat (that blind's) before the big blind.
+  if (
+    dealt.length > 2 &&
+    (sb !== null
+      ? ringDistance(sb, button) < ringDistance(sb, bb)
+      : ringDistance(button, bb) < 2)
+  )
+    throw new EngineError('The button must come before the small blind')
   // A player dealt in between a live small blind and the big blind is one
   // the big blind skipped on its way round.
   if (sb !== null && seatAfter(dealt, sb) !== bb)

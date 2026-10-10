@@ -17,6 +17,8 @@ export type LogEvent =
   | 'outbox_parked'
   | 'verified'
   | 'verify_failed'
+  /** A verified rated hand's decisions were graded (P1-09). */
+  | 'graded'
   | 'dlq'
   | 'error'
 

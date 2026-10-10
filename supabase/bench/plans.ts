@@ -357,12 +357,12 @@ async function queries(db: PGlite) {
     [
       'Q9',
       'Accuracy recompute: latest 500 graded decisions (at match end, not per view)',
-      `select * from public.player_accuracy($1)`,
+      `select * from private.player_accuracy($1)`,
       [graded],
     ],
     [
       'Q9b',
-      'Accuracy inlined (the plan inside player_accuracy())',
+      'Accuracy inlined (the plan inside private.player_accuracy())',
       `select avg(accuracy)::real from (
          select g.accuracy from public.hand_grades g
          join public.hands h on h.id = g.hand_id
@@ -502,8 +502,8 @@ async function selfChecks(db: PGlite) {
       [id, a, b],
     )
     await db.query(
-      `insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record)
-       values ($1::text || ':1', $1::uuid, 1, 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}')`,
+      `insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record, verified)
+       values ($1::text || ':1', $1::uuid, 1, 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true)`,
       [id],
     )
     return id
@@ -846,7 +846,7 @@ async function selfChecks(db: PGlite) {
     },
   )
   await check(
-    'grades: nobody reads them while the match is playing, everyone after (R-15); accuracy counts finished matches',
+    'grades: nobody reads them while the match is playing; after it its two players do, anon never (Q6); accuracy counts finished matches',
     async () => {
       const live = await newMatch('playing')
       await db.query(`select public.record_grades($1::jsonb)`, [
@@ -868,13 +868,13 @@ async function selfChecks(db: PGlite) {
       ])
       const sql = `select grade from public.hand_grades where hand_id = '${live}:1'`
       const during = [
-        (await as('anon', sql)).length,
+        await refused('anon', sql),
         (await as('authenticated', sql, a)).length,
         (await as('authenticated', sql, b)).length,
       ]
       const accDuring = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.player_accuracy($1)`,
+          `select accuracy from private.player_accuracy($1)`,
           [a],
         )
       ).accuracy
@@ -885,7 +885,7 @@ async function selfChecks(db: PGlite) {
       // record_match v4 refreshes both players at the finish:
       await db.query(`select private.refresh_accuracy($1, 'hu-duplicate')`, [a])
       const after = [
-        (await as('anon', sql)).length,
+        await refused('anon', sql),
         (await as('authenticated', sql, a)).length,
         (await as('authenticated', sql, b)).length,
       ]
@@ -897,7 +897,7 @@ async function selfChecks(db: PGlite) {
       ).accuracy
       const accAfter = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.player_accuracy($1)`,
+          `select accuracy from private.player_accuracy($1)`,
           [a],
         )
       ).accuracy
@@ -924,8 +924,8 @@ async function selfChecks(db: PGlite) {
         [`${live}:1`],
       )
       return (
-        (during.every((n) => n === 0) &&
-          after.every((n) => n === 1) &&
+        (during.join() === 'true,0,0' &&
+          after.join() === 'true,1,1' &&
           accDuring !== accAfter &&
           Math.abs(stored - accAfter) < 1e-3 &&
           grade === 'blunder') ||

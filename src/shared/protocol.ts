@@ -32,9 +32,15 @@ export const CLOSE_ELSEWHERE = 4409
 /** Too many frames or connections. Reconnect after a backoff of ≥ 1 s. */
 export const CLOSE_RATE_LIMITED = 4429
 
-export type MatchKind = 'hu-casual' | 'hu-rated'
+/**
+ * `six-casual`: a casual table of 2 to 6 seats, one archived session at a
+ * time (ADR amendment 2026-10-10, Phase 2). Never rated or graded.
+ */
+export type MatchKind = 'hu-casual' | 'hu-rated' | 'six-casual'
 export type MatchConfig = {
   kind: MatchKind
+  /** Six tables: how many seats the table has. Absent: heads-up. */
+  maxSeats?: number
   handsTotal: number
   startingStack: number
   blinds: { sb: number; bb: number }
@@ -60,7 +66,8 @@ export type ClientMsg =
       action: PlayerAction
     }
   | { t: 'resync' }
-  | { t: 'queue'; kind: MatchKind }
+  /** The heads-up queue: a six table is joined by sitting down, not queued. */
+  | { t: 'queue'; kind: Exclude<MatchKind, 'six-casual'> }
   | { t: 'dequeue' }
   /** At a finished rated table: play the same opponent again. */
   | { t: 'rematch' }

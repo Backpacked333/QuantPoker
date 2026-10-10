@@ -305,6 +305,34 @@ async function queries(db: PGlite) {
       [],
     ],
     [
+      'Q4e',
+      'Ladder page 1 inlined as shipped (P1-14, before P1-18 adds sanctions)',
+      `select r.user_id, p.username, r.rating, r.rd, r.matches
+       from public.ratings r join public.players p on p.user_id = r.user_id
+       where r.format = 'hu-duplicate' and r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
+      'Q4f',
+      'Ladder this month inlined (the plan inside ladder_month())',
+      `with month as (
+         select h.user_id, count(*)::int as matches
+         from public.rating_history h
+         where h.format = 'hu-duplicate' and h.kind = 'match'
+           and h.created_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+         group by h.user_id)
+       select r.user_id, r.rating, mo.matches
+       from month mo join public.ratings r on r.user_id = mo.user_id and r.format = 'hu-duplicate'
+       where r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
       'Q5',
       'Hands of a match, in order',
       `select id, hand_no, record from public.hands where match_id = $1 order by hand_no`,

@@ -1,12 +1,13 @@
 # DBA — index
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 ## Active features
 
-| Slug            | Description                                                                      | Status                                                                                                                                                                                                                       |
-| --------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `phase1-schema` | Prompt 4: review of the Phase 0 schema; the Phase 1 schema designed and measured | Done 2026-10-09. DB-1 (Medium, `/api/stats` full scans) fixed and applied to production with `verify_hand`. Phase 1 proposal in `supabase/proposed/phase1.sql`, not applied. Review: `.10x/reviews/2026-10-09-dba-review.md` |
+| Slug            | Description                                                                           | Status                                                                                                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `phase1-schema` | Prompt 4: review of the Phase 0 schema; the Phase 1 schema designed and measured      | Done 2026-10-09. DB-1 (Medium, `/api/stats` full scans) fixed and applied to production with `verify_hand`. Phase 1 proposal in `supabase/proposed/phase1.sql`, not applied. Review: `.10x/reviews/2026-10-09-dba-review.md` |
+| `ladder`        | P1-14: ladder functions (keyset, eligibility), rating metrics query, simulated season | Built 2026-10-10. Shipped design and 10k/100k plans in `ladder.md`; metrics read-only on production: insufficient data (0 rated matches).                                                                                    |
 
 ## Cross-cutting principles
 

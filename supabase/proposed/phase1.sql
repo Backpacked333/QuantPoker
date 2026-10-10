@@ -132,26 +132,15 @@ end $$;
 create trigger sanctions_appeal_at before update of appeal_text on public.sanctions
   for each row execute function private.stamp_appeal();
 
--- ---- P1-14 (v1) and P1-18 (v2): ladder ----------------------------------------
--- Shown in its final form, after sanctions exist. P1-14 ships it without
--- the ladder_removal clause; P1-18 replaces both functions to add it.
--- Share of the player's rated matches they abandoned, over the lifetime
--- (R-13). For the profile; the ladder reads the same counters inline.
-create function public.abandonment_rate(p_user uuid, p_format text default 'hu-duplicate')
-returns real
-language sql stable set search_path = '' as $$
-  select coalesce((
-    select r.abandoned::real / nullif(r.matches, 0)
-    from public.ratings r
-    where r.user_id = p_user and r.format = p_format), 0)::real
-$$;
-
+-- ---- P1-18 (v2): ladder -------------------------------------------------------
+-- P1-14 shipped the ladder (supabase/migrations/*_ladder.sql) without the
+-- ladder_removal clause; P1-18 replaces both functions to add it.
 -- All-time ladder: eligible players by rating, keyset on (rating desc,
 -- user_id). Eligible: not provisional (rd < 100 and ≥ 20 matches), a rated
 -- match in the last 30 days, abandonment < 10% (exactly 10% is out), and no
 -- active ladder removal (P1-18). Trend is the rating change over 30 days,
 -- looked up for the page's rows only.
-create function public.ladder(
+create or replace function public.ladder(
   p_format text, p_after_rating double precision default null,
   p_after_user uuid default null, p_page integer default 50)
 returns table (user_id uuid, username text, rating double precision,
@@ -190,7 +179,7 @@ $$;
 -- "This month" (R-16): current rating, players with a rated match this UTC
 -- month, and matches, wins, draws and trend over the month. Same
 -- eligibility and keyset as ladder().
-create function public.ladder_month(
+create or replace function public.ladder_month(
   p_format text, p_after_rating double precision default null,
   p_after_user uuid default null, p_page integer default 50,
   p_month date default date_trunc('month', now() at time zone 'utc')::date)

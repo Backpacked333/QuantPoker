@@ -151,22 +151,9 @@ begin
 end $$;
 
 -- ---- P1-09 / P1-10: grades and accuracy -------------------------------------
-create table public.hand_grades (
-  hand_id text not null references public.hands (id) on delete cascade,
-  seat smallint not null check (seat between 0 and 5),
-  idx smallint not null check (idx >= 0),
-  user_id uuid not null references public.players (user_id),
-  -- Rated only (R-23); the format keeps accuracy per format from Phase 2.
-  format text not null check (format in ('hu-duplicate', '6max')),
-  grade text not null
-    check (grade in ('best', 'good', 'inaccuracy', 'mistake', 'blunder')),
-  ev_lost real not null check (ev_lost >= 0),
-  accuracy real not null check (accuracy between 0 and 100),
-  model_version text not null,
-  created_at timestamptz not null default now(),
-  primary key (hand_id, seat, idx)
-);
-create index hand_grades_user on public.hand_grades (user_id, format, created_at desc);
+-- hand_grades and record_grades shipped as supabase/migrations/*_hand_grades.sql
+-- (P1-09), readable by the match's two players once it is over (Q6). What
+-- follows is what P1-10 and P1-12 add on top.
 
 -- Accuracy over the latest 500 graded decisions of finished matches. The
 -- status filter is explicit, so the service role (which bypasses RLS) and a
@@ -193,30 +180,35 @@ language sql security definer set search_path = '' as $$
   where r.user_id = p_user and r.format = p_format;
 $$;
 
--- The grading consumer's write (P1-09): idempotent on redelivery. Grades
--- that land after their match finished refresh the aggregate here; the rest
--- are counted when record_match v4 finishes the match and calls
--- private.refresh_accuracy for both players.
--- p: { handId, format, modelVersion,
---      grades: [{ seat, idx, userId, grade, evLost, accuracy }] }
-create function public.record_grades(p jsonb) returns void
+-- P1-12 redefines the shipped record_grades: grades that land after their
+-- match finished refresh the aggregate here; the rest are counted when
+-- record_match finishes the match and calls private.refresh_accuracy for
+-- both players.
+create or replace function public.record_grades(p jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
+  v_hand text := p ->> 'handId';
+  v_match uuid;
   v_user uuid;
 begin
+  select match_id into v_match from public.hands where id = v_hand;
+  if v_match is null then
+    raise exception 'hand % is not archived', v_hand using errcode = 'P0002';
+  end if;
   insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade,
                                   ev_lost, accuracy, model_version)
-  select p ->> 'handId', (g ->> 'seat')::smallint, (g ->> 'idx')::smallint,
-         (g ->> 'userId')::uuid, p ->> 'format', g ->> 'grade',
+  select v_hand, (g ->> 'seat')::smallint, (g ->> 'idx')::smallint,
+         mp.user_id, p ->> 'format', g ->> 'grade',
          (g ->> 'evLost')::real, (g ->> 'accuracy')::real, p ->> 'modelVersion'
   from jsonb_array_elements(p -> 'grades') g
+  join public.match_players mp
+    on mp.match_id = v_match and mp.seat = (g ->> 'seat')::smallint
   on conflict do nothing;
   if exists (
-    select 1 from public.hands h join public.matches m on m.id = h.match_id
-    where h.id = p ->> 'handId' and m.status <> 'playing'
+    select 1 from public.matches m where m.id = v_match and m.status <> 'playing'
   ) then
     for v_user in
-      select distinct (g ->> 'userId')::uuid from jsonb_array_elements(p -> 'grades') g
+      select mp.user_id from public.match_players mp where mp.match_id = v_match
     loop
       perform private.refresh_accuracy(v_user, p ->> 'format');
     end loop;
@@ -444,7 +436,7 @@ create table public.profile_views (
 do $$
 declare t text;
 begin
-  foreach t in array array['ratings', 'rating_history', 'hand_grades',
+  foreach t in array array['ratings', 'rating_history',
                            'reports', 'sanctions', 'profile_views'] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('revoke all on public.%I from anon, authenticated', t);
@@ -455,15 +447,6 @@ begin
     execute format('create policy public_read on public.%I for select to anon, authenticated using (true)', t);
   end loop;
 end $$;
-
--- R-15: nobody reads a grade while its match is playing (it is analysis
--- data; P1-03), everyone after it finishes, like rated hand histories.
-grant select on public.hand_grades to anon, authenticated;
-create policy hand_grades_after_match on public.hand_grades
-  for select to anon, authenticated
-  using (exists (
-    select 1 from public.hands h join public.matches m on m.id = h.match_id
-    where h.id = hand_grades.hand_id and m.status <> 'playing'));
 
 -- P1-17: a participant of a finished rated match reports the other player,
 -- once; reporters read their own rows, so a reported player never reads

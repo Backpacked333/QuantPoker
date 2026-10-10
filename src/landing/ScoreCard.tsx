@@ -10,6 +10,7 @@ import { cardLabel } from '../lib/poker'
 import { savePendingClaim } from '../lib/landing'
 import { track } from '../lib/track'
 import type { FinishedChallenge } from './ChallengeHand'
+import { useCountUp } from './motion'
 import type { Rival } from './Landing'
 import { ordinal, why } from './why'
 
@@ -94,6 +95,11 @@ export function ScoreCard({
     return () => controller.abort()
   }, [spec, path])
 
+  const shownAccuracy = useCountUp(accuracy, 1200, 250)
+  const shownPercentile = useCountUp(
+    server.status === 'ok' ? server.percentile : 0,
+    900,
+  )
   const net = game.result?.net ?? 0
   const best = decisions.filter((d) => d.chosen.grade === 'Best').length
   const costly = decisions.reduce<(typeof decisions)[number] | null>(
@@ -114,8 +120,12 @@ export function ScoreCard({
             Accuracy
           </span>
           <span className="scorecard-number" id="scorecard-title">
-            {accuracy}
+            <span aria-hidden>{shownAccuracy}</span>
+            <span className="sr-only">{accuracy}</span>
             <small>/100</small>
+          </span>
+          <span className="scorecard-meter" aria-hidden>
+            <i style={{ width: `${shownAccuracy}%` }} />
           </span>
         </div>
         <div className="scorecard-rank" aria-live="polite">
@@ -123,8 +133,12 @@ export function ScoreCard({
             <>
               <span className="scorecard-label">Percentile</span>
               <span className="scorecard-number">
-                {server.percentile}
+                <span aria-hidden>{shownPercentile}</span>
+                <span className="sr-only">{server.percentile}</span>
                 <small>{ordinal(server.percentile)}</small>
+              </span>
+              <span className="scorecard-meter is-rank" aria-hidden>
+                <i style={{ width: `${shownPercentile}%` }} />
               </span>
               <span className="scorecard-basis">
                 {server.basis === 'players'
@@ -175,6 +189,7 @@ export function ScoreCard({
           return (
             <li
               key={i}
+              style={{ '--i': i } as React.CSSProperties}
               className={
                 d === costly && d.chosen.grade !== 'Best' ? 'is-costly' : ''
               }
@@ -214,7 +229,14 @@ export function ScoreCard({
         </ul>
       </details>
 
-      <div className="scorecard-cta">
+      <div className="scorecard-save">
+        <div>
+          <strong>Save this score to a free account</strong>
+          <span>
+            Your score, a rating once you play people, a public profile and a
+            school badge. Google or an email link, no password.
+          </span>
+        </div>
         <button
           className="btn btn-accent btn-lg"
           onClick={() => {
@@ -222,8 +244,10 @@ export function ScoreCard({
             onSave()
           }}
         >
-          Save your score and get rated <ArrowRight size={16} />
+          Save your score and create an account <ArrowRight size={16} />
         </button>
+      </div>
+      <div className="scorecard-cta">
         {server.status === 'ok' && (
           <button
             className="btn btn-ghost-desk"

@@ -4719,3 +4719,47 @@ html.resizing * {
   cursor: col-resize !important;
   user-select: none !important;
 }
+
+/* The landing page's account buttons in the header (src/landing). */
+.header-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 8px;
+}
+.header-signin {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.header-signin:hover {
+  color: var(--text);
+}
+.header-join {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13.5px;
+  text-decoration: none;
+}
+.header-join-short {
+  display: none;
+}
+@media (max-width: 720px) {
+  .header-signin,
+  .header-join-long {
+    display: none;
+  }
+  .header-join-short {
+    display: inline;
+  }
+  .header-join {
+    padding: 0 10px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  /* On the landing page the account button replaces the tool buttons. */
+  .header-account ~ .icon-btn {
+    display: none;
+  }
+}

@@ -33,3 +33,8 @@ export function track(name: FunnelEvent) {
     // Analytics never breaks the page.
   }
 }
+
+/** Forgets which events were sent (tests: each test is a fresh page load). */
+export function forgetTracked() {
+  sent.clear()
+}

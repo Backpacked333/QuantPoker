@@ -4,6 +4,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { forgetTracked } from '../lib/track'
 import App from '../App'
 import { CHALLENGE_HANDS } from '../challenge/hands'
 import { scorePath } from '../challenge/score'
@@ -37,6 +38,7 @@ let scoreFails = false
 
 beforeAll(() => import('./Landing'))
 beforeEach(() => {
+  forgetTracked()
   beacons = []
   scoreBodies = []
   scoreFails = false
@@ -151,8 +153,7 @@ describe('the challenge', () => {
     localStorage.setItem('qp.vid', visitorFor('overpair'))
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByText(/Challenge/)
-    expect(screen.getByText('Overpair under pressure')).toBeVisible()
+    expect(await screen.findByText('Overpair under pressure')).toBeVisible()
     await playByCalling(user)
     const card = await screen.findByRole(
       'region',
@@ -248,5 +249,45 @@ describe("a friend's challenge link", () => {
     expect(
       await screen.findByRole('group', { name: /Your decision/ }),
     ).toBeVisible()
+  })
+})
+
+describe('what the page explains, and the way to an account', () => {
+  it('says how QuantPoker works and what an account gives you', async () => {
+    render(<App />)
+    expect(
+      await screen.findByRole('heading', { name: 'How QuantPoker works' }),
+    ).toBeVisible()
+    for (const step of [
+      'Play a hand',
+      'Every decision is graded',
+      'Luck is taken out',
+      'Climb a ladder that means something',
+    ])
+      expect(screen.getByRole('heading', { name: step })).toBeVisible()
+    expect(
+      screen.getByRole('heading', { name: 'Your free account' }),
+    ).toBeVisible()
+    expect(screen.getByText('A rating that means something')).toBeVisible()
+    expect(screen.getByText('Play for your school')).toBeVisible()
+  })
+
+  it('offers an account from the header and the page, each counted', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Your free account' })
+    const header = screen.getByRole('link', { name: /Create free account/ })
+    expect(header).toHaveAttribute('href', '#welcome/onboard')
+    expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+      'href',
+      '#welcome/onboard',
+    )
+    const buttons = screen.getAllByRole('button', {
+      name: /Create free account/,
+    })
+    expect(buttons.length).toBeGreaterThanOrEqual(2)
+    await user.click(buttons[0])
+    expect(window.location.hash).toBe('#welcome/onboard')
+    expect(beacons.map((b) => b.name)).toContain('signup_start')
   })
 })

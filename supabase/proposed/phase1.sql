@@ -25,10 +25,11 @@ alter table public.match_players
   -- W/D/L after the draw band (DRAW_BAND_BB in code); null for casual and
   -- void matches.
   add column outcome text check (outcome in ('win', 'draw', 'loss')),
-  -- Net chips per segment (duplicate: 2); their sum is net_chips. bb are
+  -- The luck-adjusted net (Q1 = B: all-in pots settled at equity,
+  -- src/engine/luck.ts); outcome comes from it with the draw band. net_chips
+  -- stays the chips actually won. Null for casual and void matches. bb are
   -- chips / config.blinds.bb.
-  add column segment_chips integer[]
-    check (segment_chips is null or cardinality(segment_chips) between 1 and 2),
+  add column adjusted_chips double precision,
   -- A copy of matches.finished_at. Profiles and match history list a
   -- player's matches newest first; with the time only on matches every page
   -- joins and sorts all of that player's matches (142 ms for the heaviest

@@ -19,6 +19,61 @@ The user created a Git-connected Cloudflare Worker named `quantpoker` (Workers P
 - **Supabase** moved to the user's Pro org "Quant Poker" with the same project ref, keys and data.
 - Vercel is retired for this app.
 
+## Amendment 2026-10-10: Phase 1 rated heads-up (P1-00)
+
+What P1-01…P1-04 and P1-12 build. The inputs:
+
+- Q1 is answered **B** by the user (2026-10-09).
+- Q2 takes the tickets' recommendation ("immediately"). The user has not answered it; the choice is one rule in `deadlines.ts` and is reversible.
+- R-8, R-9, R-11, R-13, R-14 and R-15 come from `.10x/tickets.md`.
+- The schema is the DBA's `.10x/decisions/dba/phase1-schema.md`.
+
+Everything not listed here works as in Phase 0.
+
+| Question                      | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                     | Rejected, and why                                                                                                                                                                 |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deck rule (Q1)                | A fresh CSPRNG deck and a fresh commitment secret every hand, exactly as casual: `RatedController` is `LocalController` with the rated config. No deck is reused, so nothing about a later hand can be inferred from an earlier one, and the commitment scheme is unchanged                                                                                                                                                                  | Same-pair duplicate (A): segment 2 replays segment 1's decks and leaks the opponent's cards to anyone who remembers or reviews. Cross-pair (C): needs four players queued at once |
+| Luck                          | `src/engine/luck.ts` (P1-02, built). An all-in pot with cards to come is settled at exact equity. The match result is the sum of adjusted nets. The adjustment runs in the `nextHand` alarm (and at match end for the last hand), from the stored final hand. It is deterministic, so a restart recomputes it, and the showdown frame is never delayed (a preflop all-in costs ≈ 0.5 s, inside the 3 s gap)                                  | Compute before sending `hand_end`: delays the showdown by up to 0.5 s. The queue consumer: makes the match result wait on the archive                                             |
+| Match length and clock (R-11) | 40 hands, button alternating, stacks reset to 100 bb each hand. 20 s per decision, plus a 60 s bank per half: the bank resets at hand 21. The halves exist only for the clock                                                                                                                                                                                                                                                                | One 40-hand stretch with a 120 s bank: changes the PM's per-segment rule. 20 hands: noisier results with fresh decks                                                              |
+| Draw band (R-8)               | `DRAW_BAND_BB = 2`, inclusive, applied to the **luck-adjusted** total: \|adjusted\| ≤ 40 chips at 10/20 is a draw                                                                                                                                                                                                                                                                                                                            | Applying it to the actual net: reintroduces the luck B removes                                                                                                                    |
+| Disconnect                    | A 60 s grace from the socket closing. After it, each of the absent seat's turns auto-acts at once (check if possible, else fold) and counts as a timeout. Reconnecting ends the grace                                                                                                                                                                                                                                                        | The normal turn clock for an absent player: 40 hands × 20 s of waiting for the opponent                                                                                           |
+| Forfeit (Q2)                  | Immediately on the 3rd consecutive timeout, as Phase 0 does: a loss, plus an abandonment row `timeout_x3`                                                                                                                                                                                                                                                                                                                                    | Play on to the segment end: same result and abandonment, with the opponent watching auto-folds                                                                                    |
+| Both players gone             | Both past grace: the match is **void, not rated**, with an abandonment row for each                                                                                                                                                                                                                                                                                                                                                          | Forfeit whoever times out first: an arbitrary winner                                                                                                                              |
+| No-show (R-14)                | Void and not rated; counted as an abandonment (`record_match` v4's void branch increments `ratings.abandoned`)                                                                                                                                                                                                                                                                                                                               | Rating a no-show as a loss: the absent player never sat down                                                                                                                      |
+| Rematch (R-9)                 | Both press within 60 s. An accepted rematch is a pairing; at the cap the button reads "Rematch limit reached (2 per day)". `matches.rematch_of` links them                                                                                                                                                                                                                                                                                   | A rematch outside the cap: re-opens win-trading between two accounts                                                                                                              |
+| Storage in `TableDO`          | As Phase 0: `match`, `deadlines`, the live `deck:<n>`, `outbox:*`, `parked:*`. `match` gains, per seat, `adjusted` (luck-adjusted chips) and a per-half bank. `hands.record` gains `luck: { allInAt, equity, adjustedBySeat }` for rated hands; at an all-in showdown both hands are shown, so nothing hidden is published. A rated match stays under 10 kB                                                                                  | Per-hand luck rows in the DO: the record already carries them to Postgres                                                                                                         |
+| Rating update (P1-12)         | At match end the outbox queues `outbox:9999:rate` after `9999:end`. Flushing it reads both rows from `ratings` (version and `last_match_at`), applies `idle()` for the 30-day periods, rates with `rateMatch` (`src/rating/glicko2.ts`, built), and calls `apply_rating` with the versions read. On 40001 it re-reads and recomputes (at most 3 times per flush). `rating_history_once` makes a repeat a no-op. Void matches are never rated | Rating inside Postgres: Glicko-2 in PL/pgSQL, untestable against the published example                                                                                            |
+| Grading flow (P1-09)          | The same `HAND_QUEUE` message `{ matchId, handNo }`. The consumer verifies first; a verified rated hand is then graded and written with `record_grades`. A failure retries, then dead-letters to an incident. It never blocks the next hand, the result or the rating                                                                                                                                                                        | A second queue: one more binding, the same ordering                                                                                                                               |
+
+**Failure matrix.**
+
+- **DO restart mid-match:** state is written before frames are sent (Phase 0). The adjusted totals and banks live in `match`, and a pending adjustment is recomputed from the stored hand.
+- **One player gone:** grace, then immediate auto-actions; three in a row forfeit.
+- **Both gone:** void.
+- **Supabase down at match end:** the end screen shows the luck-adjusted result at once and "rating updates when the archive catches up". The outbox delivers match, hands, end, then rate, in order.
+- **A call refused for its data:** parked after 12 refusals with an incident (S7-13).
+
+**Phase 1 migrations,** reconciled with `phase1-schema.md`, in the order the tickets ship them:
+
+1. S7-05 telemetry, `record_match` v3.
+2. P1-01 `rated_matches`, `record_match` v4.
+3. P1-04 `rematch`, `record_match` v5.
+4. P1-12 `ratings`.
+5. P1-09 `hand_grades`.
+6. P1-10 `accuracy`.
+7. P1-14 `ladder` v1.
+8. P1-16 `profile_views`.
+9. P1-17 `reports`.
+10. P1-18 `sanctions` and `ladder` v2.
+
+Every table named in P1-01…P1-18 is in that list. One disagreement, resolved here: the proposal's `match_players.segment_chips` has no meaning under B, so it becomes `adjusted_chips` (the luck-adjusted net). `outcome` comes from it with the draw band. `supabase/proposed/phase1.sql` is updated to match.
+
+**Corrections to this ADR where the code differs.**
+
+- `TableController` is a synchronous `nextHandPlan(handNo, config)` with no `onHandEnd` or `onSeatEvent`.
+- `Deadline` kinds are `turn`, `nextHand`, `outbox`, `start` and `idle` (S7-01).
+- The `DuplicateController` and `deck:<n>` retention below are superseded by Q1 = B.
+
 ## Context and constraints (brief; reference the PM files rather than repeating them)
 
 - Requirements: `.10x/decisions/product-manager/multiplayer-platform.md` (P0 list, metrics), `heads-up-duplicate-ladder.md` (format Phase 0 must not block), `six-max-tables.md` (N-player engine required now), `integrity-and-trust.md` (v1 protections), `_index.md` (principles; `[DISCOVERED]` state of the code).

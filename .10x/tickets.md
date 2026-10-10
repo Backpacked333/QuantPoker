@@ -472,6 +472,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-00 · Architect addendum: rated heads-up match
 
+**Status 2026-10-10: done.** See "Amendment 2026-10-10: Phase 1 rated heads-up" in `.10x/decisions/architect/multiplayer-platform.md`. Q2 takes the recommendation (immediately), which is reversible; say if you want segment-end forfeits.
+
 - **Goal.** One ADR amendment that pins down everything P1-01…P1-04 and P1-12 need, so no SDE session designs on the fly. It also carries the ADR's "Phase 1 hand-off notes".
 - **User-visible outcome.** None.
 - **Files.** `.10x/decisions/architect/multiplayer-platform.md` (new section "Amendment: Phase 1 rated HU").

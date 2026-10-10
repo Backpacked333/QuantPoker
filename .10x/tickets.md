@@ -797,6 +797,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-13 · Rated quick-match near your rating
 
+**Status 2026-10-10: built** (this branch, after P1-12). Window `100 + 50·min` of the longer waiter, closest first with ties to the longer waiter, pair cap kept, a 15 s alarm only while ≥ 2 rated players wait, "Widening search…" after a minute. Liquidity sim: median wait 29 s / 16 s / 10 s at 10 / 20 / 30 online (SDE log §P1-13).
+
 - **Goal.** Rated pairing within `|Δ| ≤ 100 + 50·minutes` (ADR §Lobby), keeping ≤ 2 pairings per pair per day. A lobby alarm re-evaluates every 15 s only while ≥ 2 rated players wait; otherwise the lobby hibernates.
 - **User-visible outcome.** Opponents near your rating. "Widening search…" after a minute.
 - **Files.** `worker/src/lobby.ts` (rating in the queue row, read via `worker/src/supabase.ts` at queue time; unrated players queue as 1500 ± 350); `worker/test/lobby.test.ts`.

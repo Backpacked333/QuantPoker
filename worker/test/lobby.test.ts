@@ -3,12 +3,13 @@
 import {
   abortAllDurableObjects,
   env,
+  runDurableObjectAlarm,
   runInDurableObject,
   SELF,
 } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { LobbyMsg } from '../../src/shared/protocol'
-import { lobbyStub, START_WITHIN_MS } from '../src/lobby'
+import { lobbyStub, REPAIR_MS, START_WITHIN_MS } from '../src/lobby'
 import type { LobbyDO } from '../src/lobby'
 import {
   connect,
@@ -19,6 +20,7 @@ import {
   lobby,
   ORIGIN,
   peek,
+  setLobbyClock,
   token,
   tryConnect,
 } from './helpers'
@@ -292,5 +294,149 @@ describe('no-shows', () => {
     await alice.next(isState(1))
     await elapse(matchId, START_WITHIN_MS)
     expect((await peek(matchId)).match.status).toBe('playing')
+  })
+})
+
+describe('rated pairing by rating', () => {
+  const T0 = Date.parse('2026-10-10T12:00:00Z')
+  const MIN = 60_000
+  const ratedQueue = (c: LobbyClient) =>
+    c.send({ t: 'queue', kind: 'hu-rated' })
+  /** Each account's rating, as the lobby reads it at queue time. */
+  const ratings = (map: Record<string, number>) =>
+    runInDurableObject(lobbyStub(env), (l: LobbyDO) => {
+      l.ratingOf = async (userId) => map[userId] ?? 1500
+    })
+  const alarmAt = () =>
+    runInDurableObject(lobbyStub(env), (_l: LobbyDO, state) =>
+      state.storage.getAlarm(),
+    )
+  /** Moves the lobby's clock and fires its alarm (the 15 s re-pairing). */
+  const later = async (at: number) => {
+    await setLobbyClock(at)
+    await runDurableObjectAlarm(lobbyStub(env))
+  }
+  async function waiting(name: string, at: number) {
+    await setLobbyClock(at)
+    const c = await lobby(name)
+    ratedQueue(c)
+    await c.next((f) => f.t === 'queued')
+    return c
+  }
+
+  afterEach(async () => {
+    await setLobbyClock(null)
+  })
+
+  it('players 400 apart pair only after 6 minutes', async () => {
+    await ratings({ alice: 1500, bob: 1900 })
+    const alice = await waiting('alice', T0)
+    const bob = await waiting('bob', T0)
+    // Apart: the lobby will look again in 15 s.
+    expect(await alarmAt()).toBe(T0 + REPAIR_MS)
+    await later(T0 + 6 * MIN - 1000) // a window of 399
+    expect([...alice.frames, ...bob.frames].some(matched)).toBe(false)
+    await later(T0 + 6 * MIN) // 100 + 50 × 6 = 400
+    const m = await alice.next(matched)
+    expect(idOf(await bob.next(matched))).toBe(idOf(m))
+    expect(await alarmAt()).toBeNull()
+  })
+
+  it('the closest eligible opponent is chosen, oldest first on ties', async () => {
+    // Bob and carol are both within reach of alice at 3 minutes (a window
+    // of 250); carol is closer. Bob and carol are 380 apart.
+    await ratings({ alice: 1500, bob: 1700, carol: 1320 })
+    const alice = await waiting('alice', T0)
+    const bob = await waiting('bob', T0 + 1000)
+    const carol = await waiting('carol', T0 + 2000)
+    await later(T0 + 3 * MIN)
+    const m = await alice.next(matched)
+    expect(idOf(await carol.next(matched))).toBe(idOf(m))
+    expect(bob.frames.some(matched)).toBe(false)
+    bob.ws.close()
+
+    // A tie at 200 either side: the one who has waited longer.
+    await ratings({ dave: 1500, erin: 1700, frank: 1300 })
+    const t1 = T0 + 10 * MIN
+    const dave = await waiting('dave', t1)
+    const erin = await waiting('erin', t1 + 1000)
+    const frank = await waiting('frank', t1 + 2000)
+    await later(t1 + 3 * MIN)
+    const tie = await dave.next(matched)
+    expect(idOf(await erin.next(matched))).toBe(idOf(tie))
+    expect(frank.frames.some(matched)).toBe(false)
+  })
+
+  it('a pair that met twice today is never paired again today, even alone in the queue', async () => {
+    await ratings({ alice: 1500, bob: 1500 })
+    for (let round = 0; round < 2; round++) {
+      const a = await waiting('alice', T0 + round * MIN)
+      const b = await lobby('bob')
+      ratedQueue(b)
+      const matchId = idOf(await a.next(matched))
+      await expire(matchId)
+      a.ws.close()
+      b.ws.close()
+    }
+    const alice = await waiting('alice', T0 + 5 * MIN)
+    const bob = await waiting('bob', T0 + 5 * MIN)
+    await later(T0 + 60 * MIN)
+    expect([...alice.frames, ...bob.frames].some(matched)).toBe(false)
+  })
+
+  it('a search cancelled or closed while its rating is read never comes back', async () => {
+    for (const leaveBy of ['cancel', 'close'] as const) {
+      // Alice's rating read hangs until the test lets it finish.
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) => {
+        const slow = l as LobbyDO & { finish?: () => void }
+        l.ratingOf = (userId) =>
+          userId === 'alice'
+            ? new Promise((done) => (slow.finish = () => done(1500)))
+            : Promise.resolve(1500)
+      })
+      const reading = () =>
+        runInDurableObject(
+          lobbyStub(env),
+          (l: LobbyDO) => !!(l as LobbyDO & { finish?: () => void }).finish,
+        )
+      await setLobbyClock(T0)
+      const alice = await lobby('alice')
+      const watcher = await lobby('watcher')
+      ratedQueue(alice)
+      while (!(await reading())) await new Promise((r) => setTimeout(r, 5))
+      // She leaves while the read is still out; the lobby sees her go.
+      const seen = watcher.frames.length
+      if (leaveBy === 'cancel') alice.send({ t: 'dequeue' })
+      else alice.ws.close()
+      await watcher.next((f) => f.t === 'presence', seen)
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) =>
+        (l as LobbyDO & { finish: () => void }).finish(),
+      )
+      // Bob, at the same rating, finds nobody: no ghost of alice to meet.
+      const bob = await lobby('bob')
+      ratedQueue(bob)
+      const answer = await bob.next((f) => f.t === 'queued' || matched(f))
+      expect(answer.t).toBe('queued')
+      expect(Object.keys(await lobbyState())).not.toContain('queue:alice')
+      for (const c of [alice, watcher, bob]) c.ws.close()
+      await runInDurableObject(lobbyStub(env), (l: LobbyDO) => {
+        delete (l as LobbyDO & { finish?: () => void }).finish
+      })
+    }
+  })
+
+  it('no alarm is armed while fewer than 2 rated players wait', async () => {
+    await ratings({ alice: 1500, bob: 2100 })
+    const alice = await waiting('alice', T0)
+    expect(await alarmAt()).toBeNull()
+    // A casual player is not a rated opponent.
+    await queue(await lobby('carol'))
+    expect(await alarmAt()).toBeNull()
+    const bob = await waiting('bob', T0)
+    expect(await alarmAt()).toBe(T0 + REPAIR_MS)
+    bob.send({ t: 'dequeue' })
+    await later(T0 + REPAIR_MS)
+    expect(await alarmAt()).toBeNull()
+    expect(alice.frames.some(matched)).toBe(false)
   })
 })

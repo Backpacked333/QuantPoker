@@ -112,8 +112,11 @@ language sql stable set search_path = '' as $$
 $$;
 revoke all on function private.rating_change(uuid) from public, anon, authenticated;
 
--- The Worker's write. p: { matchId, format, modelVersion,
+-- The Worker's write. p: { matchId, format, modelVersion, finishedAt,
 --   players: [{ userId, outcome, version, rating, rd, sigma }] }
+-- - calls for one match run one at a time (the match row is locked first),
+--   so a retry overlapping a slow first call waits and then reports its
+--   change instead of colliding on rating_history_once;
 -- - a match not finished yet is refused with P0002, so the Worker retries;
 -- - a payload that does not match the archived rated result (not rated, void,
 --   other players or outcomes) is refused with 23514;
@@ -128,11 +131,15 @@ declare
   v_format text := p ->> 'format';
   v_kind text;
   v_status text;
+  -- When the match was played: inactivity counts from here, not from when
+  -- a delayed rating happened to apply.
+  v_at timestamptz := coalesce((p ->> 'finishedAt')::timestamptz, now());
   r jsonb;
   cur public.ratings;
 begin
   select kind, status into v_kind, v_status
-  from public.matches where id = v_match;
+  from public.matches where id = v_match
+  for update;
   if v_status is null or v_status = 'playing' then
     raise exception 'match % is not finished', v_match using errcode = 'P0002';
   end if;
@@ -187,7 +194,9 @@ begin
         sigma = (r ->> 'sigma')::float8, matches = matches + 1,
         wins = wins + (r ->> 'outcome' = 'win')::int,
         draws = draws + (r ->> 'outcome' = 'draw')::int,
-        last_match_at = now(), version = version + 1, updated_at = now()
+        -- An older match rated late never moves the last match backwards.
+        last_match_at = greatest(coalesce(last_match_at, v_at), v_at),
+        version = version + 1, updated_at = now()
     where user_id = cur.user_id and format = v_format;
   end loop;
   return private.rating_change(v_match);

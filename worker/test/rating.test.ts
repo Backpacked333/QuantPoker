@@ -4,7 +4,7 @@
 // is an in-memory fake here: matches as record_match leaves them, and
 // ratings with apply_rating's compare-and-set and repeat rules (the SQL
 // side is supabase/tests/ratings.test.ts).
-import { env } from 'cloudflare:test'
+import { env, runInDurableObject } from 'cloudflare:test'
 import {
   afterAll,
   beforeAll,
@@ -22,7 +22,7 @@ import type { RatingChange, ServerMsg } from '../../src/shared/protocol'
 import { forgetUsernames } from '../src/auth'
 import { RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
-import type { InitBody } from '../src/table'
+import type { InitBody, TableDO } from '../src/table'
 import { FRAME_KEYS, RATING_CHANGE_KEYS } from './frames'
 import {
   connect,
@@ -53,7 +53,11 @@ const fake = {
   /** apply_rating's change per match, once applied. */
   rated: new Map<string, Applied[]>(),
   /** Every apply_rating payload, in order. */
-  applies: [] as { matchId: string; players: Record<string, unknown>[] }[],
+  applies: [] as {
+    matchId: string
+    finishedAt?: string
+    players: Record<string, unknown>[]
+  }[],
   outcomes: new Map<string, Record<string, string>>(),
   down: false,
   /** Before the next apply checks versions, another match rates this player. */
@@ -348,12 +352,19 @@ describe('the rating update', () => {
     const { matchId, alice, seats } = await rated()
     fake.down = true
     await bobForfeits(matchId, alice, seats)
+    const finishedAt = await runInDurableObject(stub(matchId), (t: TableDO) =>
+      t.clock(),
+    )
     await elapse(matchId, 60_000)
     expect(ratingOf(alice)).toBeUndefined()
     fake.down = false
     await elapse(matchId, 600_000)
     await until(() => !!ratingOf(alice))
     expect(fake.applies).toHaveLength(1)
+    // Rated 11 minutes late, but as of when the match was played.
+    expect(fake.applies[0]).toMatchObject({
+      finishedAt: new Date(finishedAt).toISOString(),
+    })
   }, 60_000)
 
   it('a player who reconnects after the rating sees it again', async () => {

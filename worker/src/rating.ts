@@ -25,6 +25,12 @@ import { describeError, logEvent } from './log'
 export type RateCall = {
   matchId: string
   players: { seat: SeatId; userId: string; outcome: Outcome }[]
+  /**
+   * When the match finished (the table's clock). Inactivity is counted up to
+   * here, and stored as the players' last match, however late the rating
+   * applies. Absent on calls queued before it existed: the time of rating.
+   */
+  finishedAt?: number
 }
 
 export type RateOutcome = ArchiveOutcome & {
@@ -62,6 +68,7 @@ export async function applyRating(
   call: RateCall,
   now: number,
 ): Promise<RateOutcome> {
+  const playedAt = call.finishedAt ?? now
   try {
     for (let tries = 0; tries < STALE_TRIES; tries++) {
       const ids = call.players.map((p) => p.userId)
@@ -79,7 +86,7 @@ export async function applyRating(
         return {
           rating: idle(
             { rating: row.rating, rd: row.rd, sigma: row.sigma },
-            idlePeriods(last, now),
+            idlePeriods(last, playedAt),
           ),
           version: row.version,
         }
@@ -97,6 +104,7 @@ export async function applyRating(
               matchId: call.matchId,
               format: FORMAT,
               modelVersion: VERSION,
+              finishedAt: new Date(playedAt).toISOString(),
               players: [
                 {
                   userId: a.userId,

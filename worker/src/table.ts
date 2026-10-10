@@ -1141,6 +1141,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
               userId: p.userId,
               outcome: match.outcome![p.seat],
             })),
+            finishedAt: this.clock(),
           } satisfies RateCall,
           attempts: 0,
         } satisfies Outbox

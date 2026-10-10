@@ -250,6 +250,69 @@ describe('apply_rating', () => {
   })
 })
 
+describe('the last match', () => {
+  it('is when the match was played, not when its rating applied, and never moves backwards', async () => {
+    const DAN = '71111111-1111-4111-8111-111111111111'
+    const EVE = '72222222-2222-4222-8222-222222222222'
+    await db.exec(`insert into auth.users (id) values ('${DAN}'), ('${EVE}')`)
+    const pair = [
+      { seat: 0, userId: DAN },
+      { seat: 1, userId: EVE },
+    ]
+    const finish = async (id: string) => {
+      const start = { id, kind: 'hu-rated', config: {}, players: pair }
+      await recordMatch(start)
+      await recordMatch({ ...start, handNo: 40, timeouts: {}, result: win(0) })
+    }
+    const applyAt = (id: string, version: number, finishedAt: string) =>
+      service(() =>
+        db.query('select public.apply_rating($1::jsonb)', [
+          JSON.stringify({
+            matchId: id,
+            format: 'hu-duplicate',
+            modelVersion: 'glicko2.v1',
+            finishedAt,
+            players: [
+              {
+                userId: DAN,
+                outcome: 'win',
+                version,
+                rating: 1600,
+                rd: 300,
+                sigma: 0.06,
+              },
+              {
+                userId: EVE,
+                outcome: 'loss',
+                version,
+                rating: 1400,
+                rd: 300,
+                sigma: 0.06,
+              },
+            ],
+          }),
+        ]),
+      )
+    const last = async () =>
+      (
+        await db.query<{ at: string }>(
+          `select to_char(last_match_at at time zone 'utc', 'YYYY-MM-DD') at
+           from public.ratings where user_id = $1`,
+          [DAN],
+        )
+      ).rows[0].at
+    const jan = '53000000-0000-4000-8000-000000000001'
+    const dec = '53000000-0000-4000-8000-000000000002'
+    await finish(jan)
+    await finish(dec)
+    await applyAt(jan, 0, '2026-01-01T12:00:00Z')
+    expect(await last()).toBe('2026-01-01')
+    // Played earlier, rated later: the last match stays January's.
+    await applyAt(dec, 1, '2025-12-01T12:00:00Z')
+    expect(await last()).toBe('2026-01-01')
+  })
+})
+
 describe('rating history', () => {
   it('refuses update, delete and truncate for every role, the server included', async () => {
     for (const role of ['service_role', 'authenticated', 'anon'])

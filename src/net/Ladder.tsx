@@ -25,7 +25,7 @@ type Page =
   | { status: 'ready'; rows: LadderRow[]; more: boolean }
 
 /**
- * The heads-up duplicate ladder (P1-14), all time or this month: rank,
+ * The rated heads-up ladder (P1-14), all time or this month: rank,
  * player, rating ± RD, accuracy, matches, win rate and trend, a page at a
  * time. Public; a signed-in viewer also sees where they stand. Keyed by
  * view where it is used, so switching period starts again at the top.
@@ -59,7 +59,7 @@ export function Ladder({
   const month = view === 'month'
   return (
     <section className="panel live-ladder" aria-labelledby="ladder-title">
-      <h2 id="ladder-title">Heads-up duplicate ladder</h2>
+      <h2 id="ladder-title">Rated heads-up</h2>
       <nav className="live-ladder-views" aria-label="Ladder period">
         <a href="#ladder" aria-current={month ? undefined : 'page'}>
           All time

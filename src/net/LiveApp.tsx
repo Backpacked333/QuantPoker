@@ -59,9 +59,7 @@ export default function LiveApp() {
       <div className="page live-page">
         <header className="page-head">
           <h1>Ladder</h1>
-          <p>
-            Rated heads-up duplicate: the same cards both ways, luck cancelled.
-          </p>
+          <p>Rated heads-up: 40 hands a match, with all-in luck taken out.</p>
           <p className="live-muted">
             <a href="#lobby">Play rated</a> · <a href="#fair-play">Fair play</a>
           </p>

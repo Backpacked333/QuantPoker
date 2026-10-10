@@ -310,6 +310,16 @@ describe('the last match', () => {
     // Played earlier, rated later: the last match stays January's.
     await applyAt(dec, 1, '2025-12-01T12:00:00Z')
     expect(await last()).toBe('2026-01-01')
+    // Each history row keeps when its match was played, for the month ladder.
+    const played = await db.query<{ match_id: string; at: string }>(
+      `select match_id, to_char(played_at at time zone 'utc', 'YYYY-MM-DD HH24:MI') at
+       from public.rating_history where user_id = $1 order by id`,
+      [DAN],
+    )
+    expect(played.rows).toEqual([
+      { match_id: jan, at: '2026-01-01 12:00' },
+      { match_id: dec, at: '2025-12-01 12:00' },
+    ])
   })
 })
 

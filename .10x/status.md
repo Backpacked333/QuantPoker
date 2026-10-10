@@ -1,11 +1,46 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (accuracy: P1-08 and P1-09 live, QA attack run, P1-10 built; P1-12 ratings next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (landing page phases 1 and 2 built in PR #30) and SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
+
+## Landing v2: cinematic 3D (2026-10-10)
+
+- **Approved design:** `.10x/specs/2026-10-10-landing-3d-design.md` and ADR-001.
+- **Built and verified (SDE, QA, security):**
+  - the 3D stage;
+  - the beats;
+  - How it works and Your free account;
+  - the account CTAs in the header and on the score card;
+  - phone tuning.
+- **Tests:** 918 unit and 35 e2e pass, including the 3D path. Three lobby Worker tests fail on `main` too, locally.
+- **Next:** PR, CI, merge (standing instruction).
+
+## Landing page and onboarding (2026-10-10)
+
+- **Scoped (PM) and designed (architect), scope B / design B:** `.10x/decisions/product-manager/landing-and-onboarding.md`, `.10x/decisions/architect/landing-and-onboarding.md` (see its §As built).
+- **Phase 1 built (SDE), PR #30, not merged:**
+  - the landing page with six pre-scored challenge hands and the score card;
+  - `ScoreDO` with `/api/challenge/score`, `/api/events`, `/api/challenge/claim` and `/api/funnel`;
+  - migration `20261010110000_landing.sql` (school badges, `challenge_scores`);
+  - `#welcome/onboard` (score claim, username, school, first move).
+- **Checks run locally:** 883 unit, 200 worker, 120 SQL and 33 e2e tests; entry bundle 142.9 kB of 150.
+- **Before launch (yours):**
+  - U-9 Google sign-in;
+  - U-10 custom SMTP;
+  - U-4 for claimed scores to reach Postgres.
+
+  Merging #30 launches the landing page and applies the migration to production.
+
+- **Phase 2 built, same PR:**
+  - `/c/<receipt>` share links with a link preview (L-12);
+  - the friend challenge on the same hand (L-13);
+  - school codes by email (L-14, migration `20261010120000_school_email.sql`, needs U-11).
+
+  Checks run locally: 893 unit, 212 worker, 126 SQL and 33 e2e tests; entry bundle 143.0 kB.
 
 ## Phase 1 progress (2026-10-10)
 
@@ -46,7 +81,20 @@ Merged and deployed, each one verified in production after its merge:
 
   The mission's sanity order holds.
 
-**P1-10 (built, PR next):** the public accuracy number with its distribution, the luck-versus-skill series across rated matches, and the "Rated play" panel in the lobby.
+**PR #24 (`c69fbf1`): accuracy, its grade distribution and luck versus skill (P1-10).** Live and verified.
+
+**PRs #25 (`ba8ffaf`) and #26 (`a3b9aed`): the rating (P1-12, P1-13).**
+
+- **#25:** a finished rated match changes both Glicko-2 ratings once (`ratings`, an append-only `rating_history`, `apply_rating` with compare-and-set). The end screen shows "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player". Production holds `20261010080000` (checked read-only: anon cannot apply, the abandonment trigger is present). The Worker carries the rating outbox, and `verify-deploy` passed. No rated match had finished before the deploy, so none is unrated.
+- **#26:** rated quick-match pairs the closest rating within 100 + 50 per minute of waiting, re-pairing every 15 s, under the 2-a-day pair cap. Devin found a real race (a search cancelled during the rating read could come back as a ghost), fixed in the same PR. The deployed Worker carries both, and `verify-deploy` passed. Simulated median wait: 29 s at 10 players online.
+
+**PR #27 (`f27a364`): the ladder, the metrics query and a simulated season (P1-14).** `#ladder` and `#ladder/month` are public. Production holds `20261010090000`, checked read-only: the functions, `played_at` with two indexes, and the append-only trigger back on. `verify-deploy` passed. `supabase/metrics/rating-metrics.sql` reports "insufficient data" on production today. Devin's month-boundary finding (a match rated after midnight counted in the next month) was fixed before the merge.
+
+**6-max arenas (P2-13/P2-14): stopped at the pre-check, 2026-10-10.** 100,000 simulated 6-max hands with 0 failures; 0 of the 1,000 human casual 6-max hands the gate needs, because casual 6-max is unbuilt and production archives nothing until U-4. Path: `.10x/decisions/architect/six-max-arena.md`.
+
+**PR #29 (merged, verified live): P1-15/16.** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
+
+**Hands of a live match (Devin, #29; approved by the user).** Migration `20261010100000_hands_after_match.sql` adds a restrictive SELECT policy: no client role (anon or signed in, players included) reads `hands` of a match whose status is `playing`; they open the moment it is finished or void. A player's own `hand_holes` stay readable. `/api/stats` counts such hands once the match ends. Tests: `supabase/tests/hands-live.test.ts`; bench Q8c.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 

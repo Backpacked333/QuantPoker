@@ -1,6 +1,7 @@
 // Hands per day, readable without SQL: GET /api/stats counts archived and
 // verified hands per UTC day from the public `hands` table (publishable key,
 // head counts only), cached per isolate so the page cannot load Postgres.
+// Hands of a match still in play count once it ends (hands_after_match RLS).
 import { now } from './clock'
 import type { WorkerEnv } from './env'
 import { describeError, logEvent } from './log'

@@ -160,6 +160,20 @@ export function gradeDecision(
       : action.type === 'raise'
         ? options.find((o) => o.to === action.to)!
         : options[1]
+  return gradeChoice(game, options, chosen, spotOutcome(spot, model).equity)
+}
+
+/**
+ * Grades one of `options` (from `decisionOptions`) as the choice. Split from
+ * `gradeDecision` so a spot priced once can grade every action
+ * (src/challenge/build.ts).
+ */
+export function gradeChoice(
+  game: Game,
+  options: ActionOption[],
+  chosen: ActionOption,
+  equity: number,
+): DecisionGrade {
   // Folding is only a real alternative when there is something to call.
   const pool = options.filter(
     (o) =>
@@ -175,7 +189,7 @@ export function gradeDecision(
     evLost,
     grade: gradeFor(evLost, game.pot),
     accuracy: accuracyFor(evLost, game.pot),
-    equity: spotOutcome(spot, model).equity,
+    equity,
   }
 }
 

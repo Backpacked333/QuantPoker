@@ -3,7 +3,7 @@
 // engine has no randomness and no clock: the deck is an input.
 import { score } from '../lib/sim'
 import { dealSlots, isValidDeck } from './deck'
-import { blindSeats, clockwiseFrom } from './positions'
+import { blindSeats, clockwiseFrom, ringDistance, seatAfter } from './positions'
 import { buildPots, returnUncalled } from './pots'
 import { EngineError } from './types'
 import type {
@@ -61,18 +61,21 @@ function validateConfig(config: HandConfig) {
   const { seats, button, blinds, handNo } = config
   if (!Number.isInteger(handNo) || handNo < 1)
     throw new EngineError('Hand number must be a positive integer')
-  if (seats.length < 2 || seats.length > 10)
-    throw new EngineError('A hand needs 2 to 10 players')
+  // A table has six seats (SeatId 0..5); positionNames labels at most six.
+  if (seats.length < 2 || seats.length > 6)
+    throw new EngineError('A hand needs 2 to 6 players')
   seats.forEach((s, i) => {
-    if (!Number.isInteger(s.seat) || s.seat < 0)
-      throw new EngineError('Seats must be non-negative integers')
+    if (!Number.isInteger(s.seat) || s.seat < 0 || s.seat > 5)
+      throw new EngineError('Seats must be integers from 0 to 5')
     if (i > 0 && s.seat <= seats[i - 1].seat)
       throw new EngineError('Seats must be ascending and distinct')
     if (!Number.isInteger(s.stack) || s.stack <= 0)
       throw new EngineError('Every player needs chips to start')
   })
-  if (!seats.some((s) => s.seat === button))
-    throw new EngineError('The button must be a seated player')
+  if (config.sb === undefined && config.bb === undefined) {
+    if (!seats.some((s) => s.seat === button))
+      throw new EngineError('The button must be a seated player')
+  } else validateBlindSeats(config)
   if (
     !Number.isInteger(blinds.sb) ||
     !Number.isInteger(blinds.bb) ||
@@ -80,6 +83,50 @@ function validateConfig(config: HandConfig) {
     blinds.bb < blinds.sb
   )
     throw new EngineError('Blinds must be positive integers with sb ≤ bb')
+}
+
+/**
+ * Explicit blind seats may put the button on an empty seat and leave the
+ * small blind dead (null), so they get their own checks: every placement the
+ * ADR amendment 2026-10-10 (Phase 2, "Blinds and button") lists as illegal.
+ */
+function validateBlindSeats({ seats, button, sb, bb }: HandConfig) {
+  const dealt = seats.map((s) => s.seat)
+  if (!Number.isInteger(button) || button < 0 || button > 5)
+    throw new EngineError('The button must be a seat from 0 to 5')
+  if (sb === undefined || bb === undefined)
+    throw new EngineError('Explicit blinds need both sb and bb')
+  if (!dealt.includes(bb))
+    throw new EngineError('The big blind must be dealt in')
+  if (sb !== null && !dealt.includes(sb))
+    throw new EngineError('A live small blind must be dealt in')
+  if (sb === bb)
+    throw new EngineError(
+      'The small blind and the big blind must be different seats',
+    )
+  if (dealt.length === 2) {
+    if (sb === null || button !== sb)
+      throw new EngineError('Heads-up the button posts the small blind')
+  } else if (button === sb || button === bb)
+    throw new EngineError(
+      'With three or more players the button posts no blind',
+    )
+  // The button comes before the small blind's seat, which comes before the
+  // big blind: never between a live small blind and the big blind, and with
+  // a dead small blind at least one seat (that blind's) before the big blind.
+  if (
+    dealt.length > 2 &&
+    (sb !== null
+      ? ringDistance(sb, button) < ringDistance(sb, bb)
+      : ringDistance(button, bb) < 2)
+  )
+    throw new EngineError('The button must come before the small blind')
+  // A player dealt in between a live small blind and the big blind is one
+  // the big blind skipped on its way round.
+  if (sb !== null && seatAfter(dealt, sb) !== bb)
+    throw new EngineError(
+      'The big blind must be the next player after the small blind',
+    )
 }
 
 /** Deals a hand from `deck` (52 slots; see dealSlots) and posts the blinds. */
@@ -110,10 +157,16 @@ export function startHand(config: HandConfig, deck: number[]): HandState {
     actions: [],
     pots: [],
   }
-  const { sb, bb } = blindSeats(seatIds(state), config.button)
-  const small = player(state, sb)
+  // A dead small blind (null) posts nothing; the big blind always posts.
+  const { sb, bb } =
+    config.bb === undefined
+      ? blindSeats(seatIds(state), config.button)
+      : { sb: config.sb ?? null, bb: config.bb }
+  if (sb !== null) {
+    const small = player(state, sb)
+    contribute(small, Math.min(config.blinds.sb, small.stack))
+  }
   const big = player(state, bb)
-  contribute(small, Math.min(config.blinds.sb, small.stack))
   contribute(big, Math.min(config.blinds.bb, big.stack))
   return advance(state, bb)
 }

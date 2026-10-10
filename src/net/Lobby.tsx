@@ -113,6 +113,9 @@ export function Lobby({
             onFind={() => connection?.find('hu-rated')}
             onCancel={() => connection?.cancel()}
           />
+          <p className="live-muted">
+            <a href="#ladder">See the ladder</a>
+          </p>
           {state.refused && (
             <p className="live-error" role="alert">
               {state.refused}

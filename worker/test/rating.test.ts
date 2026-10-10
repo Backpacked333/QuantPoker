@@ -23,7 +23,7 @@ import { forgetUsernames } from '../src/auth'
 import { RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
 import type { InitBody, TableDO } from '../src/table'
-import { FRAME_KEYS, RATING_CHANGE_KEYS } from './frames'
+import { checkFrame, checkFrames, FLOW_TYPES } from './frames'
 import {
   connect,
   elapse,
@@ -295,13 +295,15 @@ describe('the rating update', () => {
           matches: 1,
         },
       })
-      // The frame carries public ratings and nothing else.
-      expect(Object.keys(frame).sort()).toEqual([...FRAME_KEYS.rating].sort())
-      for (const seat of [0, 1] as const)
-        expect(Object.keys(frame.change[seat]).sort()).toEqual(
-          [...RATING_CHANGE_KEYS].sort(),
-        )
     }
+    // Every frame either player got carries only its allowed keys, and the
+    // rating frame only public ratings, keyed by seat. The rematch offer
+    // races the rating, so it is waited for before taking the types.
+    for (const c of [alice, seats[1]])
+      await c.next((f) => f.t === 'rematch_state')
+    expect(checkFrames([...alice.frames, ...seats[1].frames])).toEqual(
+      new Set(FLOW_TYPES.rating),
+    )
     expect(win.rating).toBeGreaterThan(1500)
     expect(loss.rating).toBeLessThan(1500)
   }, 90_000)
@@ -373,6 +375,7 @@ describe('the rating update', () => {
     await until(() => !!ratingOf(alice))
     const again = await connect(matchId, ALICE)
     const frame = await again.next((f) => f.t === 'rating')
+    checkFrame(frame)
     expect(frame).toMatchObject({ change: ratingOf(alice)!.change })
   }, 60_000)
 

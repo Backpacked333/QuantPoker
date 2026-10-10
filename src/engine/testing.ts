@@ -89,3 +89,38 @@ export function randomTable(n: number, random: () => number, handNo = 1) {
   }
   return { config: cfg, deck: shuffleWith(randomIntFrom(random)) }
 }
+
+/** Clockwise seat distance on the six-seat ring, 0..5. */
+export const ringDistance = (from: SeatId, to: SeatId) => (to - from + 6) % 6
+
+/**
+ * `cfg` with six-casual blind seats placed at random wherever the standard
+ * dead button can put them (ADR amendment 2026-10-10, "Blinds and button"),
+ * worked out from that geometry rather than from the engine: the big blind on
+ * a player; the small blind's seat on the nearest player before it or on an
+ * empty seat in between, dead when empty and, half the time, when its player
+ * has just sat down; the button on any seat strictly between the big blind
+ * and the small blind's seat, empty or not. Heads-up the other player is the
+ * button and posts the small blind.
+ */
+export function withExplicitBlinds(
+  cfg: HandConfig,
+  random: () => number,
+): HandConfig {
+  const seats = cfg.seats.map((s) => s.seat)
+  const pick = <T>(list: T[]) => list[Math.floor(random() * list.length)]
+  const bb = pick(seats)
+  if (seats.length === 2) {
+    const other = seats.find((s) => s !== bb)!
+    return { ...cfg, button: other, sb: other, bb }
+  }
+  const before = seats
+    .filter((s) => s !== bb)
+    .reduce((a, b) => (ringDistance(b, bb) < ringDistance(a, bb) ? b : a))
+  const ring = (from: SeatId, count: number) =>
+    Array.from({ length: count }, (_, i) => (from + i) % 6)
+  const sbSeat = pick(ring(before, ringDistance(before, bb)))
+  const live = sbSeat === before && random() < 0.5
+  const button = pick(ring(bb + 1, ringDistance(bb, sbSeat) - 1))
+  return { ...cfg, button, sb: live ? sbSeat : null, bb }
+}

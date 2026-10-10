@@ -1,6 +1,14 @@
-// The product rules around the rating (rating-and-leaderboard.md): when a
-// rating is provisional, and who may appear on the ladder. Pure; the ladder
-// SQL (supabase/migrations/…_ladder.sql) applies the same numbers.
+// The product rules around the rating (rating-and-leaderboard.md): what
+// counts as a draw, when a rating is provisional, and who may appear on the
+// ladder. Pure; the ladder SQL (supabase/migrations/…_ladder.sql) applies
+// the same numbers, and the Method page (src/info/Method.tsx) states them.
+
+/**
+ * A luck-adjusted lead of at most this many big blinds is a draw (R-8;
+ * exactly 2.00 is a draw). The rated table decides with it
+ * (worker/src/rated.ts).
+ */
+export const DRAW_BAND_BB = 2
 
 /** Provisional while RD is at least this… */
 export const PROVISIONAL_RD = 100

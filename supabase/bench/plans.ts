@@ -100,9 +100,9 @@ async function generate(db: PGlite, n: number) {
 
     insert into public.rating_history (user_id, format, kind, match_id, outcome,
       before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma,
-      model_version, created_at)
+      model_version, created_at, played_at)
     select mp.user_id, 'hu-duplicate', 'match', mp.match_id, mp.outcome,
-           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at
+           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at, p.at
     from public.match_players mp join pairs p on p.id = mp.match_id
     where mp.outcome is not null;
 
@@ -152,15 +152,23 @@ async function generate(db: PGlite, n: number) {
 }
 
 /** Median execution time of EXPLAIN ANALYZE, and the plan's node lines. */
-async function plan(db: PGlite, sql: string, params: unknown[] = []) {
+async function plan(
+  db: PGlite,
+  sql: string,
+  params: unknown[] = [],
+  role?: string,
+) {
   const times: number[] = []
   let lines: string[] = []
   for (let i = 0; i < 3; i++) {
+    // A client role plans with its RLS policies, as PostgREST runs it.
+    if (role) await db.exec(`set role ${role}`)
     const rows = (
-      await db.query<{ 'QUERY PLAN': string }>(
-        `explain (analyze, costs off, timing off, summary on) ${sql}`,
-        params,
-      )
+      await db
+        .query<{
+          'QUERY PLAN': string
+        }>(`explain (analyze, costs off, timing off, summary on) ${sql}`, params)
+        .finally(() => role && db.exec('reset role'))
     ).rows.map((r) => r['QUERY PLAN'])
     const exec = rows.find((l) => l.startsWith('Execution Time'))
     times.push(Number(exec?.match(/([\d.]+) ms/)?.[1]))
@@ -231,7 +239,7 @@ async function queries(db: PGlite) {
     join public.match_players o on o.match_id = mp.match_id and o.user_id <> mp.user_id
     join public.players op on op.user_id = o.user_id
     order by mp.finished_at desc`
-  const list: [string, string, string, unknown[]][] = [
+  const list: [string, string, string, unknown[], string?][] = [
     [
       'Q1',
       'Profile: last 20 matches, join on matches (heaviest player)',
@@ -305,6 +313,34 @@ async function queries(db: PGlite) {
       [],
     ],
     [
+      'Q4e',
+      'Ladder page 1 inlined as shipped (P1-14, before P1-18 adds sanctions)',
+      `select r.user_id, p.username, r.rating, r.rd, r.matches
+       from public.ratings r join public.players p on p.user_id = r.user_id
+       where r.format = 'hu-duplicate' and r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
+      'Q4f',
+      'Ladder this month inlined (the plan inside ladder_month())',
+      `with month as (
+         select h.user_id, count(*)::int as matches
+         from public.rating_history h
+         where h.format = 'hu-duplicate' and h.kind = 'match'
+           and h.played_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+         group by h.user_id)
+       select r.user_id, r.rating, mo.matches
+       from month mo join public.ratings r on r.user_id = mo.user_id and r.format = 'hu-duplicate'
+       where r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
       'Q5',
       'Hands of a match, in order',
       `select id, hand_no, record from public.hands where match_id = $1 order by hand_no`,
@@ -358,6 +394,13 @@ async function queries(db: PGlite) {
       [],
     ],
     [
+      'Q8c',
+      '/api/stats as anon (hands_after_match), worst case: every hand on one day, one matches_pkey probe each',
+      `select count(*) from public.hands`,
+      [],
+      'anon',
+    ],
+    [
       'Q9',
       'Accuracy recompute: latest 500 graded decisions (at match end, not per view)',
       `select * from private.player_accuracy($1)`,
@@ -394,8 +437,8 @@ async function queries(db: PGlite) {
     ],
   ]
   const out = []
-  for (const [id, what, sql, params] of list) {
-    const { ms, lines } = await plan(db, sql, params)
+  for (const [id, what, sql, params, role] of list) {
+    const { ms, lines } = await plan(db, sql, params, role)
     out.push({ id, what, ms, shape: shape(lines), lines })
   }
   return out

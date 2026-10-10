@@ -14,6 +14,7 @@ import { RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
 import type { InitBody, TableDO } from '../src/table'
 import {
+  bySeat,
   connect,
   createTable,
   DEV_SECRET,
@@ -22,10 +23,11 @@ import {
   isState,
   move,
   peek,
+  seatPairs,
   stub,
 } from './helpers'
 import type { Client } from './helpers'
-import { checkFrame } from './frames'
+import { checkFrame, checkFrames, FLOW_TYPES } from './frames'
 
 /** Plays checks and calls (or one fold) from the server's real state. */
 async function play(
@@ -98,18 +100,7 @@ describe('every frame a seat receives', () => {
     await bob.next((f) => f.t === 'match_end')
 
     const all = [...alice.frames, ...bob.frames]
-    expect(new Set(all.map((f) => f.t))).toEqual(
-      new Set([
-        'welcome',
-        'state',
-        'hand_start',
-        'hand_end',
-        'reveal',
-        'match_end',
-        'error',
-      ]),
-    )
-    for (const f of all) checkFrame(f)
+    expect(checkFrames(all)).toEqual(new Set(FLOW_TYPES.casual))
 
     const wire = all.map((f) => JSON.stringify(f)).join('\n')
     for (const handNo of [1, 2]) {
@@ -122,8 +113,8 @@ describe('every frame a seat receives', () => {
       expect(wire).not.toContain(JSON.stringify(deck))
     }
 
-    // Hand 2: each seat's cards reach only that seat; the reveal opens no
-    // hole slot, and the record shows no hand.
+    // Hand 2: each seat's cards reach only that seat, for every pair of
+    // seats; the reveal opens no hole slot, and the record shows no hand.
     const { deck } = await storedDeck(matchId, 2)
     const { match } = await peek(matchId)
     const config = {
@@ -137,14 +128,11 @@ describe('every frame a seat receives', () => {
     }
     expect(match.handNo).toBe(2)
     const holes = dealSlots(config).holes
-    for (const [seat, other] of [
-      [0, 1],
-      [1, 0],
-    ] as const) {
+    for (const [seat, other] of seatPairs(config.seats.map((s) => s.seat))) {
       const theirs = holes[other].map((slot) => deck[slot])
       for (const f of clients[seat].frames) {
         if ((f.t === 'state' || f.t === 'welcome') && f.view?.handNo === 2)
-          expect(f.view.players[other].cards).toBeNull()
+          expect(bySeat(f.view.players, other).cards).toBeNull()
         if (f.t === 'hand_end' && f.handNo === 2)
           expect(f.record.shown).toEqual([])
         if (f.t === 'reveal' && f.handNo === 2) {

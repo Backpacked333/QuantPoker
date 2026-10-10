@@ -1,12 +1,18 @@
-// What each frame type may carry on the wire, shared by the redaction
-// tests (leaks.test.ts, rated-leak.test.ts). The compiler checks every
-// list against src/shared/protocol.ts: a field added to a frame without a
-// line here fails `npm run typecheck:worker`, so no field reaches a client
-// unreviewed.
+// What each frame type may carry on the wire, shared by the tests that
+// check frames (leaks, rated-leak, rating, rematch, lobby) and by
+// frames.test.ts, which checks that every type is covered. The compiler
+// checks every list against src/shared/protocol.ts: a field added to a
+// frame without a line here fails `npm run typecheck:worker`, so no field
+// reaches a client unreviewed.
 import { expect } from 'vitest'
-import type { HandRecordV1, ServerMsg } from '../../src/shared/protocol'
+import type {
+  HandRecordV1,
+  LobbyMsg,
+  ServerMsg,
+} from '../../src/shared/protocol'
 
 type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>
+type Lobby<T extends LobbyMsg['t']> = Extract<LobbyMsg, { t: T }>
 type Name<S> = S extends `${infer K}?` ? K : S
 
 /**
@@ -95,9 +101,31 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'next?',
   ]),
 }
-export const RATING_CHANGE_KEYS = keysOf<
-  Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
->()(['before', 'after', 'matches'])
+// The lobby socket's frames: presence goes to everyone online and the rest
+// to one socket. They carry counts, a table id and the player's own match,
+// never another account.
+export const LOBBY_FRAME_KEYS: Record<LobbyMsg['t'], string[]> = {
+  queued: keysOf<Lobby<'queued'>>()(['t', 'seq', 'position', 'since']),
+  matched: keysOf<Lobby<'matched'>>()(['t', 'seq', 'matchId', 'resumed?']),
+  presence: keysOf<Lobby<'presence'>>()([
+    't',
+    'seq',
+    'online',
+    'queued',
+    'rated?',
+  ]),
+  error: keysOf<Lobby<'error'>>()(['t', 'seq', 'code', 'message']),
+}
+type Change = Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
+export const RATING_CHANGE_KEYS = keysOf<Change>()([
+  'before',
+  'after',
+  'matches',
+])
+// The public rating and its deviation; volatility and row versions stay in
+// the database.
+const RATING_BEFORE_KEYS = keysOf<Change['before']>()(['rating', 'rd'])
+const RATING_AFTER_KEYS = keysOf<Change['after']>()(['rating', 'rd'])
 type View = NonNullable<Msg<'welcome'>['view']>
 export const VIEW_KEYS = keysOf<View>()([
   'matchId',
@@ -231,4 +259,71 @@ export function checkFrame(f: ServerMsg) {
     for (const s of f.slots) expectKeys(s, SLOT_KEYS, 'slot')
     for (const s of f.own ?? []) expectKeys(s, SLOT_KEYS, 'own')
   }
+  if (f.t === 'rating')
+    for (const [seat, change] of Object.entries(f.change)) {
+      // Keyed by seat, never by account.
+      expect(seat, 'rating.change: key').toMatch(/^[0-5]$/)
+      expectKeys(change, RATING_CHANGE_KEYS, 'rating.change')
+      expectKeys(change.before, RATING_BEFORE_KEYS, 'rating.change.before')
+      expectKeys(change.after, RATING_AFTER_KEYS, 'rating.change.after')
+    }
 }
+
+export function checkLobbyFrame(f: LobbyMsg) {
+  expectKeys(f, LOBBY_FRAME_KEYS[f.t], `lobby ${f.t}`)
+  expect(forbiddenKeys(f), `lobby ${f.t}: forbidden keys`).toEqual([])
+}
+
+/** Runs every frame through checkFrame and returns the types that passed. */
+export function checkFrames(frames: ServerMsg[]) {
+  const passed = new Set<ServerMsg['t']>()
+  for (const f of frames) {
+    checkFrame(f)
+    passed.add(f.t)
+  }
+  return passed
+}
+
+/**
+ * The frame types each flow test runs through checkFrames. Each flow
+ * asserts its own entry exactly, as `new Set(FLOW_TYPES.<entry>)`, and
+ * frames.test.ts asserts the entries together name every FRAME_KEYS type
+ * and that some flow test's source asserts each entry, so a new frame type
+ * fails the suite until some flow sends it and checks it. The lists live
+ * here, not in a recorder shared across files, because vitest gives each
+ * test file its own copy of this module and runs the files in parallel.
+ */
+export const FLOW_TYPES = {
+  /** leaks.test.ts: a casual match with a showdown, a fold and junk. */
+  casual: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'error',
+  ],
+  /** rated-leak.test.ts: 40 rated hands, then a look back after the end. */
+  ratedMatch: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'error',
+    'rematch_state',
+  ],
+  /** rating.test.ts: a completed rated match, its rating and the offer. */
+  rating: [
+    'welcome',
+    'state',
+    'hand_start',
+    'hand_end',
+    'reveal',
+    'match_end',
+    'rating',
+    'rematch_state',
+  ],
+} satisfies Record<string, ServerMsg['t'][]>

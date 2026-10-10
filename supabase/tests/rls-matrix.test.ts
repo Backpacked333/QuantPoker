@@ -195,6 +195,22 @@ const TABLES: Record<string, Spec> = {
       `insert into public.coach_messages (user_id, id, role, text, snapshot_id, label)
        values ('${u}', gen_random_uuid(), 'user', 'hi', 's', 'l')`,
   ),
+  'public.school_domains': {
+    select: () =>
+      `select count(*) n from public.school_domains where domain = 'mit.edu'`,
+    insert: () =>
+      `insert into public.school_domains (domain, school, country) values ('evil.edu', 'Evil', 'US')`,
+    update: () =>
+      `update public.school_domains set school = 'MIT' where domain = 'mit.edu'`,
+    remove: () => `delete from public.school_domains where domain = 'mit.edu'`,
+  },
+  'public.challenge_scores': owned(
+    'public.challenge_scores',
+    'accuracy = accuracy',
+    (u) =>
+      `insert into public.challenge_scores (user_id, hand, ver, accuracy, receipt, played_at)
+       values ('${u}', 'nut-draw', 1, 50, repeat('e', 32), now()) on conflict do nothing`,
+  ),
   'private.coach_usage': shared(
     'private.coach_usage',
     'used = used',
@@ -229,7 +245,14 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
   },
   'public.matches': { ...PUBLIC_READ, ...SERVICE },
   'public.match_players': { ...PUBLIC_READ, ...SERVICE },
-  'public.hands': { ...PUBLIC_READ, ...SERVICE },
+  // Public once the match is over; the fixture's match is still in play, so
+  // no client reads its hand (hands-live.test.ts covers both states).
+  'public.hands': {
+    anon: [0, D, D, D],
+    self: [0, D, D, D],
+    other: [0, D, D, D],
+    ...SERVICE,
+  },
   'public.abandonments': { ...PUBLIC_READ, ...SERVICE },
   // The deck, the hand secret and every hole card: the server only.
   'public.hands_private': { ...PRIVATE, ...SERVICE },
@@ -267,6 +290,17 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
   'public.lesson_progress': { ...OWN_ONLY, ...SERVICE },
   'public.practice_attempts': { ...OWN_ONLY, ...SERVICE },
   'public.coach_messages': { ...OWN_ONLY, ...SERVICE },
+  // The school list: anyone reads it (onboarding shows the name), only
+  // migrations write it.
+  'public.school_domains': { ...PUBLIC_READ, ...SERVICE },
+  // A player reads their own challenge scores; only the server's
+  // record_challenge_claim writes them (supabase/tests/landing.test.ts).
+  'public.challenge_scores': {
+    anon: [D, D, D, D],
+    self: [1, D, D, D],
+    other: [0, D, D, D],
+    ...SERVICE,
+  },
   // Only reachable through reserve_coach_request (security definer). In this
   // stub service_role has no usage on schema private either; on Supabase the
   // grants may differ, which does not change what browsers can do.
@@ -308,6 +342,9 @@ beforeAll(async () => {
       values ('${ALICE}', gen_random_uuid(), 'user', 'hi', 's', 'l'),
              ('${BOB}', gen_random_uuid(), 'user', 'hi', 's', 'l');
     insert into private.coach_usage (scope, window_start) values ('seed', now());
+    insert into public.challenge_scores (user_id, hand, ver, accuracy, receipt, played_at)
+      values ('${ALICE}', 'overpair', 1, 80, repeat('a', 32), now()),
+             ('${BOB}', 'overpair', 1, 70, repeat('b', 32), now());
   `)
 }, 60_000)
 
@@ -378,16 +415,23 @@ describe('functions', () => {
       'private.refresh_accuracy',
       'private.refresh_finished_match',
       'private.refuse_change',
+      'private.school_for',
+      'private.set_player_school',
+      'public.abandonment_rate',
       'public.apply_rating',
       'public.audit_hand',
       'public.clear_learning_progress',
       'public.handle_new_player',
+      'public.ladder',
+      'public.ladder_month',
       'public.rated_luck',
+      'public.record_challenge_claim',
       'public.record_grades',
       'public.record_hand',
       'public.record_incident',
       'public.record_match',
       'public.reserve_coach_request',
+      'public.set_player_school',
       'public.verify_hand',
     ])
     for (const f of all) {

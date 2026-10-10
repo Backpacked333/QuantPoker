@@ -7,7 +7,7 @@ type Frame = {
   view?: {
     you: number
     handNo: number
-    players: { cards: [number, number] | null; shown: boolean }[]
+    players: { seat: number; cards: [number, number] | null; shown: boolean }[]
   } | null
 }
 
@@ -107,9 +107,13 @@ test('two browsers play a hand against each other', async ({ browser }) => {
     const views = frames.flatMap((f) => (f.view ? [f.view] : []))
     expect(views.length).toBeGreaterThan(5)
     for (const view of views) {
-      const opponent = view.players[1 - view.you]
+      // By seat, not list position: with empty seats they differ.
+      const mine = view.players.find((p) => p.seat === view.you)
+      const opponent = view.players.find((p) => p.seat !== view.you)
+      if (!mine || !opponent)
+        throw new Error(`hand ${view.handNo}: you or the opponent is missing`)
       if (!opponent.shown) expect(opponent.cards).toBeNull()
-      expect(view.players[view.you].cards).not.toBeNull()
+      expect(mine.cards).not.toBeNull()
     }
     expect(JSON.stringify(frames)).not.toContain('"deck"')
   }
@@ -145,110 +149,123 @@ test('a third person cannot take a full table', async ({ browser }) => {
   for (const p of [alice, bob, carol]) await p.close()
 })
 
-test('two players find a rated match and both see Hand 1 of 40', async ({
-  browser,
-}) => {
-  const rae = await player(browser, named('rae'))
-  const ray = await player(browser, named('ray'))
-  for (const { page } of [rae, ray]) await page.goto('/#lobby')
-  await expect(
-    rae.page.getByRole('heading', { name: 'Play rated 1v1' }),
-  ).toBeVisible()
-  await rae.page.getByRole('button', { name: 'Find a rated match' }).click()
-  await expect(rae.page.getByText('Looking for an opponent')).toBeVisible()
-  await ray.page.getByRole('button', { name: 'Find a rated match' }).click()
-  for (const { page } of [rae, ray]) {
-    await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
-    await expect(page.getByText('Rated · Hand 1 of 40')).toBeVisible()
-  }
-  expect(rae.page.url()).toBe(ray.page.url())
-  for (const p of [rae, ray]) await p.close()
-})
+// One lobby holds every matchmaking queue, so two rated tests in parallel
+// workers can pair with each other's players and both fail. The tests that
+// queue run in order, in one worker.
+test.describe('matchmaking', () => {
+  test.describe.configure({ mode: 'default' })
 
-test('two players find each other with quick match', async ({ browser }) => {
-  const ann = await player(browser, named('ann'))
-  const ben = await player(browser, named('ben'))
-  for (const { page } of [ann, ben]) await page.goto('/#lobby')
-  await ann.page.getByRole('button', { name: 'Find a match' }).click()
-  await expect(ann.page.getByText('Looking for an opponent')).toBeVisible()
-  await ben.page.getByRole('button', { name: 'Find a match' }).click()
-  for (const { page } of [ann, ben]) {
-    await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
-    await expect(page.getByText('Hand 1 of 20')).toBeVisible()
-  }
-  expect(ann.page.url()).toBe(ben.page.url())
-  // Looking again sends you back to the table you are playing.
-  await ann.page.goto('/#lobby')
-  await expect(
-    ann.page.getByRole('link', { name: 'Return to your table' }),
-  ).toBeVisible()
-  await ann.page.getByRole('button', { name: 'Find a match' }).click()
-  await expect(ann.page).toHaveURL(ben.page.url())
-  for (const p of [ann, ben]) await p.close()
-})
-
-test('during a rated hand neither browser receives analysis keys or opponent cards and no lab control is visible', async ({
-  browser,
-}) => {
-  const rio = await player(browser, named('rio'))
-  const rex = await player(browser, named('rex'))
-  const everyone = [rio, rex]
-  for (const { page } of everyone) await page.goto('/#lobby')
-  await rio.page.getByRole('button', { name: 'Find a rated match' }).click()
-  await expect(rio.page.getByText('Looking for an opponent')).toBeVisible()
-  await rex.page.getByRole('button', { name: 'Find a rated match' }).click()
-  for (const { page } of everyone)
-    await expect(page.getByText('Rated · Hand 1 of 40')).toBeVisible()
-
-  // Check or call down hand 1. At every decision the table offers nothing
-  // to analyse: no equity ring, no odds or EV, no read prompt, no lab.
-  const done = (page: Page) => page.getByText('Next hand in a few seconds.')
-  let decisions = 0
-  for (let i = 0; i < 40 && !(await done(rio.page).isVisible()); i++) {
-    for (const { page } of everyone)
-      if (await myTurn(page).isVisible()) {
-        await expect(page.locator('.ring')).toHaveCount(0)
-        await expect(page.locator('.action-bar')).not.toContainText(
-          /%|break-even|\bEV\b/,
-        )
-        await expect(page.getByRole('slider', { name: /equity/i })).toHaveCount(
-          0,
-        )
-        await expect(page.getByRole('button', { name: /lab/i })).toHaveCount(0)
-        decisions++
-        const before = everyone.reduce((n, p) => n + p.frames.length, 0)
-        await page.locator('.act-call').click()
-        await expect
-          .poll(() => everyone.reduce((n, p) => n + p.frames.length, 0))
-          .toBeGreaterThan(before)
-      }
-    await rio.page.waitForTimeout(100)
-  }
-  expect(decisions).toBeGreaterThanOrEqual(4)
-  for (const { page } of everyone) await expect(done(page)).toBeVisible()
-
-  // Over the wire, lobby and table alike: no analysis key and no secret at
-  // any depth, and the opponent's cards only once shown.
-  const keys = (value: unknown): string[] =>
-    Array.isArray(value)
-      ? value.flatMap(keys)
-      : value && typeof value === 'object'
-        ? Object.entries(value).flatMap(([k, v]) => [k, ...keys(v)])
-        : []
-  const analysis =
-    /^(equity|equities|ev|evs|evLost|ev_lost|callEV|raiseEV|range|ranges|grade|grades|accuracy|luck|allInAt|bestKind|foldProbability|breakEven)$/i
-  for (const { frames } of everyone) {
-    const views = frames.flatMap((f) => (f.view ? [f.view] : []))
-    expect(views.length).toBeGreaterThan(5)
-    expect(keys(frames).filter((k) => analysis.test(k))).toEqual([])
-    expect(keys(frames).filter((k) => /^(deck|secret|holes)$/.test(k))).toEqual(
-      [],
-    )
-    for (const view of views) {
-      const opponent = view.players[1 - view.you]
-      if (!opponent.shown) expect(opponent.cards).toBeNull()
-      expect(view.players[view.you].cards).not.toBeNull()
+  test('two players find a rated match and both see Hand 1 of 40', async ({
+    browser,
+  }) => {
+    const rae = await player(browser, named('rae'))
+    const ray = await player(browser, named('ray'))
+    for (const { page } of [rae, ray]) await page.goto('/#lobby')
+    await expect(
+      rae.page.getByRole('heading', { name: 'Play rated 1v1' }),
+    ).toBeVisible()
+    await rae.page.getByRole('button', { name: 'Find a rated match' }).click()
+    await expect(rae.page.getByText('Looking for an opponent')).toBeVisible()
+    await ray.page.getByRole('button', { name: 'Find a rated match' }).click()
+    for (const { page } of [rae, ray]) {
+      await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
+      await expect(page.getByText('Rated · Hand 1 of 40')).toBeVisible()
     }
-  }
-  for (const p of everyone) await p.close()
+    expect(rae.page.url()).toBe(ray.page.url())
+    for (const p of [rae, ray]) await p.close()
+  })
+
+  test('two players find each other with quick match', async ({ browser }) => {
+    const ann = await player(browser, named('ann'))
+    const ben = await player(browser, named('ben'))
+    for (const { page } of [ann, ben]) await page.goto('/#lobby')
+    await ann.page.getByRole('button', { name: 'Find a match' }).click()
+    await expect(ann.page.getByText('Looking for an opponent')).toBeVisible()
+    await ben.page.getByRole('button', { name: 'Find a match' }).click()
+    for (const { page } of [ann, ben]) {
+      await expect(page).toHaveURL(/#play\/[0-9a-f-]{36}$/)
+      await expect(page.getByText('Hand 1 of 20')).toBeVisible()
+    }
+    expect(ann.page.url()).toBe(ben.page.url())
+    // Looking again sends you back to the table you are playing.
+    await ann.page.goto('/#lobby')
+    await expect(
+      ann.page.getByRole('link', { name: 'Return to your table' }),
+    ).toBeVisible()
+    await ann.page.getByRole('button', { name: 'Find a match' }).click()
+    await expect(ann.page).toHaveURL(ben.page.url())
+    for (const p of [ann, ben]) await p.close()
+  })
+
+  test('during a rated hand neither browser receives analysis keys or opponent cards and no lab control is visible', async ({
+    browser,
+  }) => {
+    const rio = await player(browser, named('rio'))
+    const rex = await player(browser, named('rex'))
+    const everyone = [rio, rex]
+    for (const { page } of everyone) await page.goto('/#lobby')
+    await rio.page.getByRole('button', { name: 'Find a rated match' }).click()
+    await expect(rio.page.getByText('Looking for an opponent')).toBeVisible()
+    await rex.page.getByRole('button', { name: 'Find a rated match' }).click()
+    for (const { page } of everyone)
+      await expect(page.getByText('Rated · Hand 1 of 40')).toBeVisible()
+
+    // Check or call down hand 1. At every decision the table offers nothing
+    // to analyse: no equity ring, no odds or EV, no read prompt, no lab.
+    const done = (page: Page) => page.getByText('Next hand in a few seconds.')
+    let decisions = 0
+    for (let i = 0; i < 40 && !(await done(rio.page).isVisible()); i++) {
+      for (const { page } of everyone)
+        if (await myTurn(page).isVisible()) {
+          await expect(page.locator('.ring')).toHaveCount(0)
+          await expect(page.locator('.action-bar')).not.toContainText(
+            /%|break-even|\bEV\b/,
+          )
+          await expect(
+            page.getByRole('slider', { name: /equity/i }),
+          ).toHaveCount(0)
+          await expect(page.getByRole('button', { name: /lab/i })).toHaveCount(
+            0,
+          )
+          decisions++
+          const before = everyone.reduce((n, p) => n + p.frames.length, 0)
+          await page.locator('.act-call').click()
+          await expect
+            .poll(() => everyone.reduce((n, p) => n + p.frames.length, 0))
+            .toBeGreaterThan(before)
+        }
+      await rio.page.waitForTimeout(100)
+    }
+    expect(decisions).toBeGreaterThanOrEqual(4)
+    for (const { page } of everyone) await expect(done(page)).toBeVisible()
+
+    // Over the wire, lobby and table alike: no analysis key and no secret at
+    // any depth, and the opponent's cards only once shown.
+    const keys = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.flatMap(keys)
+        : value && typeof value === 'object'
+          ? Object.entries(value).flatMap(([k, v]) => [k, ...keys(v)])
+          : []
+    const analysis =
+      /^(equity|equities|ev|evs|evLost|ev_lost|callEV|raiseEV|range|ranges|grade|grades|accuracy|luck|allInAt|bestKind|foldProbability|breakEven)$/i
+    for (const { frames } of everyone) {
+      const views = frames.flatMap((f) => (f.view ? [f.view] : []))
+      expect(views.length).toBeGreaterThan(5)
+      expect(keys(frames).filter((k) => analysis.test(k))).toEqual([])
+      expect(
+        keys(frames).filter((k) => /^(deck|secret|holes)$/.test(k)),
+      ).toEqual([])
+      for (const view of views) {
+        // By seat, not list position: with empty seats they differ.
+        const mine = view.players.find((p) => p.seat === view.you)
+        const opponent = view.players.find((p) => p.seat !== view.you)
+        if (!mine || !opponent)
+          throw new Error(`hand ${view.handNo}: you or the opponent is missing`)
+        if (!opponent.shown) expect(opponent.cards).toBeNull()
+        expect(mine.cards).not.toBeNull()
+      }
+    }
+    for (const p of everyone) await p.close()
+  })
 })

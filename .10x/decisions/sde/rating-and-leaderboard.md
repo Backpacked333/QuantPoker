@@ -122,3 +122,113 @@ The test asserts what does hold for every sequence: **after playing a period, RD
   |     30 |        10 s |    111 s |          23% |       90 |
 
   The median stays under 60 s from 10 players online. At 10 online the tail is long (p90 3.7 min), the cost of matching within about 130 points. If launch liquidity is lower, widen faster (`perMinute`) rather than starting wider.
+
+## P1-14 · The ladder, the rating metrics and a simulated season (2026-10-10)
+
+The DBA decisions and EXPLAIN evidence are in `.10x/decisions/dba/ladder.md`.
+
+### What was built
+
+- **SQL:** `supabase/migrations/20261010090000_ladder.sql` adds `ladder`, `ladder_month` and `abandonment_rate`. All three are invoker-rights, and the eligibility rules match `src/rating/rules.ts`. P1-18's sanctions clause stays in `supabase/proposed/phase1.sql`.
+- **Client:**
+  - `src/net/ladder.ts` holds the loaders and formatting. The rating is always shown as "1612 ± 64". It also has `standingLine`, the viewer's line: matches to go, provisional by RD, or why they are off the ladder.
+  - `src/net/Ladder.tsx` is the table: rank, player, rating ± RD, accuracy, matches, win rate, and the change over 30 days or this month. It shows a page of 50 and asks for 51 to know whether a next page exists. Previous and next work from a stack of keyset cursors.
+  - **Routes:** `#ladder` and `#ladder/month` belong to the Online area and are public: no sign-in, no welcome dialog, read with the publishable key. There is no new top-nav item. The ladder is linked from the lobby's rated card and the Online header.
+- **Metrics:** `supabase/metrics/rating-metrics.sql` is a single read-only query, run on production read-only. All three metrics report "insufficient data (need 30)" because there are no rated matches yet.
+
+### Review fix (PR #27)
+
+- **Devin 🔴: a match rated after midnight on the last day of a month counted in the next month,** because `rating_history.created_at` is when the rating was applied.
+  - History rows now carry `played_at` (the finish time `apply_rating` receives), backfilled for earlier rows, and both ladders count by it.
+  - `ladder_month` also accepts any day of the month.
+  - Tests:
+    - `ladder.test.ts › a match counts in the month it was played, even when its rating applied the next month`;
+    - `the migration › backfills when each earlier rated match was played, and history stays append-only`;
+    - a `played_at` assertion in `ratings.test.ts`.
+  - Mutation-checked (each fails a test): grouping by `created_at`, storing `now()`, skipping the backfill, and leaving the trigger off.
+
+### Deviations
+
+- There are two functions (`ladder`, `ladder_month`) instead of one with a `period` argument. Each keeps a plan the planner can see.
+- Win rate counts wins only, and the note under the table says so; draws are visible as the gap.
+- The e2e lives in `e2e/ladder.spec.ts` (desktop) and `e2e/mobile.spec.ts` (phone) rather than `app.spec.ts`. `fakeLadder` in `e2e/helpers.ts` serves `/api/config` and the ladder RPCs inside the browser, so CI needs no account service.
+- Player names are plain text until P1-15 adds profiles, so no link points to a route that does not exist yet.
+
+### Tests
+
+- **`supabase/tests/ladder.test.ts`** (4 tests):
+  - only eligible players appear, and exactly 10% abandonment is out;
+  - pages of 50 over 1,000 players have no gaps or repeats, and the page size is capped at 100;
+  - this month counts only that month's matches, wins and trend;
+  - anon and authenticated read it with their own rights.
+- **`supabase/tests/season.test.ts`:** "insufficient data" on the empty database; then 200 players and 5,000 matches, with these results:
+  - Spearman(true skill, ladder rating) is 0.975;
+  - 190 players are listed, and none of the 10 inactive or abandoning players is among them;
+  - predictive validity is 65.4%, rating stability 13.4, accuracy validity 0.860.
+- **`src/net/ladder.test.ts`** (7 tests): formatting; the standing lines, including the 10% and 30-day boundaries.
+- **`src/net/Ladder.test.tsx`** (5 tests): the columns and row contents; keyset paging (ranks continue, the cursor is the last row shown, the last page has no next); the month view; a provisional viewer's "7 rated matches to go" while a visitor sees no line; empty and retry states.
+- **Mutation checks:** each of these fails a test:
+  - rank without the page offset;
+  - asking for 50 instead of 51;
+  - `>` for `>=` on abandonment;
+  - a 35-day activity window;
+  - "Previous" resetting to page 1.
+- **e2e:**
+  - the ladder is public, ranks and pages by keyset, and this month works;
+  - axe reports 0 violations of any impact in light and dark;
+  - at 412 px and 320 px there is no page overflow, and the table scrolls inside its own region.
+  - Removing that region's `overflow-x` makes the page 563 px wide on a 412 px phone, and the test fails.
+
+## P1-15/16 · Public profile, match review, Method page and share card (2026-10-10)
+
+### What was built
+
+- **Routes.**
+  - **`/u/<username>`** is the share link. The Worker (`worker/src/profile.ts`, with `run_worker_first` gaining `/u/*`) serves the app with that player's link preview: the title and description carry the name and rating ± RD, provisional or not. `og:image` is an absolute URL to `public/og-default.png`.
+  - The preview is built from the name as validated from the path (`[a-z0-9_]{3,20}`). HTMLRewriter's `setAttribute` escapes it again. Previews are edge-cached for 60 s, so page loads cannot become Postgres reads.
+  - An unknown name gets a 404 with the app; a Supabase failure gets the generic preview.
+  - In the browser, `src/lib/profilePath.ts` turns the path into `#u/<username>` at the site root.
+- **Profile (`src/net/profile/`, at `#u/<username>`).** It is public; there is no sign-in.
+  - Rating ± RD with an "Established" or "Provisional · X rated matches to go" badge.
+  - A graph of the rating with a band one RD either side. `LineChart` gained `zero={false}` so ratings near 1500 are not drawn from 0.
+  - Volume (W · D · L, win rate), abandonment ("1 of 25 (4%)"), and Sanctions "None" (P1-18 fills it).
+  - Accuracy, through the same panel worded for the player.
+  - The last 20 rated matches, each with the opponent's profile and a Review link.
+  - Share (copy the `/u/` link) and a Method link.
+- **Match review (`#match/<id>`, `src/net/MatchReview.tsx`).** The finished match hand by hand from the public archive: actions, board and only the cards shown at showdown.
+  - A match still being played is refused before any hand is read.
+  - Decision times are left out (tickets Q5); "ran out of time" stays.
+- **Method page (`#method`, `src/info/Method.tsx`, in the info chunk).** Every number is imported from the module that applies it:
+  - Glicko-2 `glicko2.v1`: τ, the start values, the scale, one match per period, the 30-day idle widening, and the update formulas;
+  - the draw band (`DRAW_BAND_BB` moved to `src/rating/rules.ts`, re-exported by `worker/src/rated.ts`) and the scores;
+  - the provisional rule and the ladder rules;
+  - accuracy (the exact label, `grade.v1+population.v1`, the per-decision formula, the grade thresholds);
+  - what the numbers do not measure, and a versions table.
+- **Links.** The end-of-match rating line has "How ratings work"; ladder names link to profiles; the ladder, the profile and the public pages' header link Method.
+- **Share card.** `scripts/og-card.ts` renders `public/og-default.png` (1200 × 630) with Chromium. It is generic and carries no numbers that could pass for a player's.
+
+### Deviations and deferrals
+
+- **Deferred to a follow-up: counting profile views from outside the app** (P1-16's `profile_views` table and `/api/profile/share`). The mission's build list does not include it. The PM metric "public profile views from outside the app" stays **needs instrumentation**.
+- **No dynamic per-player image** (the ticket's cut line); the player's numbers are in the preview text.
+- **`#match/<id>` replaces the ticket's `#review/<id>/1`.** No review route existed, and the hand number is navigation inside the page.
+- **Only rated matches are listed** on a profile. ToS consent covers rated hand histories (PM spec); casual ones are not surfaced.
+
+### Tests
+
+- **`worker/test/profile.test.ts`** (7 tests):
+  - the preview for `/u/alice`, plus the provisional and unrated wordings;
+  - `og:image` is absolute;
+  - unknown and impossible names give a 404, with no lookup for an impossible name;
+  - injection: a forged row puts nothing in the page;
+  - Supabase down still serves the page;
+  - one read per name while cached.
+  - Mutation-checked: no cache, the stored name in the title, and a loose path pattern each fail a test.
+- **`supabase/tests/profile.test.ts`** (3 tests): every query the profile, review and preview make returns rows to anon; hole cards, the deck and emails are refused; anon writes nothing.
+- **`src/net/profile/Profile.test.tsx`** (5 tests): the numbers, badge, sanctions and Method link; 20 matches newest first with review and opponent links; provisional; unknown and retry states; only public tables read.
+- **`src/net/MatchReview.test.tsx`** (3 tests): only showdown cards (none on a fold) and no decision times; a live match is refused without reading hands; an unknown match.
+- **Smaller suites:** `src/info/Method.test.tsx` (2 tests) and `src/lib/profilePath.test.ts` (2 tests).
+- **e2e (`e2e/profile.spec.ts`, `e2e/mobile.spec.ts`):**
+  - `/u/alice` opens the profile, and a Review link opens the match hand by hand;
+  - axe reports 0 violations on the profile, the review and Method (light and dark);
+  - the profile, the review and Method fit 320 px. That test caught the Method versions grid overflowing by 13 px, now fixed.

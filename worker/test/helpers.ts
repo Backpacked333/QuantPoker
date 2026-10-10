@@ -90,6 +90,24 @@ export const isState = (handNo: number, actions?: number) => (f: ServerMsg) =>
   f.view?.handNo === handNo &&
   (actions === undefined || f.view.actions.length === actions)
 
+/** Every (viewer, other) pair of distinct seats, both ways round. */
+export const seatPairs = (seats: SeatId[]) =>
+  seats.flatMap((seat) =>
+    seats
+      .filter((other) => other !== seat)
+      .map((other): [SeatId, SeatId] => [seat, other]),
+  )
+
+/**
+ * The player in `seat`, found by its seat field: with empty seats a list's
+ * position is not its seat number.
+ */
+export function bySeat<P extends { seat: SeatId }>(players: P[], seat: SeatId) {
+  const found = players.find((p) => p.seat === seat)
+  if (!found) throw new Error(`no player in seat ${seat}`)
+  return found
+}
+
 /** The seat to act plays `choose(hand)`; resolves once the table applied it. */
 export async function move(
   matchId: string,

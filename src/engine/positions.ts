@@ -6,11 +6,16 @@
 // that, and the first seat after the big blind opens. After the flop the first
 // active seat clockwise from the button acts first.
 //
-// Button rule for Phase 2 (not needed heads-up): forward-moving button, dead
-// small blind. The button advances to the next seated player every hand; if
-// the player who should post the small blind has left, the small blind is
-// dead and the big blind is posted by the next seated player. Nobody posts two
-// blinds.
+// That describes the first hand at a table. Later six-casual hands use the
+// standard dead button (ADR amendment 2026-10-10, Phase 2): the big blind
+// moves to the next seat with a player dealt in, the small blind to the seat
+// that had the big blind (dead if no one there is dealt in, or if that player
+// just sat down), and the button to the seat that had the small blind when it
+// lies between the new big and small blinds, else just before the new small
+// blind. Positions are seat numbers, so the button may have no player. Nobody
+// posts the big blind twice in a row or skips it when others leave. Those
+// hands name their blind seats in HandConfig (sb, bb), and the engine refuses
+// the placements the ADR lists as illegal.
 import type { SeatId } from './types'
 
 /** The seat `steps` places clockwise from `from` among `seats` (ascending). */
@@ -44,13 +49,46 @@ const NAMES: Record<number, string[]> = {
   6: ['BTN', 'SB', 'BB', 'UTG', 'HJ', 'CO'],
 }
 
-/** Position labels keyed by seat, starting from the button. */
-export function positionNames(seats: SeatId[], button: SeatId) {
+/** Clockwise distance on the six-seat ring, empty seats included. */
+/** Seats clockwise from `from` to `to` around the six-seat ring. */
+export const ringDistance = (from: SeatId, to: SeatId) => (to - from + 6) % 6
+
+/**
+ * Position labels keyed by seat, starting from the button. Six-casual hands
+ * pass their explicit blinds, since the button and small blind can be dead:
+ * BTN then goes only to a player on the button seat and SB only to a live
+ * small blind. The players after the big blind and before the button seat
+ * keep the names a full table gives them: UTG first, CO last, HJ between. A
+ * player between the button and the big blind who posts nothing (one who
+ * sat down in a dead small blind's seat, or behind the button) has no name.
+ */
+export function positionNames(
+  seats: SeatId[],
+  button: SeatId,
+  blinds?: { sb: SeatId | null; bb: SeatId },
+) {
   const names = NAMES[seats.length]
   if (!names) return {} as Record<SeatId, string>
-  const order = [button, ...clockwiseFrom(seats, button).slice(0, -1)]
-  return Object.fromEntries(order.map((s, i) => [s, names[i]])) as Record<
-    SeatId,
-    string
-  >
+  if (!blinds) {
+    const order = [button, ...clockwiseFrom(seats, button).slice(0, -1)]
+    return Object.fromEntries(order.map((s, i) => [s, names[i]])) as Record<
+      SeatId,
+      string
+    >
+  }
+  const { sb, bb } = blinds
+  const early = clockwiseFrom(seats, bb)
+    .slice(0, -1)
+    .filter((s) => ringDistance(bb, s) < ringDistance(bb, button))
+  // The engine refuses a button that leaves four players before it, so
+  // `tail` exists; the guard keeps a bad caller to missing labels.
+  const tail = NAMES[early.length + 3]
+  const labels: Record<SeatId, string> = tail
+    ? Object.fromEntries(early.map((s, i) => [s, tail[i + 3]]))
+    : {}
+  labels[bb] = 'BB'
+  if (sb !== null) labels[sb] = 'SB'
+  // Heads-up the button posts the small blind and is labelled BTN.
+  if (seats.includes(button)) labels[button] = 'BTN'
+  return labels
 }

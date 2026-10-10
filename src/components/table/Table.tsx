@@ -62,6 +62,7 @@ export function Table({
   onSkipGuided,
   runout,
   versus,
+  challenge,
 }: {
   game: Game
   style: AtlasStyle
@@ -80,6 +81,11 @@ export function Table({
    * practice-only controls (pause, history, settings) are hidden.
    */
   versus?: { opponent: string }
+  /**
+   * The landing page's challenge hand: Atlas as usual, but without the
+   * practice controls, and titled with the hand.
+   */
+  challenge?: { title: string }
 }) {
   const opponent = versus?.opponent ?? 'Atlas'
   const [flights, setFlights] = useState<Flight[]>([])
@@ -183,15 +189,23 @@ export function Table({
       <div className="table-top">
         <span className="table-title">
           <span className="live-dot" />
-          {versus ? 'Live table' : guided ? 'Guided path' : 'Practice table'}
+          {versus
+            ? 'Live table'
+            : challenge
+              ? 'Challenge'
+              : guided
+                ? 'Guided path'
+                : 'Practice table'}
           <span className="table-sep">/</span>
           <span className="table-sub">
             {versus
               ? `Heads-up · 10/20 · vs ${opponent}`
-              : `Heads-up · 10/20 · Atlas plays ${STYLES[style].label.toLowerCase()}`}
+              : challenge
+                ? challenge.title
+                : `Heads-up · 10/20 · Atlas plays ${STYLES[style].label.toLowerCase()}`}
           </span>
         </span>
-        {!versus && (
+        {!versus && !challenge && (
           <span className="table-tools">
             <button
               className="icon-btn on-dark"

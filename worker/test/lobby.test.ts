@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { LobbyMsg } from '../../src/shared/protocol'
 import { lobbyStub, REPAIR_MS, START_WITHIN_MS } from '../src/lobby'
 import type { LobbyDO } from '../src/lobby'
+import { checkLobbyFrame, LOBBY_FRAME_KEYS } from './frames'
 import {
   connect,
   createTable,
@@ -298,7 +299,10 @@ describe('no-shows', () => {
 })
 
 describe('rated pairing by rating', () => {
-  const T0 = Date.parse('2026-10-10T12:00:00Z')
+  // Noon UTC tomorrow: always ahead of the real clock, which an alarm
+  // cannot be set behind, and an hour of play never crosses a UTC day.
+  const DAY = 86_400_000
+  const T0 = Math.floor(Date.now() / DAY) * DAY + DAY + DAY / 2
   const MIN = 60_000
   const ratedQueue = (c: LobbyClient) =>
     c.send({ t: 'queue', kind: 'hu-rated' })
@@ -438,5 +442,30 @@ describe('rated pairing by rating', () => {
     await later(T0 + REPAIR_MS)
     expect(await alarmAt()).toBeNull()
     expect(alice.frames.some(matched)).toBe(false)
+  })
+})
+
+describe('lobby frames', () => {
+  it('queued/matched/presence/error carry only allowed keys', async () => {
+    // A pairing, then the same player queueing again (matched, resumed).
+    const { matchId, la, lb } = await pair('alice', 'bob')
+    const from = la.frames.length
+    await queue(la)
+    expect(await la.next(matched, from)).toMatchObject({
+      matchId,
+      resumed: true,
+    })
+    // A table frame sent to the lobby is refused with an error.
+    lb.send({ t: 'resync' })
+    expect(await lb.next((f) => f.t === 'error')).toMatchObject({
+      code: 'illegal',
+    })
+
+    // Every type the lobby can send was seen, so none goes unchecked.
+    const all = [...la.frames, ...lb.frames]
+    expect(new Set(all.map((f) => f.t)), 'lobby frame types seen').toEqual(
+      new Set(Object.keys(LOBBY_FRAME_KEYS)),
+    )
+    for (const f of all) checkLobbyFrame(f)
   })
 })

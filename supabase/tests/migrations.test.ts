@@ -101,6 +101,10 @@ describe('migrations', () => {
       '20261010060000_hand_grades_pot.sql',
       '20261010070000_accuracy.sql',
       '20261010080000_ratings.sql',
+      '20261010090000_ladder.sql',
+      '20261010100000_hands_after_match.sql',
+      '20261010110000_landing.sql',
+      '20261010120000_school_email.sql',
     ])
   })
 })
@@ -219,11 +223,29 @@ describe('hand records', () => {
     await as('service_role', `select public.record_hand('${payload}'::jsonb)`)
     // Idempotent: an outbox retry changes nothing.
     await as('service_role', `select public.record_hand('${payload}'::jsonb)`)
+    // Archived once, and not public while its match is still in play
+    // (hands-live.test.ts); readable by anyone once the match is over.
+    expect((await db.query('select id from public.hands')).rows).toEqual([
+      { id: `${MATCH}:1` },
+    ])
+    expect(await as('anon', 'select id from public.hands')).toEqual([])
+    const status = (
+      await db.query<{ status: string }>(
+        `select status from public.matches where id = '${MATCH}'`,
+      )
+    ).rows[0].status
+    await db.exec(
+      `update public.matches set status = 'finished' where id = '${MATCH}'`,
+    )
     const hands = await as<{ id: string }>(
       'anon',
       'select id from public.hands',
     )
     expect(hands).toEqual([{ id: `${MATCH}:1` }])
+    await db.query(`update public.matches set status = $1 where id = $2`, [
+      status,
+      MATCH,
+    ])
     const nets = await as<{ net_chips: number }>(
       'anon',
       'select net_chips from public.match_players order by seat',

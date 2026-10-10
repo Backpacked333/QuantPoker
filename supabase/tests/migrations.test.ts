@@ -95,6 +95,7 @@ describe('migrations', () => {
       '20261008181317_record_match_no_show.sql',
       '20261009213919_verify_hand.sql',
       '20261009213923_hands_created_index.sql',
+      '20261010010000_rated_matches.sql',
     ])
   })
 })

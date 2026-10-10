@@ -500,6 +500,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-01 · Rated queue and the rated match lifecycle
 
+**Status 2026-10-10:** the database part is **done** (`supabase/migrations/*_rated_matches.sql`, `supabase/tests/rated.test.ts`); the Worker and UI parts are next. It went first because S7-05 is not started, so this `record_match` is v4 and S7-05 will define the next version.
+
 - **Goal.** A signed-in player with a confirmed email can queue for a rated HU match and play 2 segments × 20 hands, with a 60 s bank per segment, a 60 s reconnect grace, the forfeit rule and a W/D/L result archived.
 - **User-visible outcome.**
   - A "Play rated 1v1" card that explains duplicate in one line.

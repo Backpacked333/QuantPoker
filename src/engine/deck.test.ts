@@ -18,7 +18,7 @@ import {
 } from './deck'
 import { act, isOver, replayHand, startHand } from './hand'
 import { config, seededDeck } from './testing'
-import type { PlayerAction, SeatId } from './types'
+import type { HandConfig, PlayerAction, SeatId } from './types'
 
 const secret = (fill: number) => new Uint8Array(32).fill(fill)
 
@@ -258,5 +258,76 @@ describe('verifyDeal', () => {
     const padded = [...slots.filter((s) => s.slot !== riverSlot), slots[0]]
     expect(padded).toHaveLength(slots.length)
     expect(await verifyDeal(commitment, leaves, padded, cheat)).toBe(false)
+  })
+})
+
+describe('explicit blind seats in the record', () => {
+  it('replay and verifyDeal accept a dead-button config', async () => {
+    // A six-casual hand after seats 1 and 2 left: the button stays on the
+    // empty seat 1, the small blind is dead and seat 3 posts the big blind.
+    const cfg: HandConfig = {
+      handNo: 7,
+      seats: [0, 3, 4, 5].map((seat) => ({ seat, stack: 2000 })),
+      button: 1,
+      blinds: { sb: 10, bb: 20 },
+      sb: null,
+      bb: 3,
+    }
+    const deck = seededDeck(31)
+    let state = startHand(cfg, deck)
+    const taken: { seat: SeatId; action: PlayerAction }[] = []
+    const play = (action: PlayerAction) => {
+      taken.push({ seat: state.toAct!, action })
+      state = act(state, state.toAct!, action)
+    }
+    play({ type: 'call' }) // 4
+    play({ type: 'call' }) // 5
+    play({ type: 'fold' }) // 0
+    play({ type: 'check' }) // 3
+    while (!isOver(state)) play({ type: 'check' })
+
+    // The archive keeps the blind seats, null included, as JSON.
+    const archived = JSON.parse(JSON.stringify(state.config)) as HandConfig
+    expect(JSON.stringify(state.config)).toBe(
+      '{"handNo":7,"seats":[{"seat":0,"stack":2000},{"seat":3,"stack":2000},' +
+        '{"seat":4,"stack":2000},{"seat":5,"stack":2000}],"button":1,' +
+        '"blinds":{"sb":10,"bb":20},"sb":null,"bb":3}',
+    )
+    const replayed = replayHand(archived, deck, taken)
+    expect(JSON.stringify(replayed.at(-1))).toBe(JSON.stringify(state))
+
+    const shown = state.players
+      .filter((p) => p.shown)
+      .map((p) => ({ seat: p.seat, cards: p.cards! }))
+    expect(shown.map((s) => s.seat)).toEqual([3, 4, 5])
+    const partial = replayHand(
+      archived,
+      deckFromRecord(archived, state.board, shown),
+      taken,
+    )
+    expect(partial.at(-1)!.result).toEqual(state.result)
+
+    const deal = { config: archived, board: state.board, shown }
+    const { commitment, leaves } = await commitDeck(deck, secret(5))
+    const slots = await revealSlots(deck, secret(5), publicSlots(deal))
+    expect(slots).toHaveLength(11)
+    expect(await verifyDeal(commitment, leaves, slots, deal)).toBe(true)
+    // The folded seat 0 can still check its own cards.
+    const holes = dealSlots(archived).holes[0]
+    const own = await revealSlots(deck, secret(5), holes)
+    const mine = holes.map((slot) => deck[slot]) as [number, number]
+    expect(await verifyOwn(commitment, leaves, own, archived, 0, mine)).toBe(
+      true,
+    )
+  })
+
+  it('a config without blind seats archives byte-identically', () => {
+    // hu-casual and hu-rated leave sb and bb out, so their records keep the
+    // exact bytes of the archive written before explicit blinds existed.
+    const cfg = config([2000, 2000], 1)
+    expect(JSON.stringify(startHand(cfg, seededDeck(3)).config)).toBe(
+      '{"handNo":1,"seats":[{"seat":0,"stack":2000},{"seat":1,"stack":2000}],' +
+        '"button":1,"blinds":{"sb":10,"bb":20}}',
+    )
   })
 })

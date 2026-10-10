@@ -17,8 +17,17 @@ export type HandConfig = {
   handNo: number
   /** Seated players in ascending seat order. */
   seats: { seat: SeatId; stack: number }[]
+  /** Without explicit blinds, a seated player. */
   button: SeatId
   blinds: { sb: number; bb: number }
+  /**
+   * Six-casual hands name their blind seats (standard dead button, see
+   * positions.ts): the player posting the small blind, or null when it is
+   * dead. The button may then be a seat with no player dealt in. Heads-up
+   * hands leave both out, so their records keep their bytes.
+   */
+  sb?: SeatId | null
+  bb?: SeatId
 }
 
 export type SeatState = {

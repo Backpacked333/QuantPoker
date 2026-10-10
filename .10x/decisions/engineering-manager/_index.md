@@ -1,12 +1,13 @@
 # Staff Engineer / Engineering Manager — index
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 ## Active features
 
-| Slug                   | Description                                                                      | Status                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `multiplayer-platform` | Tickets for Step 7, Phase 1 (HU ladder) and Phase 2 (6-max) in `.10x/tickets.md` | 49 tickets, critical path, lanes, metrics sources; 5 questions open (Q1 blocks P1-00/P1-02) |
+| Slug                   | Description                                                                                               | Status                                                                                      |
+| ---------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `multiplayer-platform` | Tickets for Step 7, Phase 1 (HU ladder) and Phase 2 (6-max) in `.10x/tickets.md`                          | 49 tickets, critical path, lanes, metrics sources; 5 questions open (Q1 blocks P1-00/P1-02) |
+| `six-max-casual`       | Casual 6-max: every heads-up assumption by file, 26 PRs in phases A to E, contradictions, security points | Approved by the user 2026-10-10; Phase A in progress                                        |
 
 ## Cross-cutting principles
 

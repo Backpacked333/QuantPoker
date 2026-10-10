@@ -41,6 +41,9 @@ type Attachment = {
   rated?: RatedEligibility
 }
 const kindOf = (w: Waiting): MatchKind => w.kind ?? 'hu-casual'
+type Who = { userId: string; username: string }
+/** The lobby's answer to a rematch: the new table, or why not. */
+export type RematchAnswer = { matchId: string } | { refused: 'limit' | 'busy' }
 
 const OPEN = 1
 const json = (body: unknown, status = 200) => Response.json(body, { status })
@@ -236,7 +239,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
         const key = pairKey(today, a.userId, b.userId)
         const count = ((await this.ctx.storage.get(key)) as number) ?? 0
         if (count >= PAIRS_PER_DAY) continue
-        if (await this.startMatch(a, b, key, count)) {
+        if (await this.startMatch(a, b, key, count, kindOf(a))) {
           taken.add(a.userId)
           taken.add(b.userId)
         }
@@ -251,11 +254,14 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     if (old.size) await this.ctx.storage.delete([...old.keys()])
   }
 
+  /** A paired table with `a` in seat 0; its id, or null if not made. */
   private async startMatch(
-    a: Waiting,
-    b: Waiting,
+    a: Who,
+    b: Who,
     pairs: string,
     count: number,
+    kind: MatchKind,
+    rematchOf?: string,
   ) {
     const matchId = crypto.randomUUID()
     const body: InitBody = {
@@ -263,7 +269,8 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       creator: { userId: a.userId, username: a.username },
       opponent: { userId: b.userId, username: b.username },
       startWithinMs: START_WITHIN_MS,
-      kind: kindOf(a),
+      kind,
+      ...(rematchOf ? { rematchOf } : {}),
     }
     const created = await tableStub(this.env, matchId).fetch(
       'https://table/init',
@@ -275,7 +282,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
         reason: 'table_init',
         code: created.status,
       })
-      return false
+      return null
     }
     await this.ctx.storage.put({
       [`active:${a.userId}`]: matchId,
@@ -288,7 +295,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       if (userId === a.userId || userId === b.userId)
         this.send(ws, { t: 'matched', matchId })
     }
-    return true
+    return matchId
   }
 
   // ---- One active table per account (RPC from the Worker and tables) ---------
@@ -333,6 +340,33 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
     })
     if (old.size) await this.ctx.storage.delete([...old.keys()])
     return {}
+  }
+
+  /** For a finished rated table: how often this pair may still meet today. */
+  async pairsLeft(userIds: string[]): Promise<number> {
+    const [a, b] = userIds
+    const key = pairKey(day(this.clock()), a, b)
+    const count = ((await this.ctx.storage.get(key)) as number) ?? 0
+    return Math.max(0, PAIRS_PER_DAY - count)
+  }
+
+  /**
+   * Both players of the finished rated table `from` pressed Rematch: a new
+   * rated table, `players[0]` in seat 0, counted as a pairing. Refused when
+   * the pair met PAIRS_PER_DAY times today (R-9), or when either player is
+   * at another table by now.
+   */
+  async rematch(players: Who[], from: string): Promise<RematchAnswer> {
+    const [a, b] = players
+    for (const p of players)
+      if (await this.liveActive(p.userId)) return { refused: 'busy' }
+    const key = pairKey(day(this.clock()), a.userId, b.userId)
+    const count = ((await this.ctx.storage.get(key)) as number) ?? 0
+    if (count >= PAIRS_PER_DAY) return { refused: 'limit' }
+    const matchId = await this.startMatch(a, b, key, count, 'hu-rated', from)
+    if (!matchId) return { refused: 'busy' }
+    await this.presence()
+    return { matchId }
   }
 
   /** Called by a table when its match ends. */

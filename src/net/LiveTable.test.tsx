@@ -7,7 +7,14 @@ import { seedRandom } from '../lib/random'
 import type { Identity } from './api'
 import { Lobby } from './Lobby'
 import { LiveTable } from './LiveTable'
-import { FakeSocket, firstHand, frame, MATCH, tableInfo } from './testing'
+import {
+  FakeSocket,
+  finishedHand,
+  firstHand,
+  frame,
+  MATCH,
+  tableInfo,
+} from './testing'
 
 const identity = (username: string): Identity => ({
   player: { userId: username, username },
@@ -130,6 +137,47 @@ describe('LiveTable', () => {
       screen.getByText('Match over: you lost by forfeit.'),
     ).toBeInTheDocument()
     expect(screen.queryByText(/you won/)).toBeNull()
+  })
+
+  it('a finished rated match shows the end panel, and Rematch is sent to the table', async () => {
+    render(<LiveTable matchId={MATCH} identity={alice} />)
+    const socket = await opened()
+    const { hand, record } = await finishedHand({ fold: true })
+    const welcome = ratedWelcome()
+    const folded = frame('welcome', 3, 0, hand)
+    if (folded.t !== 'welcome' || !folded.view) throw new Error('fixture')
+    const view = { ...folded.view, match: welcome.table }
+    act(() => socket.emit({ ...folded, table: welcome.table, view }))
+    act(() =>
+      socket.emit({ t: 'hand_end', seq: 3, matchId: MATCH, handNo: 1, record }),
+    )
+    act(() =>
+      socket.emit({
+        t: 'match_end',
+        seq: 4,
+        matchId: MATCH,
+        result: {
+          netBySeat: { 0: 220, 1: -220 },
+          reason: 'complete',
+          adjustedBySeat: { 0: 250, 1: -250 },
+          outcomeBySeat: { 0: 'win', 1: 'loss' },
+        },
+      }),
+    )
+    act(() =>
+      socket.emit({
+        t: 'rematch_state',
+        seq: 5,
+        matchId: MATCH,
+        state: 'open',
+        pressed: [],
+      }),
+    )
+    expect(
+      screen.getByRole('heading', { name: '+12.5 bb · Win' }),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Rematch' }))
+    expect(JSON.parse(socket.sent.at(-1)!)).toEqual({ t: 'rematch' })
   })
 
   it('names a rated match in the match bar', async () => {

@@ -83,6 +83,15 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'message',
     'reqId?',
   ]),
+  rematch_state: keysOf<Msg<'rematch_state'>>()([
+    't',
+    'seq',
+    'matchId',
+    'state',
+    'pressed',
+    'until?',
+    'next?',
+  ]),
 }
 type View = NonNullable<Msg<'welcome'>['view']>
 export const VIEW_KEYS = keysOf<View>()([

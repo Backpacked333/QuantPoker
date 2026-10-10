@@ -14,6 +14,7 @@ import { useRunout } from '../state/runout'
 import { inviteLink } from './api'
 import type { Identity } from './api'
 import type { TableState } from './client'
+import { MatchEnd } from './MatchEnd'
 import { matchOverText } from './matchResult'
 import { ReviewLive } from './ReviewLive'
 import { TurnClock } from './TurnClock'
@@ -28,7 +29,7 @@ export function LiveTable({
   matchId: string
   identity: Identity
 }) {
-  const { state, act } = useTable(matchId, identity.getToken)
+  const { state, act, rematch } = useTable(matchId, identity.getToken)
   const { status, table, view, seat } = state
 
   if (status === 'elsewhere')
@@ -92,6 +93,7 @@ export function LiveTable({
           opponent={opponent?.username ?? 'Opponent'}
           state={state}
           act={act}
+          rematch={rematch}
         />
       ) : (
         <WaitingRoom
@@ -248,11 +250,13 @@ function LiveHand({
   opponent,
   state,
   act,
+  rematch,
 }: {
   view: SeatView
   opponent: string
   state: TableState
   act: ReturnType<typeof useTable>['act']
+  rematch: () => void
 }) {
   const game = useMemo(() => toHeroGame(view, opponent), [view, opponent])
   const runout = useRunout(game)
@@ -345,19 +349,31 @@ function LiveHand({
         revealing={runout.revealing}
         versus={{ opponent, next, rated: view.match.kind === 'hu-rated' }}
       />
-      {ended && (
-        <div className="live-ended" role="status">
-          <strong>
-            {ended.reason === 'forfeit'
-              ? ended.forfeit === view.you
-                ? 'Match over: you ran out of time three times in a row.'
-                : `Match over: ${opponent} ran out of time three times in a row.`
-              : ended.reason === 'abandoned'
-                ? 'Match over: both players were away, so it is void.'
-                : 'Match over.'}
-          </strong>{' '}
-          <a href="#lobby">Back to the lobby</a>
-        </div>
+      {ended?.outcomeBySeat ? (
+        <MatchEnd
+          result={ended}
+          you={view.you}
+          bb={bb}
+          opponent={opponent}
+          rematch={state.rematch}
+          clockOffset={state.clockOffset}
+          onRematch={rematch}
+        />
+      ) : (
+        ended && (
+          <div className="live-ended" role="status">
+            <strong>
+              {ended.reason === 'forfeit'
+                ? ended.forfeit === view.you
+                  ? 'Match over: you ran out of time three times in a row.'
+                  : `Match over: ${opponent} ran out of time three times in a row.`
+                : ended.reason === 'abandoned'
+                  ? 'Match over: both players were away, so it is void.'
+                  : 'Match over.'}
+            </strong>{' '}
+            <a href="#lobby">Back to the lobby</a>
+          </div>
+        )
       )}
       <HandReviews state={state} you={view.you} />
       {flash && (

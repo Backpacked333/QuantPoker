@@ -26,6 +26,8 @@ export type Deadline =
    * are played for it at once (GRACE_MS in rated.ts).
    */
   | { kind: 'grace'; at: number; seat: SeatId }
+  /** Rated, finished: a lone Rematch press expires at `at` (REMATCH_MS). */
+  | { kind: 'rematch'; at: number }
 
 /** A finished table keeps its storage this long for late arrivals. */
 export const IDLE_MS = 600_000

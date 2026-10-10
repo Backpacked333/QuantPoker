@@ -24,5 +24,9 @@ export function useTable(
     (action: PlayerAction) => connection?.act(action) ?? false,
     [connection],
   )
-  return { state, act }
+  const rematch = useCallback(
+    () => connection?.rematch() ?? false,
+    [connection],
+  )
+  return { state, act, rematch }
 }

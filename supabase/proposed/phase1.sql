@@ -34,8 +34,9 @@ create table public.ratings (
   wins integer not null default 0,
   draws integer not null default 0,
   -- Rated matches abandoned (forfeit or three timeouts), counted by
-  -- apply_rating, plus rated no-shows (R-14: void and unrated, but counted),
-  -- counted by P1-12's record_match (and backfilled from abandonments when
+  -- apply_rating, plus rated no-shows (R-14: void and unrated, but counted)
+  -- and rated matches both players left (void, one each), counted by
+  -- P1-12's record_match (and backfilled from abandonments when
   -- the ratings table ships) in the branch that voids the match, which
   -- runs once under the match row lock. The ladder rule is abandoned /
   -- matches over the lifetime (R-13: "until it falls" works by dilution).

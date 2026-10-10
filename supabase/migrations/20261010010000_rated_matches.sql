@@ -34,8 +34,10 @@ create index match_players_history on public.match_players (user_id, finished_at
 -- v4: as v3 (record_match_no_show), and at the finish also copies
 -- finished_at to every seat and, for a finished rated match, stores each
 -- seat's outcome and adjusted chips from result.outcomeBySeat and
--- result.adjustedBySeat. The rules live in the Worker; the checks above
--- refuse anything else, and the whole call rolls back with them.
+-- result.adjustedBySeat. A match both players left (reason 'abandoned',
+-- seats in result.abandoned) is void, with a leave_mid_hand row for each.
+-- The rules live in the Worker; the checks above refuse anything else, and
+-- the whole call rolls back with them.
 create or replace function public.record_match(p jsonb) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -62,7 +64,8 @@ begin
     return;
   end if;
 
-  v_final := case when v_reason in ('engine_fault', 'no_show') then 'void' else 'finished' end;
+  v_final := case when v_reason in ('engine_fault', 'no_show', 'abandoned')
+    then 'void' else 'finished' end;
   update public.matches
   set status = v_final, result = p -> 'result', finished_at = v_at
   where id = v_match;
@@ -70,7 +73,8 @@ begin
   update public.match_players mp
   set timeouts = coalesce((p -> 'timeouts' ->> mp.seat::text)::smallint, 0),
       abandoned = coalesce(mp.seat::text = (p -> 'result' ->> 'forfeit'), false)
-        or coalesce(p -> 'result' -> 'noShow' @> to_jsonb(mp.seat), false),
+        or coalesce(p -> 'result' -> 'noShow' @> to_jsonb(mp.seat), false)
+        or coalesce(p -> 'result' -> 'abandoned' @> to_jsonb(mp.seat), false),
       finished_at = v_at,
       outcome = case when v_kind = 'hu-rated' and v_final = 'finished'
         then p -> 'result' -> 'outcomeBySeat' ->> mp.seat::text end,
@@ -88,6 +92,12 @@ begin
   from public.match_players mp
   where mp.match_id = v_match
     and coalesce(p -> 'result' -> 'noShow' @> to_jsonb(mp.seat), false);
+
+  insert into public.abandonments (user_id, match_id, hand_no, kind)
+  select mp.user_id, v_match, (p ->> 'handNo')::integer, 'leave_mid_hand'
+  from public.match_players mp
+  where mp.match_id = v_match
+    and coalesce(p -> 'result' -> 'abandoned' @> to_jsonb(mp.seat), false);
 end $$;
 
 revoke all on function public.record_match(jsonb) from public, anon, authenticated;

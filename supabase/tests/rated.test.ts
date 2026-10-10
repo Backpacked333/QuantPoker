@@ -146,6 +146,52 @@ describe('rated matches', () => {
     ])
   })
 
+  it('void a rated match both players abandoned, with a leave_mid_hand row for each', async () => {
+    const id = '50000000-0000-4000-8000-000000000006'
+    await call(start(id))
+    const end = {
+      ...start(id),
+      handNo: 12,
+      timeouts: { 0: 2, 1: 1 },
+      result: {
+        netBySeat: { 0: 60, 1: -60 },
+        reason: 'abandoned',
+        abandoned: [0, 1],
+        adjustedBySeat: { 0: 60, 1: -60 },
+        outcomeBySeat: { 0: 'win', 1: 'loss' },
+      },
+    }
+    await call(end)
+    await call(end) // an outbox retry changes nothing
+    const { rows } = await db.query<{ status: string }>(
+      'select status from public.matches where id = $1',
+      [id],
+    )
+    expect(rows).toEqual([{ status: 'void' }])
+    expect(await seats(id)).toEqual([
+      { seat: 0, outcome: null, adjusted_chips: null, finished: true },
+      { seat: 1, outcome: null, adjusted_chips: null, finished: true },
+    ])
+    const left = await db.query<{
+      user_id: string
+      hand_no: number
+      kind: string
+    }>(
+      `select user_id, hand_no, kind from public.abandonments
+       where match_id = $1 order by user_id`,
+      [id],
+    )
+    expect(left.rows).toEqual([
+      { user_id: ALICE, hand_no: 12, kind: 'leave_mid_hand' },
+      { user_id: BOB, hand_no: 12, kind: 'leave_mid_hand' },
+    ])
+    const flags = await db.query<{ abandoned: boolean }>(
+      'select abandoned from public.match_players where match_id = $1 order by seat',
+      [id],
+    )
+    expect(flags.rows).toEqual([{ abandoned: true }, { abandoned: true }])
+  })
+
   it('refuse an unknown outcome or kind, writing nothing', async () => {
     const id = '50000000-0000-4000-8000-000000000004'
     await call(start(id))

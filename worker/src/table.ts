@@ -157,6 +157,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
   private seq = 0
   private lastAck: Record<SeatId, Ack> = {}
   private flushing = false
+  /** A call was queued while a flush was under way: that flush goes again. */
+  private flushAgain = false
   controller: TableController = new LocalController()
   /** The table's clock; tests move it instead of waiting. */
   clock: () => number = now
@@ -1002,53 +1004,19 @@ export class TableDO extends DurableObject<WorkerEnv> {
    * a retry with backoff; play never waits on the archive.
    */
   async flushOutbox() {
-    if (this.flushing) return
+    if (this.flushing) {
+      this.flushAgain = true
+      return
+    }
     this.flushing = true
     try {
-      const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
-      // The most attempts among calls that failed without stopping the flush.
-      let behind = 0
-      // A parked call queues an incident report that this pass did not list.
-      let parked = false
-      // Entries parked along with a call (a hand's verification).
-      const dropped = new Set<string>()
-      for (const [key, call] of queued) {
-        if (dropped.has(key)) continue
-        const outcome: ArchiveOutcome =
-          'send' in call
-            ? { ok: await this.enqueue(call.send) }
-            : await archive(this.env, call)
-        if (outcome.ok) {
-          await this.ctx.storage.delete(key)
-          continue
-        }
-        const attempts = call.attempts + 1
-        const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
-        // An incident report never holds up the flush, so it is never parked:
-        // parking it would only lose its evidence at cleanup.
-        if (
-          !('send' in call) &&
-          call.rpc !== 'record_incident' &&
-          refused >= OUTBOX_MAX_REFUSALS
-        ) {
-          for (const k of await this.park(key, call, outcome)) dropped.add(k)
-          parked = true
-          continue
-        }
-        logEvent('outbox_retry', {
-          matchId: this.match?.id,
-          rpc: 'send' in call ? 'hand_queue' : call.rpc,
-          attempt: attempts,
-          depth: queued.size,
-        })
-        await this.ctx.storage.put(key, { ...call, attempts, refused })
-        if ('send' in call || call.rpc === 'record_incident') {
-          behind = Math.max(behind, attempts)
-          continue
-        }
-        return this.retryOutbox(attempts)
-      }
-      if (behind || parked) return this.retryOutbox(Math.max(behind, 1))
+      do {
+        this.flushAgain = false
+        // A failure has armed its own retry, which lists everything again.
+        if (!(await this.flushPass())) return
+      } while (this.flushAgain)
+      // Nothing can be queued between the check above and this line, so no
+      // call is left without a deadline; one queued later arms its own.
       if (this.deadlines.some((d) => d.kind === 'outbox')) {
         this.deadlines = this.deadlines.filter((d) => d.kind !== 'outbox')
         await this.armAlarm()
@@ -1056,6 +1024,59 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } finally {
       this.flushing = false
     }
+  }
+
+  /** One pass over the outbox. False when a failure armed a retry. */
+  private async flushPass() {
+    const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
+    // The most attempts among calls that failed without stopping the flush.
+    let behind = 0
+    // A parked call queues an incident report that this pass did not list.
+    let parked = false
+    // Entries parked along with a call (a hand's verification).
+    const dropped = new Set<string>()
+    for (const [key, call] of queued) {
+      if (dropped.has(key)) continue
+      const outcome: ArchiveOutcome =
+        'send' in call
+          ? { ok: await this.enqueue(call.send) }
+          : await archive(this.env, call)
+      if (outcome.ok) {
+        await this.ctx.storage.delete(key)
+        continue
+      }
+      const attempts = call.attempts + 1
+      const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
+      // An incident report never holds up the flush, so it is never parked:
+      // parking it would only lose its evidence at cleanup.
+      if (
+        !('send' in call) &&
+        call.rpc !== 'record_incident' &&
+        refused >= OUTBOX_MAX_REFUSALS
+      ) {
+        for (const k of await this.park(key, call, outcome)) dropped.add(k)
+        parked = true
+        continue
+      }
+      logEvent('outbox_retry', {
+        matchId: this.match?.id,
+        rpc: 'send' in call ? 'hand_queue' : call.rpc,
+        attempt: attempts,
+        depth: queued.size,
+      })
+      await this.ctx.storage.put(key, { ...call, attempts, refused })
+      if ('send' in call || call.rpc === 'record_incident') {
+        behind = Math.max(behind, attempts)
+        continue
+      }
+      await this.retryOutbox(attempts)
+      return false
+    }
+    if (behind || parked) {
+      await this.retryOutbox(Math.max(behind, 1))
+      return false
+    }
+    return true
   }
 
   /**

@@ -42,9 +42,15 @@ const NAMES: Record<string, string> = { [ALICE]: 'alice', [BOB]: 'bob' }
 type Call = { rpc: string; p: Record<string, unknown> }
 let calls: Call[] = []
 let failing = false
-/** Answers one rpc instead of the default 204 (a refusal or an outage). */
+/**
+ * Answers one rpc instead of the default 204 (a refusal or an outage), or
+ * holds it: a promise of null answers 204 once it settles.
+ */
 let respond:
-  | ((rpc: string, p: Record<string, unknown>) => Response | null)
+  | ((
+      rpc: string,
+      p: Record<string, unknown>,
+    ) => Response | null | Promise<Response | null>)
   | null = null
 /** Every rpc attempt, answered or not. */
 let tried: string[] = []
@@ -78,7 +84,7 @@ beforeAll(() => {
         const rpc = url.pathname.slice('/rest/v1/rpc/'.length)
         const p = JSON.parse(String(init!.body)).p
         tried.push(rpc)
-        const custom = respond?.(rpc, p)
+        const custom = await respond?.(rpc, p)
         if (custom) return custom
         calls.push({ rpc, p })
         return new Response(null, { status: 204 })
@@ -239,6 +245,31 @@ describe('the archive', () => {
     const end = calls[3].p
     expect(end.result).toMatchObject({ reason: 'complete' })
     expect(end.timeouts).toEqual({ 0: 0, 1: 0 })
+    expect(await outbox(matchId)).toEqual([])
+  })
+
+  it('sends a call queued while a flush is under way, in that same flush', async () => {
+    const { matchId, seats } = await table(1)
+    // Hold the hand's archive call, so the flush is mid-pass when the
+    // match ends and queues its result.
+    let release!: () => void
+    const held = new Promise<null>((r) => (release = () => r(null)))
+    respond = (rpc) => (rpc === 'record_hand' ? held : null)
+    await foldHand(matchId, seats)
+    await until(() => tried.includes('record_hand'))
+    await elapse(matchId, NEXT_HAND_MS) // no hand 2: the match ends
+    await seats[0].next((f) => f.t === 'match_end')
+    release()
+    // No clock moves: the result goes out with the pass already running,
+    // not stranded behind a safety deadline that pass removed.
+    await until(() =>
+      calls.some((c) => c.rpc === 'record_match' && !!c.p.result),
+    )
+    expect(calls.map((c) => c.rpc)).toEqual([
+      'record_match',
+      'record_hand',
+      'record_match',
+    ])
     expect(await outbox(matchId)).toEqual([])
   })
 

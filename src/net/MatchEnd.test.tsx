@@ -115,3 +115,56 @@ describe('the end of a rated match', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('the rating change at the end', () => {
+  it('says the rating is updating until the change arrives, then shows it and why', () => {
+    const props = {
+      result: WIN,
+      you: 0 as const,
+      bb: 20,
+      opponent: 'bob',
+      rematch: null,
+      clockOffset: 0,
+      onRematch: vi.fn(),
+    }
+    const { rerender } = render(<MatchEnd {...props} />)
+    expect(screen.getByText('Updating your rating…')).toBeInTheDocument()
+    rerender(
+      <MatchEnd
+        {...props}
+        rating={{
+          0: {
+            before: { rating: 1520, rd: 95 },
+            after: { rating: 1534, rd: 92 },
+            matches: 25,
+          },
+          1: {
+            before: { rating: 1610, rd: 80 },
+            after: { rating: 1597, rd: 79 },
+            matches: 40,
+          },
+        }}
+      />,
+    )
+    expect(
+      screen.getByText(
+        'Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92.',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Updating your rating…')).toBeNull()
+  })
+
+  it('shows no rating line for a void or casual result', () => {
+    render(
+      <MatchEnd
+        result={{ netBySeat: { 0: 0, 1: 0 }, reason: 'no_show', noShow: [1] }}
+        you={0}
+        opponent="bob"
+        rematch={null}
+        clockOffset={0}
+        onRematch={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText(/rating/i)).toBeNull()
+  })
+})

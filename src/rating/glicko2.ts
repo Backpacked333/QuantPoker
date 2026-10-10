@@ -31,6 +31,25 @@ export const IDLE_PERIOD_MS = 30 * 86_400_000
 export type Rating = { rating: number; rd: number; sigma: number }
 /** 1 win, 0.5 draw, 0 loss (forfeit and abandonment are losses). */
 export type Score = 0 | 0.5 | 1
+
+/**
+ * Draw handling: a rated match inside the ±2 bb draw band (worker/src/
+ * rated.ts) scores 0.5 for both, the standard Glicko treatment; a forfeit
+ * or an abandonment scores 0, like any loss.
+ */
+export const SCORE = { win: 1, draw: 0.5, loss: 0 } as const satisfies Record<
+  string,
+  Score
+>
+
+/**
+ * The rating-period convention: one rated match is one rating period, each
+ * player rated against the other's rating from before the match. Glickman
+ * suggests periods of 10–15 games; with matches days apart a period per
+ * match keeps the number moving after every match (the product rule) and
+ * makes every update reproducible from one match alone.
+ */
+export const GAMES_PER_PERIOD = 1
 export type Game = { opponent: Rating; score: Score }
 
 /** The new rating plus the intermediate values Glickman's example prints. */

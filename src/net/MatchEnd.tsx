@@ -4,7 +4,8 @@
 import { useEffect, useState } from 'react'
 import type { SeatId } from '../engine/types'
 import type { RematchView } from './client'
-import { inBb, matchHeadline } from './matchResult'
+import type { RatingChange } from '../shared/protocol'
+import { inBb, matchHeadline, ratingLine } from './matchResult'
 import type { MatchResult } from './matchResult'
 
 const mmss = (ms: number) => {
@@ -18,6 +19,7 @@ export function MatchEnd({
   bb,
   opponent,
   rematch,
+  rating = null,
   clockOffset,
   onRematch,
 }: {
@@ -27,6 +29,8 @@ export function MatchEnd({
   bb?: number
   opponent: string
   rematch: RematchView | null
+  /** Rated: each seat's rating change, once applied. */
+  rating?: Partial<Record<SeatId, RatingChange>> | null
   /** Server time minus this device's time. */
   clockOffset: number
   onRematch: () => void
@@ -42,6 +46,7 @@ export function MatchEnd({
     <section className="panel live-matchend" aria-labelledby="match-end-title">
       <h2 id="match-end-title">{headline}</h2>
       <p className="live-muted">{detail}</p>
+      <RatingResult rating={rating} result={result} you={you} />
       <RematchOffer
         rematch={rematch}
         you={you}
@@ -53,6 +58,32 @@ export function MatchEnd({
         Back to the lobby
       </a>
     </section>
+  )
+}
+
+/** The real rating change, or that it is on its way (rated results only). */
+function RatingResult({
+  rating,
+  result,
+  you,
+}: {
+  rating: Partial<Record<SeatId, RatingChange>> | null
+  result: MatchResult
+  you: SeatId
+}) {
+  const outcome = result.outcomeBySeat?.[you]
+  if (!outcome) return null
+  const shown = ratingLine(rating, you, outcome)
+  if (!shown)
+    return (
+      <p className="live-rating" role="status">
+        Updating your rating…
+      </p>
+    )
+  return (
+    <p className="live-rating" role="status">
+      <b>{shown.line}</b> {shown.standing}
+    </p>
   )
 }
 

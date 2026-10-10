@@ -132,6 +132,19 @@ const TABLES: Record<string, Spec> = {
       `insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, model_version)
        values ('${H}', 0, 7, '${u}', 'hu-duplicate', 'best', 0, 100, 'x') on conflict do nothing`,
   ),
+  'public.ratings': owned(
+    'public.ratings',
+    'rating = rating',
+    (u) =>
+      `insert into public.ratings (user_id, format) values ('${u}', '6max') on conflict do nothing`,
+  ),
+  'public.rating_history': owned(
+    'public.rating_history',
+    'after_rating = after_rating',
+    (u) =>
+      `insert into public.rating_history (user_id, format, kind, before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma, model_version)
+       values ('${u}', 'hu-duplicate', 'reset', 1500, 350, 0.06, 1500, 350, 0.06, 'x')`,
+  ),
   'public.accuracy': owned(
     'public.accuracy',
     'accuracy = accuracy',
@@ -240,6 +253,14 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
   // The accuracy on every profile: anyone reads it, only the server's
   // refresh writes it (supabase/tests/accuracy.test.ts).
   'public.accuracy': { ...PUBLIC_READ, ...SERVICE },
+  // Ratings are public; only apply_rating writes them (ratings.test.ts).
+  'public.ratings': { ...PUBLIC_READ, ...SERVICE },
+  // Append-only for everyone: even the server's update and delete stop at
+  // the trigger (which raises its own error, so the cell reads 'allowed').
+  'public.rating_history': {
+    ...PUBLIC_READ,
+    service: [1, 'ok', 'allowed', 'allowed'],
+  },
   // The earlier app's learning tables: strictly per owner.
   'public.profiles': { ...OWN_ONLY, ...SERVICE },
   'public.hand_results': { ...OWN_ONLY, ...SERVICE },
@@ -269,6 +290,10 @@ beforeAll(async () => {
     insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, model_version)
       values ('${H}', 0, 0, '${ALICE}', 'hu-duplicate', 'best', 0, 100, 'x'),
              ('${H}', 1, 1, '${BOB}', 'hu-duplicate', 'good', 1, 90, 'x');
+    insert into public.ratings (user_id, format) values ('${ALICE}', 'hu-duplicate'), ('${BOB}', 'hu-duplicate');
+    insert into public.rating_history (user_id, format, kind, before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma, model_version)
+      values ('${ALICE}', 'hu-duplicate', 'reset', 1500, 350, 0.06, 1500, 350, 0.06, 'x'),
+             ('${BOB}', 'hu-duplicate', 'reset', 1500, 350, 0.06, 1500, 350, 0.06, 'x');
     insert into public.accuracy (user_id, format, accuracy, graded, best) values ('${ALICE}', 'hu-duplicate', 100, 1, 1), ('${BOB}', 'hu-duplicate', 90, 1, 0);
     insert into public.abandonments (user_id, match_id, kind) values ('${ALICE}', '${M}', 'no_show'), ('${BOB}', '${M}', 'no_show');
     insert into public.incidents (kind, detail) values ('seed', '{}');
@@ -347,9 +372,13 @@ describe('functions', () => {
   it('pin search_path and keep every security definer away from browsers', async () => {
     const all = await fns()
     expect(all.map((f) => f.name)).toEqual([
+      'private.count_abandonment',
       'private.player_accuracy',
+      'private.rating_change',
       'private.refresh_accuracy',
       'private.refresh_finished_match',
+      'private.refuse_change',
+      'public.apply_rating',
       'public.audit_hand',
       'public.clear_learning_progress',
       'public.handle_new_player',

@@ -500,9 +500,12 @@ async function selfChecks(db: PGlite) {
       `insert into public.matches (id, kind, status, config) values (gen_random_uuid(), 'hu-rated', $1, '{}') returning id`,
       [status],
     )
+    // A finished rated match carries each seat's outcome (record_match v4),
+    // which apply_rating checks the payload against.
+    const done = status === 'finished'
     await db.query(
-      `insert into public.match_players (match_id, user_id, seat) values ($1, $2, 0), ($1, $3, 1)`,
-      [id, a, b],
+      `insert into public.match_players (match_id, user_id, seat, outcome) values ($1, $2, 0, $4), ($1, $3, 1, $5)`,
+      [id, a, b, done ? 'win' : null, done ? 'loss' : null],
     )
     await db.query(
       `insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record, verified)
@@ -535,7 +538,6 @@ async function selfChecks(db: PGlite) {
       {
         userId: b,
         outcome: 'loss',
-        abandoned: true,
         version: await version(b),
         rating: 1480,
         rd: 90,
@@ -550,7 +552,7 @@ async function selfChecks(db: PGlite) {
     )
 
   await check(
-    'apply_rating twice rates the match once, counting win and abandonment once',
+    'apply_rating twice rates the match once, counting the win once (abandonment is counted by record_match, not here)',
     async () => {
       const [a0, b0] = [await counters(a), await counters(b)]
       const p = await payload()
@@ -565,7 +567,7 @@ async function selfChecks(db: PGlite) {
         (n === 2 &&
           a1.matches === a0.matches + 1 &&
           a1.wins === a0.wins + 1 &&
-          b1.abandoned === b0.abandoned + 1 &&
+          b1.abandoned === b0.abandoned &&
           b1.wins === b0.wins) ||
         `history ${n}; a ${JSON.stringify(a0)} → ${JSON.stringify(a1)}; b ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`
       )

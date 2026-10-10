@@ -223,8 +223,13 @@ try {
   //    of it is written; recomputed from fresh versions it applies.
   const m3 = crypto.randomUUID()
   const m4 = crypto.randomUUID()
+  // Finished rated matches with each seat's outcome, which apply_rating
+  // checks the payload against.
   await sql(
-    `insert into public.matches (id, kind, status, config) values ('${m3}', 'hu-rated', 'finished', '{}'), ('${m4}', 'hu-rated', 'finished', '{}')`,
+    `insert into public.matches (id, kind, status, config) values ('${m3}', 'hu-rated', 'finished', '{}'), ('${m4}', 'hu-rated', 'finished', '{}');
+     insert into public.match_players (match_id, user_id, seat, outcome) values
+       ('${m3}', '${ALICE}', 0, 'win'), ('${m3}', '${BOB}', 1, 'loss'),
+       ('${m4}', '${CARL}', 0, 'loss'), ('${m4}', '${ALICE}', 1, 'win')`,
   )
   const rate = (matchId: string, other: string, v: Record<string, number>) => ({
     matchId,

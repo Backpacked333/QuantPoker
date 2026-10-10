@@ -19,6 +19,8 @@ export type LogEvent =
   | 'verify_failed'
   /** A verified rated hand's decisions were graded (P1-09). */
   | 'graded'
+  /** A finished rated match's ratings were applied (P1-12). */
+  | 'rated'
   | 'dlq'
   | 'error'
 

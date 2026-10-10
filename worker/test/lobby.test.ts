@@ -299,7 +299,10 @@ describe('no-shows', () => {
 })
 
 describe('rated pairing by rating', () => {
-  const T0 = Date.parse('2026-10-10T12:00:00Z')
+  // Noon UTC tomorrow: always ahead of the real clock, which an alarm
+  // cannot be set behind, and an hour of play never crosses a UTC day.
+  const DAY = 86_400_000
+  const T0 = Math.floor(Date.now() / DAY) * DAY + DAY + DAY / 2
   const MIN = 60_000
   const ratedQueue = (c: LobbyClient) =>
     c.send({ t: 'queue', kind: 'hu-rated' })

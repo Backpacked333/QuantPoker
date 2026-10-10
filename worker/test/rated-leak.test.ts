@@ -17,12 +17,14 @@ import { NEXT_HAND_MS } from '../src/table'
 import type { InitBody } from '../src/table'
 import { analysisKeys, checkFrames, FLOW_TYPES } from './frames'
 import {
+  bySeat,
   connect,
   elapse,
   freezeClock,
   isState,
   move,
   peek,
+  seatPairs,
   stub,
 } from './helpers'
 import type { Client } from './helpers'
@@ -45,13 +47,10 @@ const raiseTo =
 /** Each seat's two hole cards, read from the table's real hand. */
 const holesOf = (hand: HandState) => {
   const { holes } = dealSlots(hand.config)
-  return {
-    slots: holes as Record<SeatId, number[]>,
-    cards: {
-      0: holes[0].map((slot) => hand.deck[slot]),
-      1: holes[1].map((slot) => hand.deck[slot]),
-    } as Record<SeatId, number[]>,
-  }
+  const cards: Record<SeatId, number[]> = {}
+  for (const { seat } of hand.config.seats)
+    cards[seat] = holes[seat].map((slot) => hand.deck[slot])
+  return { slots: holes as Record<SeatId, number[]>, cards }
 }
 
 type Played = {
@@ -143,7 +142,9 @@ beforeAll(async () => {
   await move(matchId, seats, passive)
   bob.ws.close(1000, 'bye')
   await alice2.next(
-    (f) => f.t === 'state' && f.table.players[1].connected === false,
+    (f) =>
+      f.t === 'state' &&
+      f.table.players.find((p) => p.seat === 1)?.connected === false,
   )
   await elapse(matchId, GRACE_MS)
   expect((await peek(matchId)).hand!.toAct).toBe(0)
@@ -241,14 +242,14 @@ describe('every frame of a 40-hand rated match', () => {
           f.record.shown.map((s) => s.seat),
         )
     let hidden = 0
-    for (const seat of [0, 1] as const) {
-      const other: SeatId = seat === 0 ? 1 : 0
+    const seats = Object.keys(played.frames).map(Number)
+    for (const [seat, other] of seatPairs(seats)) {
       for (const f of played.frames[seat]) {
         if ((f.t === 'welcome' || f.t === 'state') && f.view) {
           const { cards } = played.dealt[f.view.handNo]
           // Your own cards are always yours.
-          expect(f.view.players[seat].cards).toEqual(cards[seat])
-          const theirs = f.view.players[other]
+          expect(bySeat(f.view.players, seat).cards).toEqual(cards[seat])
+          const theirs = bySeat(f.view.players, other)
           if (theirs.cards === null) hidden++
           else {
             expect(

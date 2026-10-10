@@ -7,7 +7,7 @@ type Frame = {
   view?: {
     you: number
     handNo: number
-    players: { cards: [number, number] | null; shown: boolean }[]
+    players: { seat: number; cards: [number, number] | null; shown: boolean }[]
   } | null
 }
 
@@ -107,9 +107,11 @@ test('two browsers play a hand against each other', async ({ browser }) => {
     const views = frames.flatMap((f) => (f.view ? [f.view] : []))
     expect(views.length).toBeGreaterThan(5)
     for (const view of views) {
-      const opponent = view.players[1 - view.you]
+      // By seat, not list position: with empty seats they differ.
+      const mine = view.players.find((p) => p.seat === view.you)!
+      const opponent = view.players.find((p) => p.seat !== view.you)!
       if (!opponent.shown) expect(opponent.cards).toBeNull()
-      expect(view.players[view.you].cards).not.toBeNull()
+      expect(mine.cards).not.toBeNull()
     }
     expect(JSON.stringify(frames)).not.toContain('"deck"')
   }
@@ -245,9 +247,11 @@ test('during a rated hand neither browser receives analysis keys or opponent car
       [],
     )
     for (const view of views) {
-      const opponent = view.players[1 - view.you]
+      // By seat, not list position: with empty seats they differ.
+      const mine = view.players.find((p) => p.seat === view.you)!
+      const opponent = view.players.find((p) => p.seat !== view.you)!
       if (!opponent.shown) expect(opponent.cards).toBeNull()
-      expect(view.players[view.you].cards).not.toBeNull()
+      expect(mine.cards).not.toBeNull()
     }
   }
   for (const p of everyone) await p.close()

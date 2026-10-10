@@ -17,13 +17,18 @@ import { assertInvariants, isOver, replayHand } from '../../src/engine/hand'
 import type { HandState } from '../../src/engine/types'
 import type { HandRecordV1 } from '../../src/shared/protocol'
 import type { WorkerEnv } from './env'
+import { gradeArchived } from './grade'
 import { describeError, logEvent } from './log'
 import { rpc } from './supabase'
 
 export { HANDS_DLQ, HANDS_QUEUE } from './queues'
 
-/** What the table sends for each archived hand. */
-export type HandMessage = { matchId: string; handNo: number }
+/**
+ * What the table sends for each archived hand. `rated`: a rated match's
+ * hand, which is graded once verified (P1-09); absent on casual hands and
+ * on messages from before grading existed.
+ */
+export type HandMessage = { matchId: string; handNo: number; rated?: true }
 
 /** A hand as `audit_hand` returns it: the public row plus the private one. */
 export type AuditedHand = {
@@ -140,12 +145,16 @@ export async function problemsWith(hand: AuditedHand): Promise<string[]> {
 
 function parseMessage(body: unknown): HandMessage | null {
   if (typeof body !== 'object' || body === null) return null
-  const { matchId, handNo } = body as Record<string, unknown>
+  const { matchId, handNo, rated } = body as Record<string, unknown>
   return typeof matchId === 'string' &&
     UUID.test(matchId) &&
     Number.isSafeInteger(handNo) &&
     (handNo as number) >= 1
-    ? { matchId, handNo: handNo as number }
+    ? {
+        matchId,
+        handNo: handNo as number,
+        ...(rated === true ? { rated } : {}),
+      }
     : null
 }
 
@@ -157,17 +166,19 @@ export const retryDelay = (attempts: number) =>
 async function verifyArchived(
   env: WorkerEnv,
   { matchId, handNo }: HandMessage,
-) {
+): Promise<
+  { state: 'missing' | 'failed' } | { state: 'verified'; hand: AuditedHand }
+> {
   const id = `${matchId}:${handNo}`
   const hand = await rpc<AuditedHand>(env, 'audit_hand', { id })
-  if (!hand) return 'missing'
-  // A redelivery after a success: nothing to do.
-  if (hand.verified) return 'verified'
+  if (!hand) return { state: 'missing' }
+  // A redelivery after a success: nothing more to verify.
+  if (hand.verified) return { state: 'verified', hand }
   const problems = await problemsWith(hand)
   if (problems.length === 0) {
     await rpc(env, 'verify_hand', { id })
     logEvent('verified', { matchId, handNo })
-    return 'verified'
+    return { state: 'verified', hand }
   }
   await rpc(env, 'record_incident', {
     matchId,
@@ -176,7 +187,7 @@ async function verifyArchived(
     detail: { problems },
   })
   logEvent('verify_failed', { matchId, handNo, detail: problems.join(',') })
-  return 'failed'
+  return { state: 'failed' }
 }
 
 /** The `quantpoker-hands` consumer (one message per batch in production). */
@@ -190,9 +201,17 @@ export async function consumeHands(batch: MessageBatch, env: WorkerEnv) {
       continue
     }
     try {
-      if ((await verifyArchived(env, body)) === 'missing')
+      const outcome = await verifyArchived(env, body)
+      if (outcome.state === 'missing') {
         message.retry({ delaySeconds: retryDelay(message.attempts) })
-      else message.ack()
+        continue
+      }
+      // Graded only once verified; a grading failure throws, so the message
+      // is retried (verification is not repeated) and, after the last try,
+      // dead-lettered as an incident. Play never waits on it.
+      if (outcome.state === 'verified' && body.rated)
+        await gradeArchived(env, outcome.hand)
+      message.ack()
     } catch (error) {
       logEvent('error', {
         ...body,

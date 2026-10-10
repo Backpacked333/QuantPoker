@@ -910,7 +910,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
       // Sorts after this hand's archive call, so it is sent only once
       // Postgres has the hand: the consumer never races the archive.
       writes[key(match.handNo, 'verify')] = {
-        send: { matchId: match.id, handNo: match.handNo },
+        send: {
+          matchId: match.id,
+          handNo: match.handNo,
+          ...(match.config.kind === 'hu-rated' ? { rated: true as const } : {}),
+        },
         attempts: 0,
       } satisfies Outbox
     }

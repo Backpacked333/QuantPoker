@@ -38,6 +38,7 @@ The soak now prints one line per table size with the showdown and side-pot share
 - **Repeatability.** Three runs printed the same shares: the implementer's, the reviewer's and the run after the review fixes. The times are the reviewer's run (315 s for the file).
 - **The ticket's riskiest assumption** was thin reference coverage, with more than 1% of hands for N > 2 needing a side pot. The share is 45.6% at 3 players and 97.0% at 6, so the side-pot assertion at `engine.test.ts:159` is far from its limit.
 - **Heads-up never has a side pot**, because the unmatched part of a bet is refunded. The 0.0% at 2 players is expected.
+- **CI:** the `soak` job passed on PR #34: https://github.com/Backpacked333/QuantPoker/actions/runs/38046218219/job/114196180046.
 - **Use `--reporter=default` locally.** Vitest 4.1 switches to its agent reporter when it sees the agent environment variables, and that reporter hides `console.log`. CI's default reporter shows the lines.
 
 ### Red first

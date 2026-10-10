@@ -25,10 +25,11 @@ alter table public.match_players
   -- W/D/L after the draw band (DRAW_BAND_BB in code); null for casual and
   -- void matches.
   add column outcome text check (outcome in ('win', 'draw', 'loss')),
-  -- Net chips per segment (duplicate: 2); their sum is net_chips. bb are
+  -- The luck-adjusted net (Q1 = B: all-in pots settled at equity,
+  -- src/engine/luck.ts); outcome comes from it with the draw band. net_chips
+  -- stays the chips actually won. Null for casual and void matches. bb are
   -- chips / config.blinds.bb.
-  add column segment_chips integer[]
-    check (segment_chips is null or cardinality(segment_chips) between 1 and 2),
+  add column adjusted_chips double precision,
   -- A copy of matches.finished_at. Profiles and match history list a
   -- player's matches newest first; with the time only on matches every page
   -- joins and sorts all of that player's matches (142 ms for the heaviest
@@ -49,7 +50,12 @@ create index match_players_history on public.match_players (user_id, finished_at
 create table public.ratings (
   user_id uuid not null references public.players (user_id) on delete cascade,
   format text not null check (format in ('hu-duplicate', '6max')),
-  rating double precision not null default 1500 check (rating > 0),
+  -- Glicko-2 ratings are unbounded: a 100 ± 350 player who loses to an
+  -- equal goes below zero (src/rating/glicko2.test.ts), so the check only
+  -- refuses what no model produces (and NaN, which sorts above every
+  -- number). A floor, if wanted, is a product rule for the model, not here.
+  rating double precision not null default 1500
+    check (rating > -100000 and rating < 100000),
   rd double precision not null default 350 check (rd > 0 and rd <= 350),
   sigma double precision not null default 0.06 check (sigma > 0 and sigma < 1),
   matches integer not null default 0 check (matches >= 0),

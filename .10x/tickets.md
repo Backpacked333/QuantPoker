@@ -169,7 +169,7 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 | S7-10  | Done. Report contact (U-6): the interim wording stays ("keep them for the report form that comes with rated play"); an address can replace it in `src/info/contact.ts`                                                                                        |
 | S7-11  | Deployed 2026-10-09 (`3cc9bd0`). Verified: deploy matches, queues, endpoints, Origin 403. Open until U-4: ES256 token, an archived match, disjoint `hand_holes`, `verified` hands; smoke p95 waits on Q4                                                      |
 | S7-12  | Done                                                                                                                                                                                                                                                          |
-| S7-13  | Open (new, DBA review DB-4): park an archive call that can never succeed                                                                                                                                                                                      |
+| S7-13  | Done 2026-10-10: class 22/23 refusals park after 12 tries with an `archive_parked` incident carrying the call; outages, 401/403 and missing functions never park                                                                                              |
 
 ### S7-01 · Finished tables clean up after themselves
 
@@ -472,6 +472,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-00 · Architect addendum: rated heads-up match
 
+**Status 2026-10-10: done.** See "Amendment 2026-10-10: Phase 1 rated heads-up" in `.10x/decisions/architect/multiplayer-platform.md`. Q2 takes the recommendation (immediately), which is reversible; say if you want segment-end forfeits.
+
 - **Goal.** One ADR amendment that pins down everything P1-01…P1-04 and P1-12 need, so no SDE session designs on the fly. It also carries the ADR's "Phase 1 hand-off notes".
 - **User-visible outcome.** None.
 - **Files.** `.10x/decisions/architect/multiplayer-platform.md` (new section "Amendment: Phase 1 rated HU").
@@ -536,6 +538,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 ### P1-02 · Segment decks: variant A (duplicate) or variant B (fresh decks, luck-adjusted). Q1 picks one.
 
 **Q1 answered 2026-10-09: variant B.** Only the B goal, files and tests below apply.
+
+**Status 2026-10-09:** the engine module is **done** (`src/engine/luck.ts`; `.10x/decisions/sde/heads-up-duplicate-ladder.md`). A preflop all-in costs ≈ 475 ms of CPU, which is over the 100 ms guess below but inside the table's 3 s gap between hands, so the adjustment stays in the table server. The `table.ts` wiring and `worker/test/rated.test.ts` come with P1-01.
 
 - **Goal (A, same-pair duplicate).** Segment 2 hand _i_ deals a segment-1 deck with the button flipped. Flipping the button swaps the hole cards exactly, because `dealSlots` deals relative to the button. Each deal gets a fresh commitment secret. The mitigations Q1 chooses apply:
   - a secret random order π of the segment-2 decks, stored in DO storage;

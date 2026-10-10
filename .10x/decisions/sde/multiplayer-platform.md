@@ -370,3 +370,15 @@ ADR: `.10x/decisions/architect/multiplayer-platform.md` §Engine, §Wire protoco
 ### Not done in Step 1 (per ADR schedule)
 
 `bench.test.ts` (Step 7), `src/net/**` and its import guard (Step 4), `worker/**` (Step 3), the `check-bundle.mjs` grep guard (Step 2, when supabase-js is added).
+
+## S7-13 · Park an archive call that can never succeed (2026-10-10)
+
+DBA review finding DB-4. Before this change, an outbox call Postgres refused for its data was retried every 5 minutes forever, and, first in key order, it held back every later archive call of its match.
+
+- **What parks.** `worker/src/supabase.ts` `archive()` now returns `{ ok, status, code }`. `refusedForData` is true only for a 4xx other than 401/403 whose Postgres code is class 22 (bad data) or 23 (a broken constraint).
+- **What happens.** After `OUTBOX_MAX_REFUSALS` = 12 such refusals (about half an hour of backoff), `flushOutbox` moves the call to `parked:<key>`, logs a loud `outbox_parked`, queues one `archive_parked` incident carrying the call itself (service role only, so it can be replayed), and continues the flush.
+- **What never parks.** Outages (5xx, network), a missing or wrong key (401/403, U-4's state today) and a missing function. Those can be fixed, after which every queued call must still land. A lost create race (23505) succeeds on its next attempt, long before 12.
+- **Evidence.** `worker/test/archive.test.ts`, 2 new tests, 9/9 green:
+  - **"parks a call refused 12 times for its data…":** red before the change (timed out waiting for the incident). After it, exactly 12 tries, then the match result and the incident land, and the outbox empties.
+  - **"never parks a call that failed for an outage, a key or a missing function":** 15 tries cycling through 503, 401, 403, 404 `PGRST202` and 400 `42883`, and the call stays queued. Counting every failure as a refusal turns it red.
+- **README §Operations:** the new event, the saved query, and how to replay an `archive_parked` row.

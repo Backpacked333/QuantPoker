@@ -70,6 +70,14 @@ describe('Glicko-2', () => {
     expect(a).toEqual(b)
   })
 
+  it('has no floor: a weak, uncertain player who loses can go below zero', () => {
+    // Glicko-2 is unbounded; storage must accept it (phase1.sql ratings).
+    const weak: Rating = { rating: 100, rd: 350, sigma: 0.06 }
+    const [loser] = rateMatch(weak, weak, 0)
+    expect(loser.rating).toBeLessThan(0)
+    expect(Number.isFinite(loser.rating)).toBe(true)
+  })
+
   it('rates a match from both players’ ratings before it', () => {
     const a: Rating = { rating: 1600, rd: 80, sigma: 0.06 }
     const b: Rating = { rating: 1450, rd: 120, sigma: 0.06 }

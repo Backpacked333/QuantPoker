@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { lcg } from '../lib/sim'
 import { MAX_FRAME, parseClientMsg } from './protocol'
+import type { MatchKind } from './protocol'
 
 const frame = (v: unknown) => JSON.stringify(v)
 const act = {
@@ -59,6 +60,11 @@ describe('parseClientMsg', () => {
       expect(parseClientMsg(bad), bad.slice(0, 60)).toBeNull()
     expect(parseClientMsg(42)).toBeNull()
     expect(parseClientMsg(' '.repeat(MAX_FRAME + 1))).toBeNull()
+  })
+
+  it('refuses to queue for six-casual: a six table is joined by sitting down', () => {
+    const kind: MatchKind = 'six-casual'
+    expect(parseClientMsg(frame({ t: 'queue', kind }))).toBeNull()
   })
 
   it('never throws on random input and only returns valid shapes', () => {

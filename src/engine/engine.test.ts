@@ -13,9 +13,16 @@ import {
 } from './hand'
 import { blindSeats, positionNames, seatAfter } from './positions'
 import { buildPots, referencePots } from './pots'
-import { config, deckWith, randomAction, randomTable } from './testing'
+import {
+  config,
+  deckWith,
+  randomAction,
+  randomTable,
+  ringDistance,
+  withExplicitBlinds,
+} from './testing'
 import { EngineError } from './types'
-import type { HandState, PlayerAction, SeatId } from './types'
+import type { HandConfig, HandState, PlayerAction, SeatId } from './types'
 
 const SOAK = !!process.env.ENGINE_SOAK
 const HANDS_PER_N = SOAK ? 100_000 : 10_000
@@ -41,6 +48,39 @@ function atHand(error: unknown, n: number, h: number) {
 const seatOf = (state: HandState, seat: SeatId) =>
   state.players.find((p) => p.seat === seat)!
 const stacks = (state: HandState) => state.players.map((p) => p.stack)
+/** Clockwise order from the seat after the button, which may be empty. */
+const fromButton = (state: HandState, seat: SeatId) =>
+  ringDistance(state.config.button, seat) || 6
+
+/**
+ * What a hand with explicit blind seats must look like before anyone acts,
+ * worked out from the config alone: only the named blinds post, and when
+ * nobody is all in the first player clockwise after the big blind opens.
+ * A hand that ran out at once (blinds all in) has already returned chips.
+ */
+function checkExplicitStart(cfg: HandConfig, state: HandState) {
+  if (state.street !== 'preflop') return
+  const posted = Object.fromEntries(
+    cfg.seats.map(({ seat, stack }) => [
+      seat,
+      seat === cfg.bb
+        ? Math.min(cfg.blinds.bb, stack)
+        : seat === cfg.sb
+          ? Math.min(cfg.blinds.sb, stack)
+          : 0,
+    ]),
+  )
+  expect(
+    Object.fromEntries(state.players.map((p) => [p.seat, p.invested])),
+  ).toEqual(posted)
+  if (state.players.every((p) => p.stack > 0)) {
+    const after = (s: SeatId) => ringDistance(cfg.bb!, s) || 6
+    const first = cfg.seats
+      .map((s) => s.seat)
+      .reduce((a, b) => (after(b) < after(a) ? b : a))
+    expect(state.toAct).toBe(first)
+  }
+}
 
 /** An action that must be rejected in this state, or null if none applies. */
 function illegalAction(
@@ -96,6 +136,8 @@ function checkShowdown(state: HandState) {
     const amounts = winners.map((a) => a.amount)
     expect(Math.max(...amounts) - Math.min(...amounts)).toBeLessThanOrEqual(1)
     expect([...amounts].sort((a, b) => b - a)).toEqual(amounts)
+    const order = winners.map((a) => fromButton(state, a.seat))
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
   })
   expect(live.length).toBeGreaterThan(0)
 }
@@ -108,12 +150,24 @@ describe('engine invariants over random hands', () => {
         const random = lcg(SEED + n)
         let showdowns = 0
         let sidePots = 0
+        let deadButtons = 0
+        let deadSmallBlinds = 0
         for (let h = 0; h < HANDS_PER_N; h++)
           try {
-            const { config: cfg, deck } = randomTable(n, random, h + 1)
+            const table = randomTable(n, random, h + 1)
+            const { deck } = table
+            // One hand in ten is a six-casual hand: explicit blind seats,
+            // often a dead button or a dead small blind.
+            const explicit = h % 10 === 5
+            const cfg = explicit
+              ? withExplicitBlinds(table.config, random)
+              : table.config
+            if (!cfg.seats.some((s) => s.seat === cfg.button)) deadButtons++
+            if (cfg.sb === null) deadSmallBlinds++
             const chips = cfg.seats.reduce((s, p) => s + p.stack, 0)
             let state = startHand(cfg, deck)
             assertInvariants(state, chips)
+            if (explicit) checkExplicitStart(cfg, state)
             const taken: { seat: SeatId; action: PlayerAction }[] = []
             while (!isOver(state)) {
               if (random() < 0.1) {
@@ -128,9 +182,19 @@ describe('engine invariants over random hands', () => {
               }
               const seat = state.toAct!
               const action = randomAction(state, random)
+              const street = state.street
               state = act(state, seat, action)
               taken.push({ seat, action })
               assertInvariants(state, chips)
+              // A new street opens with the first player clockwise from the
+              // button seat (even an empty one) who can still bet.
+              if (state.street !== street && state.toAct !== null) {
+                const open = state.players.filter((p) => !p.folded && !p.allIn)
+                const first = open.reduce((a, b) =>
+                  fromButton(state, b.seat) < fromButton(state, a.seat) ? b : a,
+                )
+                expect(state.toAct).toBe(first.seat)
+              }
               // The chip-by-chip oracle is slow; sample it.
               if (h % 10 === 0 && state.players.every((p) => p.bet === 0))
                 expect(state.pots).toEqual(referencePots(state.players))
@@ -149,6 +213,11 @@ describe('engine invariants over random hands', () => {
         // The walk must actually exercise showdowns and side pots.
         expect(showdowns).toBeGreaterThan(HANDS_PER_N / 20)
         if (n > 2) expect(sidePots).toBeGreaterThan(HANDS_PER_N / 100)
+        // ...and dead blinds wherever the table can have them: a dead small
+        // blind from three players up, a dead button while a seat is empty.
+        if (n > 2) expect(deadSmallBlinds).toBeGreaterThan(HANDS_PER_N / 100)
+        if (n > 2 && n < 6)
+          expect(deadButtons).toBeGreaterThan(HANDS_PER_N / 100)
         // Printed only once every hand and both coverage checks have passed,
         // so the line is the soak's record of the P2-01 gate.
         if (SOAK)

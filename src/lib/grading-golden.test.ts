@@ -108,6 +108,7 @@ describe('the golden set', () => {
           grade: graded.grade.toLowerCase() as GradeRow['grade'],
           evLost: graded.evLost,
           accuracy: graded.accuracy,
+          pot: view.pot,
         })
         streets.add(game.street)
         actions.push({
@@ -147,7 +148,7 @@ describe('the golden set', () => {
     expect(gradeHand(record, deck)).toEqual(gradeHand(record, deck))
   })
 
-  it('does not grade a move the clock made for a player who ran out of time', () => {
+  it('grades a move the clock made like any other, from the same view', () => {
     const random = lcg(8)
     const dealer: Player = 0
     const game = newHand(1, [2000, 2000], dealer, random)
@@ -159,6 +160,16 @@ describe('the golden set', () => {
         source: 'timeout',
       } as HandRecordV1['actions'][number],
     ])
-    expect(gradeHand(record, deck)).toEqual([])
+    const trainer = gradeVsPopulation(game, { type: 'fold' })
+    expect(gradeHand(record, deck)).toEqual([
+      {
+        seat: 0,
+        idx: 0,
+        grade: trainer.grade.toLowerCase(),
+        evLost: trainer.evLost,
+        accuracy: trainer.accuracy,
+        pot: game.pot,
+      },
+    ])
   })
 })

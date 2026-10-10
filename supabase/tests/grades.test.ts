@@ -50,8 +50,15 @@ const GRADES = {
   format: 'hu-duplicate',
   modelVersion: 'grade.v1+population.v1',
   grades: [
-    { seat: 0, idx: 0, grade: 'best', evLost: 0, accuracy: 100 },
-    { seat: 1, idx: 1, grade: 'mistake', evLost: 12.5, accuracy: 37.5 },
+    { seat: 0, idx: 0, grade: 'best', evLost: 0, accuracy: 100, pot: 30 },
+    {
+      seat: 1,
+      idx: 1,
+      grade: 'mistake',
+      evLost: 12.5,
+      accuracy: 37.5,
+      pot: 40,
+    },
   ],
 }
 
@@ -118,6 +125,24 @@ describe('hand grades', () => {
     expect(rows).toEqual([
       { grade: 'best', accuracy: 100 },
       { grade: 'mistake', accuracy: 37.5 },
+    ])
+  })
+
+  it("keeps each decision's pot, so accuracy can be weighed by what was at stake", async () => {
+    const rows = await as(
+      'service_role',
+      '',
+      async () =>
+        (
+          await db.query<{ seat: number; pot: number }>(
+            'select seat, pot from public.hand_grades where hand_id = $1 order by seat',
+            [H],
+          )
+        ).rows,
+    )
+    expect(rows).toEqual([
+      { seat: 0, pot: 30 },
+      { seat: 1, pot: 40 },
     ])
   })
 

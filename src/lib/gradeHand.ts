@@ -18,11 +18,14 @@ export type GradeRow = {
   grade: 'best' | 'good' | 'inaccuracy' | 'mistake' | 'blunder'
   evLost: number
   accuracy: number
+  /** The pot the grade is a share of, so aggregates can weigh by stakes. */
+  pot: number
 }
 
 /**
- * Heads-up only. Moves the clock made for a player who ran out of time are
- * not decisions, so they are not graded.
+ * Heads-up only. Every move is graded, including one the clock made for a
+ * player who ran out of time: leaving hard spots to the clock must not hide
+ * them from the grade (the QA review in .10x/decisions/qa/accuracy.md).
  */
 export function gradeHand(record: HandRecordV1, deck: number[]): GradeRow[] {
   if (record.config.seats.length !== 2) return []
@@ -33,7 +36,6 @@ export function gradeHand(record: HandRecordV1, deck: number[]): GradeRow[] {
   )
   const rows: GradeRow[] = []
   record.actions.forEach((entry, idx) => {
-    if (entry.source !== 'client') return
     const view = seatView(states[idx], entry.seat, {
       matchId: record.matchId,
       match: {
@@ -46,13 +48,15 @@ export function gradeHand(record: HandRecordV1, deck: number[]): GradeRow[] {
       lastReqId: null,
       commitment: null,
     })
-    const graded = gradeVsPopulation(toHeroGame(view), entry.action as Action)
+    const game = toHeroGame(view)
+    const graded = gradeVsPopulation(game, entry.action as Action)
     rows.push({
       seat: entry.seat,
       idx,
       grade: graded.grade.toLowerCase() as GradeRow['grade'],
       evLost: graded.evLost,
       accuracy: graded.accuracy,
+      pot: game.pot,
     })
   })
   return rows

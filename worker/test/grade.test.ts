@@ -299,7 +299,7 @@ describe('grading a rated hand', () => {
     expect(fake.verified.filter((v) => v === id)).toEqual([id])
   }, 60_000)
 
-  it('does not grade a move the clock made for a player who ran out of time', async () => {
+  it('grades a move the clock made for a player who ran out of time, like any other', async () => {
     const { matchId, alice, seats } = await rated()
     await move(matchId, seats, raiseTo(60)) // Alice, the button
     await timeOut(matchId, seats) // Bob folds on the clock
@@ -310,7 +310,10 @@ describe('grading a rated hand', () => {
       'client',
       'timeout',
     ])
-    expect(gradesOf(id).map((g) => [g.idx, g.seat])).toEqual([[0, 0]])
+    expect(gradesOf(id).map((g) => [g.idx, g.seat])).toEqual([
+      [0, 0],
+      [1, 1],
+    ])
   }, 60_000)
 })
 
@@ -351,18 +354,23 @@ describe('a grading failure', () => {
     expect(failed.retryMessages.map((m) => m.msgId)).toEqual(['m0'])
     expect(fake.verified.filter((v) => v === ids[0])).toEqual([ids[0]])
 
-    // Once it works, the retries grade the hands; hands with no decision of
-    // a player's own (only the clock's) have nothing to grade.
+    // Once it works, the retries grade every move of every hand, the
+    // clock's included.
     fake.gradesDown = false
     const later = await deliver(bodies, 3)
     expect(later.explicitAcks.sort()).toEqual(['m0', 'm1', 'm2', 'm3'])
-    expect(gradesOf(ids[0]).map((g) => [g.idx, g.seat])).toEqual([
-      [0, 0],
-      [1, 1],
+    expect(ids.map((id) => gradesOf(id).map((g) => [g.idx, g.seat]))).toEqual([
+      [
+        [0, 0],
+        [1, 1],
+      ],
+      [[0, 1]], // Bob's button: the clock folds
+      [
+        [0, 0],
+        [1, 1],
+      ],
+      [[0, 1]],
     ])
-    expect(gradesOf(ids[1])).toEqual([])
-    expect(gradesOf(ids[2]).map((g) => [g.idx, g.seat])).toEqual([[0, 0]])
-    expect(gradesOf(ids[3])).toEqual([])
   }, 90_000)
 })
 

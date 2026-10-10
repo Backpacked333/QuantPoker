@@ -212,10 +212,11 @@ begin
     raise exception 'hand % is not rated', v_hand;
   end if;
   insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade,
-                                  ev_lost, accuracy, model_version)
+                                  ev_lost, accuracy, pot, model_version)
   select v_hand, (g ->> 'seat')::smallint, (g ->> 'idx')::smallint,
          mp.user_id, p ->> 'format', g ->> 'grade',
-         (g ->> 'evLost')::real, (g ->> 'accuracy')::real, p ->> 'modelVersion'
+         (g ->> 'evLost')::real, (g ->> 'accuracy')::real, (g ->> 'pot')::real,
+         p ->> 'modelVersion'
   from jsonb_array_elements(p -> 'grades') g
   join public.match_players mp
     on mp.match_id = v_match and mp.seat = (g ->> 'seat')::smallint

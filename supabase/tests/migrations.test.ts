@@ -98,6 +98,7 @@ describe('migrations', () => {
       '20261010010000_rated_matches.sql',
       '20261010043000_rematch.sql',
       '20261010053000_hand_grades.sql',
+      '20261010060000_hand_grades_pot.sql',
     ])
   })
 })

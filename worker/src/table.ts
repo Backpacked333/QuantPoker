@@ -11,6 +11,7 @@ import {
   toBase64,
 } from '../../src/engine/deck'
 import { act, assertInvariants, isOver, startHand } from '../../src/engine/hand'
+import { luckAdjusted } from '../../src/engine/luck'
 import { seatView } from '../../src/engine/redact'
 import type { RevealedSlot } from '../../src/engine/deck'
 import { EngineError } from '../../src/engine/types'
@@ -29,6 +30,8 @@ import type {
   MatchConfig,
   MatchEndReason,
   MatchInfo,
+  MatchKind,
+  Outcome,
   Reveal,
   ServerMsg,
 } from '../../src/shared/protocol'
@@ -51,6 +54,7 @@ import type { WorkerEnv } from './env'
 import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
 import { describeError, logEvent } from './log'
+import { outcomes, RATED_CONFIG } from './rated'
 import { archive, refusedForData } from './supabase'
 import type { ArchiveCall, ArchiveOutcome } from './supabase'
 import type { HandMessage } from './verify'
@@ -94,6 +98,14 @@ type Match = {
   endReason?: MatchEndReason
   forfeit?: SeatId
   noShow?: SeatId[]
+  /**
+   * Rated: the luck-adjusted total per seat, through hand
+   * `adjustedThrough` (settled after each hand; see settleLuck).
+   */
+  adjusted?: Record<SeatId, number>
+  adjustedThrough?: number
+  /** Rated, once finished and not void. */
+  outcome?: Record<SeatId, Outcome>
 }
 /** The hand in progress: its commitment and per-action timing. */
 type Current = {
@@ -133,6 +145,8 @@ export type InitBody = {
   /** Set by the lobby: both must connect within this time. */
   startWithinMs?: number
   handsTotal?: number
+  /** Set by the lobby: a rated match plays RATED_CONFIG (no handsTotal). */
+  kind?: MatchKind
 }
 /**
  * For the lobby's one-table-per-account rule: `playing`, or `starting` (a
@@ -147,6 +161,11 @@ const json = (body: unknown, status = 200) => Response.json(body, { status })
 /** Outbox keys sort in the order Postgres needs them: match, hands, end. */
 const outboxKey = (n: number, what: string) =>
   `outbox:${String(n).padStart(4, '0')}:${what}`
+/** A rated hand's calls wait here until its luck is settled (settleLuck). */
+const heldKey = (n: number, what: string) =>
+  `held:${String(n).padStart(4, '0')}:${what}`
+/** Void endings: nobody wins or loses a rated match that ends so. */
+const VOID: MatchEndReason[] = ['no_show', 'engine_fault', 'abandoned']
 
 export class TableDO extends DurableObject<WorkerEnv> {
   private match: Match | null = null
@@ -157,6 +176,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
   private seq = 0
   private lastAck: Record<SeatId, Ack> = {}
   private flushing = false
+  /** A call was queued while a flush was under way: that flush goes again. */
+  private flushAgain = false
   controller: TableController = new LocalController()
   /** The table's clock; tests move it instead of waiting. */
   clock: () => number = now
@@ -214,7 +235,10 @@ export class TableDO extends DurableObject<WorkerEnv> {
       body.handsTotal! <= 100
         ? body.handsTotal!
         : DEFAULT_CONFIG.handsTotal
-    const config = { ...DEFAULT_CONFIG, handsTotal }
+    const rated = body.kind === 'hu-rated'
+    const config = rated
+      ? { ...RATED_CONFIG }
+      : { ...DEFAULT_CONFIG, handsTotal }
     this.match = {
       v: 1,
       id: body.matchId,
@@ -223,6 +247,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
       players: [],
       handNo: 0,
       net: { 0: 0, 1: 0 },
+      ...(rated ? { adjusted: { 0: 0, 1: 0 }, adjustedThrough: 0 } : {}),
     }
     this.match.players.push(this.newPlayer(0, body.creator))
     if (body.opponent) this.match.players.push(this.newPlayer(1, body.opponent))
@@ -575,6 +600,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
 
   private async startNextHandNow() {
     const match = this.match!
+    await this.settleLuck()
     const plan = this.controller.nextHandPlan(match.handNo + 1, match.config)
     if (!plan) return this.finish('complete')
     let hand: HandState
@@ -593,6 +619,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const { commitment } = await commitDeck(plan.deck, plan.secret)
     const t = this.clock()
     match.handNo = plan.config.handNo
+    // Rated: each half of the match has its own bank; what is left of the
+    // last one does not carry over.
+    const every = match.config.bankRefillEvery
+    if (every && match.handNo > 1 && (match.handNo - 1) % every === 0)
+      for (const p of match.players) p.bankMs = match.config.bankMs
     this.hand = hand
     this.current = {
       handNo: match.handNo,
@@ -726,6 +757,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
     for (const p of hand.players)
       own[p.seat] = await revealSlots(stored.deck, secret, holeSlots[p.seat])
     if (this.recordable()) {
+      // A rated hand's record waits for its luck (settleLuck).
+      const key = match.adjusted ? heldKey : outboxKey
       const userOf = (seat: SeatId) =>
         match.players.find((p) => p.seat === seat)!.userId
       const holes = Object.fromEntries(
@@ -734,7 +767,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
           holeSlots[p.seat].map((slot) => stored.deck[slot]),
         ]),
       )
-      writes[outboxKey(match.handNo, 'hand')] = {
+      writes[key(match.handNo, 'hand')] = {
         rpc: 'record_hand',
         attempts: 0,
         body: {
@@ -764,12 +797,52 @@ export class TableDO extends DurableObject<WorkerEnv> {
       } satisfies Outbox
       // Sorts after this hand's archive call, so it is sent only once
       // Postgres has the hand: the consumer never races the archive.
-      writes[outboxKey(match.handNo, 'verify')] = {
+      writes[key(match.handNo, 'verify')] = {
         send: { matchId: match.id, handNo: match.handNo },
         attempts: 0,
       } satisfies Outbox
     }
     return { record, reveal, own }
+  }
+
+  /**
+   * Rated: adds the last finished hand's luck-adjusted net to the match
+   * total and releases its held archive calls with the luck in the record.
+   * Runs as the next hand starts and at the finish, never before a hand's
+   * showdown frames: a preflop all-in costs ≈ 0.5 s of CPU. Idempotent, and
+   * recomputed from the stored hand after a restart.
+   */
+  private async settleLuck() {
+    const match = this.match!
+    const hand = this.hand
+    if (!match.adjusted || !hand?.result) return
+    const handNo = hand.config.handNo
+    if ((match.adjustedThrough ?? 0) >= handNo) return
+    const luck = luckAdjusted(hand)
+    for (const [s, net] of Object.entries(luck.netBySeat))
+      match.adjusted[Number(s)] += net
+    match.adjustedThrough = handNo
+    const held = await this.ctx.storage.list<Outbox>({
+      prefix: heldKey(handNo, ''),
+    })
+    const writes: Record<string, unknown> = { match }
+    for (const [key, call] of held) {
+      if (!('send' in call) && call.rpc === 'record_hand')
+        (call.body as { record: HandRecordV1 }).record.luck = {
+          allInAt: luck.allInAt,
+          equity: luck.equity,
+          adjustedBySeat: luck.netBySeat,
+        }
+      writes[`outbox:${key.slice('held:'.length)}`] = call
+    }
+    this.expectArchive(writes)
+    // No await between the two: they commit together.
+    const released = held.size
+      ? this.ctx.storage.delete([...held.keys()])
+      : null
+    await this.ctx.storage.put(writes)
+    await released
+    if (held.size) void this.flushOutbox()
   }
 
   private bankOf(hand: HandState) {
@@ -891,10 +964,20 @@ export class TableDO extends DurableObject<WorkerEnv> {
     noShow?: SeatId[],
   ) {
     const match = this.match!
+    await this.settleLuck()
     match.status = 'finished'
     match.endReason = reason
     if (forfeit !== undefined) match.forfeit = forfeit
     if (noShow) match.noShow = noShow
+    // Rated: a forfeit loses whatever the chips say; a void match has no
+    // result; otherwise the luck-adjusted total and the draw band decide.
+    if (match.adjusted && !VOID.includes(reason))
+      match.outcome =
+        forfeit !== undefined
+          ? forfeit === 0
+            ? { 0: 'loss', 1: 'win' }
+            : { 0: 'win', 1: 'loss' }
+          : outcomes(match.adjusted, match.config.blinds.bb)
     this.seq++
     this.logFinish(match, reason, forfeit, noShow)
     this.setGameDeadline({ kind: 'idle', at: this.clock() + IDLE_MS })
@@ -913,12 +996,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
         t: 'match_end',
         seq: this.seq,
         matchId: match.id,
-        result: {
-          netBySeat: { ...match.net },
-          reason,
-          ...(forfeit !== undefined ? { forfeit } : {}),
-          ...(noShow ? { noShow } : {}),
-        },
+        result: this.result(),
       })
     void this.flushOutbox()
     // Free both accounts for their next table. If this is lost, the lobby
@@ -982,17 +1060,23 @@ export class TableDO extends DurableObject<WorkerEnv> {
               timeouts: Object.fromEntries(
                 match.players.map((p) => [p.seat, p.timeouts]),
               ),
-              result: {
-                netBySeat: match.net,
-                reason: match.endReason,
-                ...(match.forfeit !== undefined
-                  ? { forfeit: match.forfeit }
-                  : {}),
-                ...(match.noShow ? { noShow: match.noShow } : {}),
-              },
+              result: this.result(),
             }
           : {}),
       },
+    }
+  }
+
+  /** A finished match's result, as the seats and the archive get it. */
+  private result() {
+    const match = this.match!
+    return {
+      netBySeat: { ...match.net },
+      reason: match.endReason!,
+      ...(match.forfeit !== undefined ? { forfeit: match.forfeit } : {}),
+      ...(match.noShow ? { noShow: match.noShow } : {}),
+      ...(match.adjusted ? { adjustedBySeat: { ...match.adjusted } } : {}),
+      ...(match.outcome ? { outcomeBySeat: { ...match.outcome } } : {}),
     }
   }
 
@@ -1002,53 +1086,19 @@ export class TableDO extends DurableObject<WorkerEnv> {
    * a retry with backoff; play never waits on the archive.
    */
   async flushOutbox() {
-    if (this.flushing) return
+    if (this.flushing) {
+      this.flushAgain = true
+      return
+    }
     this.flushing = true
     try {
-      const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
-      // The most attempts among calls that failed without stopping the flush.
-      let behind = 0
-      // A parked call queues an incident report that this pass did not list.
-      let parked = false
-      // Entries parked along with a call (a hand's verification).
-      const dropped = new Set<string>()
-      for (const [key, call] of queued) {
-        if (dropped.has(key)) continue
-        const outcome: ArchiveOutcome =
-          'send' in call
-            ? { ok: await this.enqueue(call.send) }
-            : await archive(this.env, call)
-        if (outcome.ok) {
-          await this.ctx.storage.delete(key)
-          continue
-        }
-        const attempts = call.attempts + 1
-        const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
-        // An incident report never holds up the flush, so it is never parked:
-        // parking it would only lose its evidence at cleanup.
-        if (
-          !('send' in call) &&
-          call.rpc !== 'record_incident' &&
-          refused >= OUTBOX_MAX_REFUSALS
-        ) {
-          for (const k of await this.park(key, call, outcome)) dropped.add(k)
-          parked = true
-          continue
-        }
-        logEvent('outbox_retry', {
-          matchId: this.match?.id,
-          rpc: 'send' in call ? 'hand_queue' : call.rpc,
-          attempt: attempts,
-          depth: queued.size,
-        })
-        await this.ctx.storage.put(key, { ...call, attempts, refused })
-        if ('send' in call || call.rpc === 'record_incident') {
-          behind = Math.max(behind, attempts)
-          continue
-        }
-        return this.retryOutbox(attempts)
-      }
-      if (behind || parked) return this.retryOutbox(Math.max(behind, 1))
+      do {
+        this.flushAgain = false
+        // A failure has armed its own retry, which lists everything again.
+        if (!(await this.flushPass())) return
+      } while (this.flushAgain)
+      // Nothing can be queued between the check above and this line, so no
+      // call is left without a deadline; one queued later arms its own.
       if (this.deadlines.some((d) => d.kind === 'outbox')) {
         this.deadlines = this.deadlines.filter((d) => d.kind !== 'outbox')
         await this.armAlarm()
@@ -1056,6 +1106,59 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } finally {
       this.flushing = false
     }
+  }
+
+  /** One pass over the outbox. False when a failure armed a retry. */
+  private async flushPass() {
+    const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
+    // The most attempts among calls that failed without stopping the flush.
+    let behind = 0
+    // A parked call queues an incident report that this pass did not list.
+    let parked = false
+    // Entries parked along with a call (a hand's verification).
+    const dropped = new Set<string>()
+    for (const [key, call] of queued) {
+      if (dropped.has(key)) continue
+      const outcome: ArchiveOutcome =
+        'send' in call
+          ? { ok: await this.enqueue(call.send) }
+          : await archive(this.env, call)
+      if (outcome.ok) {
+        await this.ctx.storage.delete(key)
+        continue
+      }
+      const attempts = call.attempts + 1
+      const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
+      // An incident report never holds up the flush, so it is never parked:
+      // parking it would only lose its evidence at cleanup.
+      if (
+        !('send' in call) &&
+        call.rpc !== 'record_incident' &&
+        refused >= OUTBOX_MAX_REFUSALS
+      ) {
+        for (const k of await this.park(key, call, outcome)) dropped.add(k)
+        parked = true
+        continue
+      }
+      logEvent('outbox_retry', {
+        matchId: this.match?.id,
+        rpc: 'send' in call ? 'hand_queue' : call.rpc,
+        attempt: attempts,
+        depth: queued.size,
+      })
+      await this.ctx.storage.put(key, { ...call, attempts, refused })
+      if ('send' in call || call.rpc === 'record_incident') {
+        behind = Math.max(behind, attempts)
+        continue
+      }
+      await this.retryOutbox(attempts)
+      return false
+    }
+    if (behind || parked) {
+      await this.retryOutbox(Math.max(behind, 1))
+      return false
+    }
+    return true
   }
 
   /**

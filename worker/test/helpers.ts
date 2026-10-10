@@ -1,5 +1,5 @@
 import { env, SELF } from 'cloudflare:test'
-import type { HandState } from '../../src/engine/types'
+import type { HandState, PlayerAction, SeatId } from '../../src/engine/types'
 import type { ClientMsg, LobbyMsg, ServerMsg } from '../../src/shared/protocol'
 import type { LobbyDO } from '../src/lobby'
 import type { InitBody, TableDO } from '../src/table'
@@ -89,6 +89,28 @@ export const isState = (handNo: number, actions?: number) => (f: ServerMsg) =>
   (f.t === 'state' || f.t === 'welcome') &&
   f.view?.handNo === handNo &&
   (actions === undefined || f.view.actions.length === actions)
+
+/** The seat to act plays `choose(hand)`; resolves once the table applied it. */
+export async function move(
+  matchId: string,
+  seats: Record<SeatId, Client>,
+  choose: (hand: HandState) => PlayerAction,
+) {
+  const { hand } = await peek(matchId)
+  const seat = hand!.toAct!
+  const from = seats[seat].frames.length
+  seats[seat].send({
+    t: 'act',
+    reqId: `m${hand!.config.handNo}-${hand!.actions.length}`,
+    handNo: hand!.config.handNo,
+    actionIndex: hand!.actions.length,
+    action: choose(hand!),
+  })
+  await seats[seat].next(
+    isState(hand!.config.handNo, hand!.actions.length + 1),
+    from,
+  )
+}
 
 /** Moves the table's clock `ms` forward, then fires its alarm. */
 export async function elapse(matchId: string, ms: number) {

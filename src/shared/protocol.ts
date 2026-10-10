@@ -32,16 +32,24 @@ export const CLOSE_ELSEWHERE = 4409
 /** Too many frames or connections. Reconnect after a backoff of ≥ 1 s. */
 export const CLOSE_RATE_LIMITED = 4429
 
-export type MatchKind = 'hu-casual'
+export type MatchKind = 'hu-casual' | 'hu-rated'
 export type MatchConfig = {
   kind: MatchKind
   handsTotal: number
   startingStack: number
   blinds: { sb: number; bb: number }
-  /** Per-decision clock and per-match time bank, in milliseconds. */
+  /** Per-decision clock and time bank, in milliseconds. */
   decisionMs: number
   bankMs: number
+  /**
+   * The bank refills to `bankMs` every this many hands (rated: 20, so each
+   * half of the match has its own). Absent: one bank for the whole match.
+   */
+  bankRefillEvery?: number
 }
+
+/** A rated player's result: from the luck-adjusted total and the draw band. */
+export type Outcome = 'win' | 'draw' | 'loss'
 
 export type ClientMsg =
   | {
@@ -139,6 +147,15 @@ export type HandRecordV1 = {
   awards: Award[]
   netBySeat: Record<SeatId, number>
   showdown: boolean
+  /**
+   * Rated hands only (luck.ts): the all-in pot settled at equity. Archived,
+   * never in a frame; it is computed after the hand, from shown cards only.
+   */
+  luck?: {
+    allInAt: number | null
+    equity: Record<SeatId, number> | null
+    adjustedBySeat: Record<SeatId, number>
+  }
 }
 
 export type Reveal = {
@@ -154,7 +171,13 @@ export type Reveal = {
   own?: { slot: number; card: number; salt: string }[]
 }
 
-export type MatchEndReason = 'complete' | 'forfeit' | 'no_show' | 'engine_fault'
+/** `abandoned`: both players were gone past the grace (rated; void). */
+export type MatchEndReason =
+  | 'complete'
+  | 'forfeit'
+  | 'no_show'
+  | 'engine_fault'
+  | 'abandoned'
 
 export type ServerMsg = { seq: number; matchId: string } & (
   | {
@@ -184,6 +207,12 @@ export type ServerMsg = { seq: number; matchId: string } & (
         forfeit?: SeatId
         /** Seats that never connected, for a no-show. */
         noShow?: SeatId[]
+        /** Seats gone past the grace, for an abandoned match. */
+        abandoned?: SeatId[]
+        /** Rated: the luck-adjusted total per seat. */
+        adjustedBySeat?: Record<SeatId, number>
+        /** Rated and not void: each seat's win, draw or loss. */
+        outcomeBySeat?: Record<SeatId, Outcome>
       }
     }
   | { t: 'error'; code: ErrorCode; reqId?: string; message: string }

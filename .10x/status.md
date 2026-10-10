@@ -1,11 +1,32 @@
 # Project status
 
-Last updated: 2026-10-09 by SDE (Step 7 deployed; Phase 1 started; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (P1-01 database live; rated match in the table server; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
+
+## Phase 1 progress (2026-10-10)
+
+Merged and deployed, each one verified in production after its merge:
+
+- **PR #10 (`811c1e6`):** the Glicko-2 rating module (P1-11), the launch evidence, and the Q1 = B decision.
+- **PR #11 (`a9272a7`):**
+  - luck-adjusted results in the engine (P1-02);
+  - archive calls that can never succeed are parked with an incident (S7-13);
+  - the rated-match design: the ADR amendment, P1-00.
+- **PR #12 (`6d1bad4`), the rated-match archive (P1-01, database).** Production recorded `20261010010000 rated_matches` through the Supabase integration on merge, and a read-only check confirmed the final `record_match` v4 body. It also fixed a flaky address-limit test at its cause: the burst straddled a wall-clock minute window.
+
+Built on the branch, with a PR next: **the rated match in the table server (P1-01b-1).**
+
+- 40 fresh-deck hands, with the bank refilling at hand 21.
+- The luck is settled after each hand, and the archived record carries it.
+- The outcome comes from the luck-adjusted total and the ±2 bb draw band. A forfeit is a loss.
+- It also fixes a pre-existing outbox race that could strand a match's result.
+- Nobody can start a rated match yet: the lobby queue opens in P1-01b-3, after the grace rule (P1-01b-2). Then comes the UI (P1-01c).
+
+Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 
 ## Phase
 
@@ -42,7 +63,7 @@ Still yours:
 - **Growth:** 4.9 kB per hand now, 6.5 kB with grades. The 8 GB disk lasts about 3 years at 1k hands/day.
 - **New:** ticket S7-13 (Low), and questions Q6 and Q7 in tickets.
 
-**Tickets 2026-10-09 (`.10x/tickets.md`):** the remaining plan is 49 tickets: Step 7 is 11, Phase 1 is 23, Phase 2 is 15. That is 134 half-days, about 90 session-hours at the measured Phase 0 pace. The ladder's critical path is 29.7 h; earliest ladder date 2026-10-13, planning date 2026-10-19. **Open finding (Q1 in tickets):** the PM's same-pair duplicate format lets a player see the opponent's segment-2 cards by recalling or reviewing their own segment-1 hands. The user decides the format before P1-02. Step 7 is not blocked.
+**Tickets 2026-10-09 (`.10x/tickets.md`):** the remaining plan is 49 tickets: Step 7 is 11, Phase 1 is 23, Phase 2 is 15. That is 134 half-days, about 90 session-hours at the measured Phase 0 pace. The ladder's critical path is 29.7 h; earliest ladder date 2026-10-13, planning date 2026-10-19. **Q1 is answered (B, 2026-10-09):** the same-pair duplicate format would let a player see the opponent's segment-2 cards, so rated play uses fresh decks with a luck adjustment.
 
 **Security review 2026-10-09 (`.10x/reviews/2026-10-09-security-review.md`):** one High, three Medium and one Low fixed with red-then-green tests:
 
@@ -89,7 +110,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] Architect: Phase 0 system design (`.10x/decisions/architect/multiplayer-platform.md`) — engine, DOs, protocol, auth, data model, randomness/commitment, grading placement, client integration, lobby, failure modes, dev/CI, 7-step migration path, verified assumptions
 - [ ] User: answer the 5 open questions in the ADR (commitment scheme, invite-link visibility, domain; the Vercel and Cloudflare-plan questions are settled: Cloudflare hosts everything) — `.10x/tickets.md` Q3 proposes closing the first three as built (per-slot commitment, link visible, `workers.dev` until a domain)
 - [x] Staff Engineer / EM: tickets for Step 7, Phase 1 and Phase 2 with acceptance tests, critical path, lanes and metrics sources (`.10x/tickets.md`, 2026-10-09). Day-10 milestone was already reached in Step 4.
-- [ ] User: answer the 5 questions in `.10x/tickets.md` (Q1 blocks P1-00/P1-02; nothing else is blocked)
+- [ ] User: the open questions in `.10x/tickets.md` (Q1 answered B; Q2 runs on the recommendation until you say otherwise; Q3–Q7 block nothing yet)
 - [x] SDE: Step 1 — `src/engine/` + invariant, differential, redaction, commitment tests; `src/shared/protocol.ts`; `src/lib/presets.ts` (`.10x/decisions/sde/multiplayer-platform.md`). All gates green.
 - [x] SDE: Step 2 — Supabase migrations applied (`players`, matches/hands archive, `record_hand`, FK index) with PGlite RLS tests; `#lobby` sign-in (email link; Google/GitHub when enabled), username, lobby shell; bundle guard; phone header fix. All gates green.
 - [x] User: Cloudflare Workers Paid + Git-connected Worker; Supabase Pro org
@@ -118,4 +139,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
   - Growth model.
   - Phase 1 schema proposed, not applied.
 - [ ] User: Q6 (grade visibility vs the Terms) before P1-09; Q7 (`hands_private` retention) whenever you like
-- [ ] SDE: S7-13 (park an archive call that can never succeed; Low)
+- [x] SDE: S7-13 (park an archive call that can never succeed; PR #11)
+- [x] SDE: P1-11 Glicko-2 (PR #10), P1-02 luck adjustment (PR #11), P1-00 design (PR #11), P1-01 database (PR #12, live)
+- [x] SDE: P1-01b-1, the rated match in `TableDO` (PR next)
+- [ ] SDE: P1-01b-2 grace and both-gone void; P1-01b-3 rated queue and email gate; P1-01c UI

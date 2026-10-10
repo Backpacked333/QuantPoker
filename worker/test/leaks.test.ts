@@ -10,8 +10,9 @@ import { legalActions } from '../../src/engine/hand'
 import { seededDeck } from '../../src/engine/testing'
 import type { ServerMsg } from '../../src/shared/protocol'
 import type { TableController } from '../src/controller'
+import { RATED_CONFIG } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
-import type { TableDO } from '../src/table'
+import type { InitBody, TableDO } from '../src/table'
 import {
   connect,
   createTable,
@@ -19,6 +20,7 @@ import {
   elapse,
   freezeClock,
   isState,
+  move,
   peek,
   stub,
 } from './helpers'
@@ -95,6 +97,17 @@ const RECORD_KEYS = [
   'netBySeat',
   'showdown',
 ]
+// Rated matches add the luck-adjusted totals and outcomes; the per-hand
+// luck (equities) stays in the archive and never reaches a frame.
+const RESULT_KEYS = [
+  'netBySeat',
+  'reason',
+  'forfeit?',
+  'noShow?',
+  'abandoned?',
+  'adjustedBySeat?',
+  'outcomeBySeat?',
+]
 /** Keys that would mean a hidden card or a secret is on the wire. */
 const FORBIDDEN_KEYS = /^(deck|secret|holes|holesByUser|salts?Secret|hand)$/
 
@@ -138,6 +151,7 @@ function checkFrame(f: ServerMsg) {
     }
   }
   if (f.t === 'hand_end') expectKeys(f.record, RECORD_KEYS, 'hand_end.record')
+  if (f.t === 'match_end') expectKeys(f.result, RESULT_KEYS, 'match_end.result')
   if (f.t === 'reveal')
     for (const s of f.slots) expectKeys(s, ['slot', 'card', 'salt'], 'slot')
 }
@@ -283,6 +297,69 @@ describe('every frame a seat receives', () => {
     const logs = logged.join('\n')
     expect(logs).not.toContain(DEV_SECRET)
     expect(logs).not.toMatch(/bearer\.|eyJ[\w-]{10,}/)
+  })
+})
+
+describe('every frame of a rated match', () => {
+  it('carries only allowed keys, through an all-in showdown and a forfeit', async () => {
+    const matchId = crypto.randomUUID()
+    const body: InitBody = {
+      matchId,
+      creator: { userId: 'alice', username: 'alice' },
+      opponent: { userId: 'bob', username: 'bob' },
+      kind: 'hu-rated',
+    }
+    await stub(matchId).fetch('https://table/init', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+    await freezeClock(matchId)
+    const alice = await connect(matchId, 'alice')
+    const bob = await connect(matchId, 'bob')
+    const clients: Record<number, Client> = { 0: alice, 1: bob }
+    await alice.next(isState(1))
+    await bob.next(isState(1))
+    const passive = (hand: Parameters<typeof legalActions>[0]) =>
+      legalActions(hand).canCheck
+        ? ({ type: 'check' } as const)
+        : ({ type: 'call' } as const)
+    // Hand 1: all in on the flop, settled at equity after the showdown.
+    await move(matchId, clients, passive)
+    await move(matchId, clients, passive)
+    await move(matchId, clients, (hand) => ({
+      type: 'raise',
+      to: legalActions(hand).maxRaiseTo,
+    }))
+    await move(matchId, clients, passive)
+    await alice.next((f) => f.t === 'reveal' && f.handNo === 1)
+    // Hands 2 to 4: Bob times out three times in a row and forfeits.
+    const away = RATED_CONFIG.decisionMs + RATED_CONFIG.bankMs
+    await elapse(matchId, NEXT_HAND_MS)
+    await alice.next(isState(2))
+    await elapse(matchId, away)
+    await elapse(matchId, NEXT_HAND_MS)
+    await alice.next(isState(3))
+    await move(matchId, clients, () => ({ type: 'raise', to: 60 }))
+    await elapse(matchId, away)
+    await elapse(matchId, NEXT_HAND_MS)
+    await alice.next(isState(4))
+    await elapse(matchId, away)
+    await alice.next((f) => f.t === 'match_end')
+    await bob.next((f) => f.t === 'match_end')
+
+    const all = [...alice.frames, ...bob.frames]
+    for (const f of all) checkFrame(f)
+    const end = all.find((f) => f.t === 'match_end')
+    expect(end?.t === 'match_end' && Object.keys(end.result).sort()).toEqual([
+      'adjustedBySeat',
+      'forfeit',
+      'netBySeat',
+      'outcomeBySeat',
+      'reason',
+    ])
+    expect(all.map((f) => JSON.stringify(f)).join('\n')).not.toMatch(
+      /"(luck|equity|allInAt)"/,
+    )
   })
 })
 

@@ -1,6 +1,6 @@
 # SDE — index
 
-Last updated: 2026-10-09
+Last updated: 2026-10-10
 
 ## Active features
 
@@ -8,7 +8,7 @@ Last updated: 2026-10-09
 | --------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `multiplayer-platform`      | Phase 0 per the architect's ADR, 7 steps                                                               | Steps 1–7 **done**; Step 7 **deployed** 2026-10-09 (`3cc9bd0`, launch evidence in `.10x/reviews/2026-10-09-launch-verification.md`); S7-11 closes after U-4 |
 | `rating-and-leaderboard`    | Phase 1 rating model, ladder and profile (P1-11…P1-16)                                                 | P1-11 **done** 2026-10-09: Glicko-2 pure module, Glickman example reproduced, properties over 10k sequences                                                 |
-| `heads-up-duplicate-ladder` | Rated heads-up match: fresh decks with a luck adjustment (Q1 = B), lifecycle, end screen (P1-00…P1-04) | P1-02 engine module **done** 2026-10-09 (`src/engine/luck.ts`); table wiring with P1-01                                                                     |
+| `heads-up-duplicate-ladder` | Rated heads-up match: fresh decks with a luck adjustment (Q1 = B), lifecycle, end screen (P1-00…P1-04) | P1-02 engine module **done** 2026-10-09; P1-01 database **live** 2026-10-10 (PR #12) and table server **done** (P1-01b-1); grace, rated queue and UI next   |
 
 ## Cross-cutting notes
 
@@ -29,3 +29,5 @@ Last updated: 2026-10-09
 - **Make the sink the test.** Logging rules are only real if a test captures every console line of a full match (and of each failure path) and greps it for card, deck, secret and token shapes; the first run found a crash path nobody had logged before.
 - **Chaos with processes, not mocks.** SIGKILL a client process (no close frame), SIGSTOP the runtime past a deadline, SIGKILL the whole dev server's process group and restart on the same state: each exercises a path the unit harness cannot. Kill exact pids or process groups; `pkill -f` matches its own shell.
 - **A smoke must prove it can fail.** Disable redaction once and watch it report leaks; cut a CPU budget to 50 ms and watch the bench fail.
+- **A busy guard must not drop work.** `if (flushing) return` lost a call queued mid-pass, and the pass then removed the deadline that would have retried it. Record the request and run the pass again instead.
+- **Rate limiters count in wall-clock windows.** A burst test that straddles a window boundary resets halfway. Start the burst in a fresh window, and reproduce by starting 300 ms before a boundary.

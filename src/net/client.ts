@@ -12,7 +12,6 @@ import {
 import type {
   ErrorCode,
   HandRecordV1,
-  MatchEndReason,
   MatchInfo,
   Reveal,
   SeatView,
@@ -51,11 +50,7 @@ export type TableState = {
   /** The move sent and not yet acknowledged. */
   pending: string | null
   error: { code: ErrorCode; message: string } | null
-  ended: {
-    netBySeat: Record<SeatId, number>
-    reason: MatchEndReason
-    forfeit?: SeatId
-  } | null
+  ended: Extract<ServerMsg, { t: 'match_end' }>['result'] | null
   /** The table this account is already playing at, when refused here. */
   elsewhere: string | null
   /** Server time minus this device's time, from the latest snapshot. */

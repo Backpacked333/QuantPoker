@@ -14,12 +14,12 @@ import { useRunout } from '../state/runout'
 import { inviteLink } from './api'
 import type { Identity } from './api'
 import type { TableState } from './client'
+import { matchOverText } from './matchResult'
 import { ReviewLive } from './ReviewLive'
 import { TurnClock } from './TurnClock'
 import { useTable } from './useTable'
 
 const noop = () => {}
-const chips = (n: number) => Math.round(n).toLocaleString('en-US')
 
 export function LiveTable({
   matchId,
@@ -288,8 +288,11 @@ function LiveHand({
   }
 
   const ended = state.ended
+  // The big blind of the match's hands, for a rated total in bb.
+  const bb = Object.values(state.hands).find((h) => h.record)?.record?.config
+    .blinds.bb
   const next = ended
-    ? `Match over: ${ended.netBySeat[view.you] >= 0 ? 'you won' : 'you lost'} ${chips(Math.abs(ended.netBySeat[view.you] ?? 0))} chips.`
+    ? matchOverText(ended, view.you, bb)
     : view.handNo >= (state.table?.handsTotal ?? Infinity)
       ? 'That was the last hand.'
       : 'Next hand in a few seconds.'
@@ -347,7 +350,9 @@ function LiveHand({
               ? ended.forfeit === view.you
                 ? 'Match over: you ran out of time three times in a row.'
                 : `Match over: ${opponent} ran out of time three times in a row.`
-              : 'Match over.'}
+              : ended.reason === 'abandoned'
+                ? 'Match over: both players were away, so it is void.'
+                : 'Match over.'}
           </strong>{' '}
           <a href="#lobby">Back to the lobby</a>
         </div>

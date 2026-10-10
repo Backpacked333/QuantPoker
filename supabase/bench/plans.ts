@@ -100,9 +100,9 @@ async function generate(db: PGlite, n: number) {
 
     insert into public.rating_history (user_id, format, kind, match_id, outcome,
       before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma,
-      model_version, created_at)
+      model_version, created_at, played_at)
     select mp.user_id, 'hu-duplicate', 'match', mp.match_id, mp.outcome,
-           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at
+           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at, p.at
     from public.match_players mp join pairs p on p.id = mp.match_id
     where mp.outcome is not null;
 
@@ -300,6 +300,34 @@ async function queries(db: PGlite) {
        where r.format = 'hu-duplicate' and r.rd < 100 and r.matches >= 20
          and r.last_match_at >= now() - interval '30 days'
          and not exists (select 1 from public.sanctions s where s.user_id = r.user_id and s.kind = 'ladder_removal' and s.lifted_at is null)
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
+      'Q4e',
+      'Ladder page 1 inlined as shipped (P1-14, before P1-18 adds sanctions)',
+      `select r.user_id, p.username, r.rating, r.rd, r.matches
+       from public.ratings r join public.players p on p.user_id = r.user_id
+       where r.format = 'hu-duplicate' and r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
+      'Q4f',
+      'Ladder this month inlined (the plan inside ladder_month())',
+      `with month as (
+         select h.user_id, count(*)::int as matches
+         from public.rating_history h
+         where h.format = 'hu-duplicate' and h.kind = 'match'
+           and h.played_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+         group by h.user_id)
+       select r.user_id, r.rating, mo.matches
+       from month mo join public.ratings r on r.user_id = mo.user_id and r.format = 'hu-duplicate'
+       where r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
          and 10 * r.abandoned < r.matches
        order by r.rating desc, r.user_id limit 50`,
       [],

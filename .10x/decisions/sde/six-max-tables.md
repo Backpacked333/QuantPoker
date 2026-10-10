@@ -56,3 +56,17 @@ The engine was already correct, so each case was shown failing against a deliber
 | A short all-in call counted as a raise                       | `hand.ts:326`             | **does not reopen the betting** only                                  |
 
 The review broke the engine nine more ways. Among them: the big blind's option, the refund of uncalled chips, and a short stack allowed to raise. At least one crafted case caught each break.
+
+## P2-02a · Explicit blind seats and the dead button in the engine (2026-10-10)
+
+PR-04. `HandConfig` takes optional `sb` (a seat or `null`) and `bb`. With them, the button may be a seat with no player, a dead small blind posts nothing, and `validateConfig` refuses every placement the ADR lists. Review added one more refusal: with three or more players, the button may not sit between a live small blind and the big blind, or less than two seats before the big blind when the small blind is dead. `positionNames` takes the blinds too. Configs without `sb`/`bb` archive byte-identically, which a hand-written JSON test pins.
+
+The random walk now deals every 10th hand with explicit blinds, placed from the ADR's geometry rather than the engine's. That shifts the seeded stream, so the P2-01 soak was re-run on this branch with `ENGINE_SEED=20261010 ENGINE_SOAK=1`:
+
+| Players | Hands   | Failures | Showdown | Side pot |
+| ------- | ------- | -------- | -------- | -------- |
+| 2       | 100,000 | 0        | 42.0%    | 0.0%     |
+| 3       | 100,000 | 0        | 76.7%    | 45.8%    |
+| 4       | 100,000 | 0        | 91.8%    | 77.1%    |
+| 5       | 100,000 | 0        | 97.4%    | 91.4%    |
+| 6       | 100,000 | 0        | 99.2%    | 97.0%    |

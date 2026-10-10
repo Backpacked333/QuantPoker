@@ -6,11 +6,14 @@
 // that, and the first seat after the big blind opens. After the flop the first
 // active seat clockwise from the button acts first.
 //
-// Button rule for Phase 2 (not needed heads-up): forward-moving button, dead
-// small blind. The button advances to the next seated player every hand; if
-// the player who should post the small blind has left, the small blind is
-// dead and the big blind is posted by the next seated player. Nobody posts two
-// blinds.
+// That describes the first hand at a table. Later six-casual hands use the
+// standard dead button (ADR amendment 2026-10-10, Phase 2): the big blind
+// moves to the next seat with a player dealt in, the small blind to the seat
+// that had the big blind (dead if no one there is dealt in, or if that player
+// just sat down), and the button to the seat that had the small blind when it
+// lies between the new big and small blinds, else just before the new small
+// blind. Positions are seat numbers, so the button may have no player. Nobody
+// posts the big blind twice in a row or skips it when others leave.
 import type { SeatId } from './types'
 
 /** The seat `steps` places clockwise from `from` among `seats` (ascending). */

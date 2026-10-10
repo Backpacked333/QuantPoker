@@ -13,6 +13,8 @@ export type LogEvent =
   | 'no_show'
   | 'limit_hit'
   | 'outbox_retry'
+  /** An archive call Postgres kept refusing for its data, set aside. */
+  | 'outbox_parked'
   | 'verified'
   | 'verify_failed'
   | 'dlq'
@@ -55,7 +57,12 @@ export const LOG_KEYS: string[] = [
   'detail',
 ] satisfies ('evt' | keyof LogFields)[]
 
-const LOUD = new Set<LogEvent>(['verify_failed', 'dlq', 'error'])
+const LOUD = new Set<LogEvent>([
+  'verify_failed',
+  'dlq',
+  'outbox_parked',
+  'error',
+])
 
 export function logEvent(evt: LogEvent, fields: LogFields = {}) {
   const line: Record<string, unknown> = { evt }

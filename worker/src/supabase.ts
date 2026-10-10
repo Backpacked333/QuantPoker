@@ -35,8 +35,30 @@ export async function rpc<T = unknown>(
   return text ? (JSON.parse(text) as T) : null
 }
 
-/** True when Postgres accepted the call. Never throws. */
-export async function archive(env: WorkerEnv, call: ArchiveCall) {
+/** What became of an archive call: accepted, or refused and why. */
+export type ArchiveOutcome = { ok: boolean; status?: number; code?: string }
+
+/**
+ * True when Postgres refused a call for its data: an error of class 22 (bad
+ * data) or 23 (a broken constraint), which no retry can change. An outage
+ * (5xx, network), a missing or wrong key (401, 403) or a missing function
+ * can all be fixed, and then every queued call must still go through, so
+ * none of those counts.
+ */
+export const refusedForData = (o: ArchiveOutcome) =>
+  !o.ok &&
+  o.status !== undefined &&
+  o.status >= 400 &&
+  o.status < 500 &&
+  o.status !== 401 &&
+  o.status !== 403 &&
+  /^2[23]/.test(o.code ?? '')
+
+/** Sends one archive call. Never throws. */
+export async function archive(
+  env: WorkerEnv,
+  call: ArchiveCall,
+): Promise<ArchiveOutcome> {
   try {
     const response = await fetch(
       `${env.SUPABASE_URL}/rest/v1/rpc/${call.rpc}`,
@@ -51,23 +73,24 @@ export async function archive(env: WorkerEnv, call: ArchiveCall) {
         body: JSON.stringify({ p: call.body }),
       },
     )
+    if (response.ok) return { ok: true }
     // Only the status and Postgres's error code: an error message can quote
     // the failing row, and a hand's row holds its deck.
-    if (!response.ok)
-      logEvent('error', {
-        reason: 'archive',
-        rpc: call.rpc,
-        code: response.status,
-        detail: await errorCode(response),
-      })
-    return response.ok
+    const code = await errorCode(response)
+    logEvent('error', {
+      reason: 'archive',
+      rpc: call.rpc,
+      code: response.status,
+      detail: code,
+    })
+    return { ok: false, status: response.status, code }
   } catch (error) {
     logEvent('error', {
       reason: 'archive',
       rpc: call.rpc,
       detail: describeError(error),
     })
-    return false
+    return { ok: false }
   }
 }
 

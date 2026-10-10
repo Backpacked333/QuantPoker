@@ -51,8 +51,8 @@ import type { WorkerEnv } from './env'
 import { FrameBudget, ILLEGAL_PER_HAND } from './limits'
 import { lobbyStub } from './lobby'
 import { describeError, logEvent } from './log'
-import { archive } from './supabase'
-import type { ArchiveCall } from './supabase'
+import { archive, refusedForData } from './supabase'
+import type { ArchiveCall, ArchiveOutcome } from './supabase'
 import type { HandMessage } from './verify'
 
 export const DEFAULT_CONFIG: MatchConfig = {
@@ -65,6 +65,11 @@ export const DEFAULT_CONFIG: MatchConfig = {
 }
 /** Pause after a hand so both players see the result. */
 export const NEXT_HAND_MS = 3000
+/**
+ * Refusals for bad data after which an archive call is set aside (about half
+ * an hour of retries; S7-13). Outages and key errors never count.
+ */
+export const OUTBOX_MAX_REFUSALS = 12
 /** Fallback retry for queued archive calls if the immediate send is lost. */
 export const OUTBOX_SAFETY_MS = 30_000
 
@@ -117,6 +122,8 @@ type Ack = { reqId: string; seq: number }
  */
 export type Outbox = (ArchiveCall | { send: HandMessage }) & {
   attempts: number
+  /** Of those attempts, how many Postgres refused for the call's data. */
+  refused?: number
 }
 export type InitBody = {
   matchId: string
@@ -1001,30 +1008,38 @@ export class TableDO extends DurableObject<WorkerEnv> {
       const queued = await this.ctx.storage.list<Outbox>({ prefix: 'outbox:' })
       // The most attempts among calls that failed without stopping the flush.
       let behind = 0
+      // A parked call queues an incident report that this pass did not list.
+      let parked = false
       for (const [key, call] of queued) {
-        const done =
+        const outcome: ArchiveOutcome =
           'send' in call
-            ? await this.enqueue(call.send)
+            ? { ok: await this.enqueue(call.send) }
             : await archive(this.env, call)
-        if (done) {
+        if (outcome.ok) {
           await this.ctx.storage.delete(key)
           continue
         }
         const attempts = call.attempts + 1
+        const refused = (call.refused ?? 0) + (refusedForData(outcome) ? 1 : 0)
+        if (!('send' in call) && refused >= OUTBOX_MAX_REFUSALS) {
+          await this.park(key, call, outcome)
+          parked = true
+          continue
+        }
         logEvent('outbox_retry', {
           matchId: this.match?.id,
           rpc: 'send' in call ? 'hand_queue' : call.rpc,
           attempt: attempts,
           depth: queued.size,
         })
-        await this.ctx.storage.put(key, { ...call, attempts })
+        await this.ctx.storage.put(key, { ...call, attempts, refused })
         if ('send' in call || call.rpc === 'record_incident') {
           behind = Math.max(behind, attempts)
           continue
         }
         return this.retryOutbox(attempts)
       }
-      if (behind) return this.retryOutbox(behind)
+      if (behind || parked) return this.retryOutbox(Math.max(behind, 1))
       if (this.deadlines.some((d) => d.kind === 'outbox')) {
         this.deadlines = this.deadlines.filter((d) => d.kind !== 'outbox')
         await this.armAlarm()
@@ -1032,6 +1047,48 @@ export class TableDO extends DurableObject<WorkerEnv> {
     } finally {
       this.flushing = false
     }
+  }
+
+  /**
+   * Sets aside a call Postgres keeps refusing for its data, so the calls
+   * behind it can go through, and reports it once as an incident. The
+   * incident carries the call itself (incidents are for the service role
+   * only, like the deck), so it can be replayed once the cause is fixed.
+   */
+  private async park(
+    key: string,
+    call: ArchiveCall & { attempts: number },
+    outcome: ArchiveOutcome,
+  ) {
+    const rest = key.slice('outbox:'.length)
+    await this.ctx.storage.put(`parked:${rest}`, call)
+    await this.ctx.storage.delete(key)
+    logEvent('outbox_parked', {
+      matchId: this.match?.id,
+      rpc: call.rpc,
+      code: outcome.status,
+      detail: outcome.code,
+    })
+    if (call.rpc === 'record_incident') return
+    const handNo = (call.body as { handNo?: unknown }).handNo
+    await this.ctx.storage.put(`${key}:parked`, {
+      rpc: 'record_incident',
+      attempts: 0,
+      body: {
+        matchId: this.match!.id,
+        handNo:
+          call.rpc === 'record_hand' && typeof handNo === 'number'
+            ? handNo
+            : null,
+        kind: 'archive_parked',
+        detail: {
+          rpc: call.rpc,
+          status: outcome.status,
+          code: outcome.code,
+          body: call.body,
+        },
+      },
+    } satisfies Outbox)
   }
 
   private async retryOutbox(attempts: number) {

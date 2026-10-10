@@ -42,6 +42,12 @@ const NAMES: Record<string, string> = { [ALICE]: 'alice', [BOB]: 'bob' }
 type Call = { rpc: string; p: Record<string, unknown> }
 let calls: Call[] = []
 let failing = false
+/** Answers one rpc instead of the default 204 (a refusal or an outage). */
+let respond:
+  | ((rpc: string, p: Record<string, unknown>) => Response | null)
+  | null = null
+/** Every rpc attempt, answered or not. */
+let tried: string[] = []
 /** Every request the Worker made, wherever it went. */
 let sent: { url: string; headers: Headers; body: string }[] = []
 
@@ -69,10 +75,12 @@ beforeAll(() => {
         // verify.test.ts. Here every hand reads as verified already.
         if (url.pathname.endsWith('/audit_hand'))
           return Response.json({ verified: true })
-        calls.push({
-          rpc: url.pathname.slice('/rest/v1/rpc/'.length),
-          p: JSON.parse(String(init!.body)).p,
-        })
+        const rpc = url.pathname.slice('/rest/v1/rpc/'.length)
+        const p = JSON.parse(String(init!.body)).p
+        tried.push(rpc)
+        const custom = respond?.(rpc, p)
+        if (custom) return custom
+        calls.push({ rpc, p })
         return new Response(null, { status: 204 })
       }
       return new Response('not stubbed', { status: 599 })
@@ -83,6 +91,8 @@ afterAll(() => vi.unstubAllGlobals())
 beforeEach(() => {
   calls = []
   sent = []
+  tried = []
+  respond = null
   failing = false
   forgetUsernames()
 })
@@ -314,6 +324,80 @@ describe('the archive', () => {
     await until(() => calls.length === 3)
     await elapse(matchId, IDLE_MS)
     expect(await storageOf(matchId)).toEqual({ keys: [], alarm: null })
+  })
+
+  it('parks a call refused 12 times for its data, reports it once, and sends what follows', async () => {
+    // A hand that can never be stored (a seat's account was deleted, say):
+    // Postgres refuses it with a foreign-key violation every time.
+    respond = (rpc) =>
+      rpc === 'record_hand'
+        ? Response.json(
+            { code: '23503', message: 'violates foreign key constraint' },
+            { status: 409 },
+          )
+        : null
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    await elapse(matchId, NEXT_HAND_MS)
+    await seats[0].next((f) => f.t === 'match_end')
+    const handTries = () => tried.filter((r) => r === 'record_hand').length
+    for (let i = 0; i < 20 && handTries() < 12; i++) {
+      const before = handTries()
+      await elapse(matchId, 300_000)
+      await until(() => handTries() > before)
+    }
+    expect(handTries()).toBe(12)
+    // Behind it, the match result goes through, then the incident.
+    await elapse(matchId, 300_000)
+    await until(() => calls.some((c) => c.rpc === 'record_incident'))
+    expect(calls.map((c) => c.rpc)).toEqual([
+      'record_match',
+      'record_match',
+      'record_incident',
+    ])
+    const incident = calls.find((c) => c.rpc === 'record_incident')!.p
+    expect(incident).toMatchObject({
+      matchId,
+      handNo: 1,
+      kind: 'archive_parked',
+      detail: { rpc: 'record_hand', status: 409, code: '23503' },
+    })
+    // The parked hand rides in the incident (service role only), so it
+    // can be replayed once the cause is fixed.
+    expect((incident.detail as { body: { handNo: number } }).body.handNo).toBe(
+      1,
+    )
+    expect(handTries()).toBe(12)
+    expect(await outbox(matchId)).toEqual([])
+  })
+
+  it('never parks a call that failed for an outage, a key or a missing function', async () => {
+    const answers = [
+      () => new Response('down', { status: 503 }),
+      () => new Response('no key', { status: 401 }),
+      () => new Response('wrong key', { status: 403 }),
+      () => Response.json({ code: 'PGRST202' }, { status: 404 }),
+      () => Response.json({ code: '42883' }, { status: 400 }),
+    ]
+    respond = (rpc) =>
+      rpc === 'record_match'
+        ? answers[
+            tried.filter((r) => r === 'record_match').length % answers.length
+          ]()
+        : null
+    const { matchId, seats } = await table(1)
+    await foldHand(matchId, seats)
+    const matchTries = () => tried.filter((r) => r === 'record_match').length
+    for (let i = 0; i < 20 && matchTries() < 15; i++) {
+      const before = matchTries()
+      await elapse(matchId, 300_000)
+      await until(() => matchTries() > before)
+    }
+    expect(matchTries()).toBe(15)
+    expect(calls).toEqual([])
+    const queued = await outbox(matchId)
+    expect(queued[0][0]).toBe('outbox:0000:match')
+    expect(queued[0][1].attempts).toBe(15)
   })
 
   it('archives nothing for local dev accounts', async () => {

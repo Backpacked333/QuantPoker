@@ -169,7 +169,7 @@ Order on the worker lane: S7-01 → S7-02 → S7-03 → S7-04 → S7-05. S7-06, 
 | S7-10  | Done. Report contact (U-6): the interim wording stays ("keep them for the report form that comes with rated play"); an address can replace it in `src/info/contact.ts`                                                                                        |
 | S7-11  | Deployed 2026-10-09 (`3cc9bd0`). Verified: deploy matches, queues, endpoints, Origin 403. Open until U-4: ES256 token, an archived match, disjoint `hand_holes`, `verified` hands; smoke p95 waits on Q4                                                      |
 | S7-12  | Done                                                                                                                                                                                                                                                          |
-| S7-13  | Open (new, DBA review DB-4): park an archive call that can never succeed                                                                                                                                                                                      |
+| S7-13  | Done 2026-10-10: class 22/23 refusals park after 12 tries with an `archive_parked` incident carrying the call; outages, 401/403 and missing functions never park                                                                                              |
 
 ### S7-01 · Finished tables clean up after themselves
 

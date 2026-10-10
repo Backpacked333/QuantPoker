@@ -88,18 +88,21 @@ async function generate(db: PGlite, n: number) {
     where mp.abandoned;
 
     insert into public.ratings (user_id, format, rating, rd, sigma, matches, wins, draws,
-      abandoned, accuracy, graded, last_match_at, version)
+      abandoned, last_match_at, version)
     select user_id, 'hu-duplicate', 1200 + random() * 600, 40 + random() * 310, 0.06,
            m, floor(m * 0.45)::int, floor(m * 0.1)::int,
-           floor(m * random() ^ 2 * 0.25)::int, 60 + random() * 40, least(m * 20, 500),
+           floor(m * random() ^ 2 * 0.25)::int,
            now() - random() * interval '60 days', 1
     from (select user_id, floor(random() * 200)::int as m from u) s;
 
+    insert into public.accuracy (user_id, format, accuracy, graded)
+    select user_id, 'hu-duplicate', 60 + random() * 40, 500 from u;
+
     insert into public.rating_history (user_id, format, kind, match_id, outcome,
       before_rating, before_rd, before_sigma, after_rating, after_rd, after_sigma,
-      model_version, created_at)
+      model_version, created_at, played_at)
     select mp.user_id, 'hu-duplicate', 'match', mp.match_id, mp.outcome,
-           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at
+           1500, 120, 0.06, 1500 + (random() - 0.5) * 30, 118, 0.06, 'glicko2.v1', p.at, p.at
     from public.match_players mp join pairs p on p.id = mp.match_id
     where mp.outcome is not null;
 
@@ -302,6 +305,34 @@ async function queries(db: PGlite) {
       [],
     ],
     [
+      'Q4e',
+      'Ladder page 1 inlined as shipped (P1-14, before P1-18 adds sanctions)',
+      `select r.user_id, p.username, r.rating, r.rd, r.matches
+       from public.ratings r join public.players p on p.user_id = r.user_id
+       where r.format = 'hu-duplicate' and r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
+      'Q4f',
+      'Ladder this month inlined (the plan inside ladder_month())',
+      `with month as (
+         select h.user_id, count(*)::int as matches
+         from public.rating_history h
+         where h.format = 'hu-duplicate' and h.kind = 'match'
+           and h.played_at >= date_trunc('month', now() at time zone 'utc') at time zone 'utc'
+         group by h.user_id)
+       select r.user_id, r.rating, mo.matches
+       from month mo join public.ratings r on r.user_id = mo.user_id and r.format = 'hu-duplicate'
+       where r.rd < 100 and r.matches >= 20
+         and r.last_match_at >= now() - interval '30 days'
+         and 10 * r.abandoned < r.matches
+       order by r.rating desc, r.user_id limit 50`,
+      [],
+    ],
+    [
       'Q5',
       'Hands of a match, in order',
       `select id, hand_no, record from public.hands where match_id = $1 order by hand_no`,
@@ -357,12 +388,12 @@ async function queries(db: PGlite) {
     [
       'Q9',
       'Accuracy recompute: latest 500 graded decisions (at match end, not per view)',
-      `select * from public.player_accuracy($1)`,
+      `select * from private.player_accuracy($1)`,
       [graded],
     ],
     [
       'Q9b',
-      'Accuracy inlined (the plan inside player_accuracy())',
+      'Accuracy inlined (the plan inside private.player_accuracy())',
       `select avg(accuracy)::real from (
          select g.accuracy from public.hand_grades g
          join public.hands h on h.id = g.hand_id
@@ -497,13 +528,16 @@ async function selfChecks(db: PGlite) {
       `insert into public.matches (id, kind, status, config) values (gen_random_uuid(), 'hu-rated', $1, '{}') returning id`,
       [status],
     )
+    // A finished rated match carries each seat's outcome (record_match v4),
+    // which apply_rating checks the payload against.
+    const done = status === 'finished'
     await db.query(
-      `insert into public.match_players (match_id, user_id, seat) values ($1, $2, 0), ($1, $3, 1)`,
-      [id, a, b],
+      `insert into public.match_players (match_id, user_id, seat, outcome) values ($1, $2, 0, $4), ($1, $3, 1, $5)`,
+      [id, a, b, done ? 'win' : null, done ? 'loss' : null],
     )
     await db.query(
-      `insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record)
-       values ($1::text || ':1', $1::uuid, 1, 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}')`,
+      `insert into public.hands (id, match_id, hand_no, segment, button, commitment, leaves, reveal, record, verified)
+       values ($1::text || ':1', $1::uuid, 1, 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true)`,
       [id],
     )
     return id
@@ -532,7 +566,6 @@ async function selfChecks(db: PGlite) {
       {
         userId: b,
         outcome: 'loss',
-        abandoned: true,
         version: await version(b),
         rating: 1480,
         rd: 90,
@@ -547,7 +580,7 @@ async function selfChecks(db: PGlite) {
     )
 
   await check(
-    'apply_rating twice rates the match once, counting win and abandonment once',
+    'apply_rating twice rates the match once, counting the win once (abandonment is counted by record_match, not here)',
     async () => {
       const [a0, b0] = [await counters(a), await counters(b)]
       const p = await payload()
@@ -562,7 +595,7 @@ async function selfChecks(db: PGlite) {
         (n === 2 &&
           a1.matches === a0.matches + 1 &&
           a1.wins === a0.wins + 1 &&
-          b1.abandoned === b0.abandoned + 1 &&
+          b1.abandoned === b0.abandoned &&
           b1.wins === b0.wins) ||
         `history ${n}; a ${JSON.stringify(a0)} → ${JSON.stringify(a1)}; b ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`
       )
@@ -846,7 +879,7 @@ async function selfChecks(db: PGlite) {
     },
   )
   await check(
-    'grades: nobody reads them while the match is playing, everyone after (R-15); accuracy counts finished matches',
+    'grades: nobody reads them while the match is playing; after it its two players do, anon never (Q6); accuracy counts finished matches',
     async () => {
       const live = await newMatch('playing')
       await db.query(`select public.record_grades($1::jsonb)`, [
@@ -868,13 +901,13 @@ async function selfChecks(db: PGlite) {
       ])
       const sql = `select grade from public.hand_grades where hand_id = '${live}:1'`
       const during = [
-        (await as('anon', sql)).length,
+        await refused('anon', sql),
         (await as('authenticated', sql, a)).length,
         (await as('authenticated', sql, b)).length,
       ]
       const accDuring = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.player_accuracy($1)`,
+          `select accuracy from private.player_accuracy($1)`,
           [a],
         )
       ).accuracy
@@ -882,22 +915,22 @@ async function selfChecks(db: PGlite) {
         `update public.matches set status = 'finished' where id = $1`,
         [live],
       )
-      // record_match v4 refreshes both players at the finish:
+      // The finish trigger (P1-10) has refreshed both players; again is harmless:
       await db.query(`select private.refresh_accuracy($1, 'hu-duplicate')`, [a])
       const after = [
-        (await as('anon', sql)).length,
+        await refused('anon', sql),
         (await as('authenticated', sql, a)).length,
         (await as('authenticated', sql, b)).length,
       ]
       const stored = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.ratings where user_id = $1 and format = 'hu-duplicate'`,
+          `select accuracy from public.accuracy where user_id = $1 and format = 'hu-duplicate'`,
           [a],
         )
       ).accuracy
       const accAfter = (
         await one<{ accuracy: number }>(
-          `select accuracy from public.player_accuracy($1)`,
+          `select accuracy from private.player_accuracy($1)`,
           [a],
         )
       ).accuracy
@@ -924,8 +957,8 @@ async function selfChecks(db: PGlite) {
         [`${live}:1`],
       )
       return (
-        (during.every((n) => n === 0) &&
-          after.every((n) => n === 1) &&
+        (during.join() === 'true,0,0' &&
+          after.join() === 'true,1,1' &&
           accDuring !== accAfter &&
           Math.abs(stored - accAfter) < 1e-3 &&
           grade === 'blunder') ||

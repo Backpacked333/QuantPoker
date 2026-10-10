@@ -208,3 +208,153 @@
 .live-review-streets small {
   color: var(--text-2);
 }
+
+/* Rated play (P1-10): accuracy, grade distribution, luck versus skill. */
+.live-accuracy {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+.live-accuracy h2,
+.live-accuracy h3 {
+  margin: 0;
+}
+.live-accuracy h3 {
+  font-size: 15px;
+}
+.live-accuracy-tile .live-accuracy-empty {
+  font-size: 20px;
+}
+.live-accuracy-luck {
+  display: grid;
+  gap: 8px;
+}
+
+/* The ladder (P1-14). The table scrolls inside its own region on a phone,
+   so the page never scrolls sideways. */
+.live-ladder {
+  display: grid;
+  gap: 12px;
+}
+.live-ladder h2 {
+  margin: 0;
+}
+.live-ladder-views {
+  display: flex;
+  gap: 16px;
+}
+.live-ladder-views a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.live-standing {
+  margin: 0;
+  font-weight: 600;
+}
+.live-ladder-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.live-ladder-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.live-ladder table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.live-ladder th,
+.live-ladder td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.live-ladder th:nth-child(2),
+.live-ladder td:nth-child(2) {
+  text-align: left;
+}
+.live-ladder thead th {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.live-ladder tbody th {
+  font-weight: 600;
+}
+.live-ladder-note {
+  font-size: 13px;
+}
+
+/* Public profile and match review (P1-15). */
+.live-profile {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.live-profile h2,
+.live-profile p {
+  margin: 0;
+}
+.live-profile-rating strong {
+  font-size: 32px;
+  font-variant-numeric: tabular-nums;
+}
+.live-profile-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.live-profile-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.live-profile-stats dt {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.live-profile-stats dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.live-profile-bio {
+  overflow-wrap: anywhere;
+}
+.live-profile-matches {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.live-profile-matches li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: baseline;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.live-profile-matches li > a:last-child {
+  margin-left: auto;
+}
+.series.band {
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+.series-end.band {
+  display: none;
+}

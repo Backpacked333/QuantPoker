@@ -84,6 +84,22 @@ export function raiseCandidates(game: Game, actualTo?: number) {
   ].sort((a, b) => a - b)
 }
 
+/**
+ * The opponent's seat as it faces a hero raise now: its position, and the
+ * raises on this street including the hero's.
+ */
+export function opponentFacingRaise(game: Game) {
+  const street = game.street
+  return {
+    preflop: street === 'preflop',
+    // The dealer posts the small blind; the hero is player 0.
+    bigBlind: game.dealer === 0,
+    raises:
+      game.history.filter((h) => h.street === street && h.action === 'raise')
+        .length + 1,
+  }
+}
+
 export function decisionOptions(
   game: Game,
   spot: FullSpot,
@@ -92,6 +108,7 @@ export function decisionOptions(
   actualTo?: number,
 ): ActionOption[] {
   const { toCall, pot, heroBet, atlasBet, legal } = heroContext(game)
+  const seat = model === 'population' ? opponentFacingRaise(game) : undefined
   const outcome = spotOutcome(spot, model)
   const cap = gradingCap(game)
   const options: ActionOption[] = [
@@ -108,7 +125,7 @@ export function decisionOptions(
     const analysis = raiseAnalysis(
       spot,
       model,
-      { pot, heroBet, atlasBet, raiseTo: to },
+      { pot, heroBet, atlasBet, raiseTo: to, seat },
       style,
     )
     options.push({

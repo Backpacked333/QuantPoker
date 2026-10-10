@@ -688,6 +688,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-08 · Population opponent model
 
+**Status 2026-10-10: done** (PR #20, live). `src/lib/population.ts`: position-aware preflop shares and a human-typical postflop policy, every number with its reasoning; key-seeded analysis tables make grades repeatable. Sanity order holds (TAG > Atlas > station > folder). Details: SDE log `accuracy.md` §P1-08.
+
 - **Goal.** Grade human decisions against a documented, position-aware population model, behind the same `OpponentModel` switch as `'uniform'` (`src/lib/model.ts`).
 - **User-visible outcome.** None directly. It feeds accuracy (label: "Accuracy vs. a model opponent, not a solver.").
 - **Files.**
@@ -706,6 +708,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** None expected.
 
 ### P1-09 · Grading consumer and `hand_grades`
+
+**Status 2026-10-10: done** (PR #21 `hand_grades`, live; PR #23 consumer, live). Every move of a rated heads-up hand is graded after verification, clock moves included (QA finding), with each decision's pot stored. Golden set (50 hands) equal to the trainer; redelivery idempotent; failures block nothing. Details: SDE log `accuracy.md` §P1-09, QA `accuracy.md`.
 
 - **Goal.** Every archived rated HU hand gets per-decision grades for both seats, server-side, after verification. Grading is idempotent and never blocks play, the result or the rating; a failure degrades to "not graded yet" plus a retry.
 - **User-visible outcome.** Review shows Best/Good/Inaccuracy/Mistake/Blunder after the match.
@@ -728,6 +732,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** DBA (table, RLS by match status), Security item 3.
 
 ### P1-10 · Accuracy on the profile
+
+**Status 2026-10-10: built** (this branch). `public.accuracy` (plain mean of the latest 500 graded decisions plus the distribution, public, written only by `private.refresh_accuracy` on finish and on late grades) and `public.rated_luck`; a "Rated play" panel in the lobby with the exact label and "Not graded yet", reusable on the P1-15 profile. Depends on P1-15 only for its final home.
 
 - **Goal.** Rolling accuracy over the last 500 graded decisions, the grade distribution, and the luck-vs-skill chart across rated matches.
 - **User-visible outcome.** A profile panel labelled exactly "Accuracy vs. a model opponent, not a solver.", with "Not graded yet" when empty.
@@ -761,6 +767,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-12 · Rating update when a rated match finishes
 
+**Status 2026-10-10: built** (this branch). `ratings`, `rating_history`, `apply_rating` (returns the change; checks the archived result) and an abandonment trigger; the outbox `rate` step with compare-and-set retries; a `rating` frame and the end-screen line "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player". Every acceptance test exists under its name or a close variant (SDE log §P1-12).
+
 - **Goal.** Each finished rated match updates both players' ratings exactly once, in one transaction, with append-only history. Outcomes: forfeit or abandon = loss; no-show = void, not rated (R-14); draw = 0.5. Provisional while RD ≥ 100 or matches < 20.
 - **User-visible outcome.** The end screen shows "1520 → 1534 (+14): beat a 1610 ± 80 player".
 - **Files.**
@@ -789,6 +797,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-13 · Rated quick-match near your rating
 
+**Status 2026-10-10: built** (this branch, after P1-12). Window `100 + 50·min` of the longer waiter, closest first with ties to the longer waiter, pair cap kept, a 15 s alarm only while ≥ 2 rated players wait, "Widening search…" after a minute. Liquidity sim: median wait 29 s / 16 s / 10 s at 10 / 20 / 30 online (SDE log §P1-13).
+
 - **Goal.** Rated pairing within `|Δ| ≤ 100 + 50·minutes` (ADR §Lobby), keeping ≤ 2 pairings per pair per day. A lobby alarm re-evaluates every 15 s only while ≥ 2 rated players wait; otherwise the lobby hibernates.
 - **User-visible outcome.** Opponents near your rating. "Widening search…" after a minute.
 - **Files.** `worker/src/lobby.ts` (rating in the queue row, read via `worker/src/supabase.ts` at queue time; unrated players queue as 1500 ± 350); `worker/test/lobby.test.ts`.
@@ -804,6 +814,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** Security item 6 (queue flooding).
 
 ### P1-14 · The ladder
+
+**Status 2026-10-10: built** (this branch). `ladder`, `ladder_month` and `abandonment_rate`; `#ladder` and `#ladder/month` (public); the metrics query `supabase/metrics/rating-metrics.sql` (production: insufficient data); the 200-player, 5,000-match season in PGlite (Spearman 0.975, all three metrics meet target). The acceptance tests exist under these names or close variants; the e2e is in `e2e/ladder.spec.ts` and `e2e/mobile.spec.ts`. Details: SDE log §P1-14 and `.10x/decisions/dba/ladder.md`.
 
 - **Goal.** A public ladder per format, all-time and this month (R-16). It shows only eligible players: not provisional, ≥ 1 rated match in 30 days, abandonment < 10% over lifetime rated matches (R-13). Uses keyset pagination.
 - **User-visible outcome.**
@@ -829,6 +841,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-15 · Public profile
 
+**Status 2026-10-10: built** (this branch). `/u/<username>` with a Worker link preview (escaped, edge-cached); `#u/<username>` with rating ± RD and its graph, volume, abandonment, sanctions "None", accuracy, and the last 20 rated matches linking to `#match/<id>`, a public hand-by-hand review that shows only showdown cards. Edit profile is not built (cut line). Details: SDE log §P1-15/16.
+
 - **Goal.** `/u/<username>` (share URL) and `#u/<username>` (in-app). Shows rating ± RD over time, a provisional badge, accuracy (P1-10 fills it), volume, abandonment rate, the last 20 matches with review links, the sanctions field (empty until P1-18), and the optional fields. The optional fields are country and bio ("studying / where you work"); the avatar is the initial (no uploads, R-26).
 - **User-visible outcome.** A shareable profile and an "Edit profile" form.
 - **Files.**
@@ -850,6 +864,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** Security item 5 (profile exposure).
 
 ### P1-16 · Share card, Method page, and counting external views
+
+**Status 2026-10-10: partly built** (this branch). The share card `public/og-default.png` (static, the cut line), the `#method` page and the Share button are built. **Counting views from outside the app is not built.** The PM metric stays "needs instrumentation" until a follow-up adds `profile_views`.
 
 - **Goal.** OG share card; `#method` page with formulas and versions (`glicko2.v1`, τ, provisional rule, draw band, eligibility, accuracy label and model version, what is not measured). Count profile views from outside the app, and share clicks.
 - **User-visible outcome.** A LinkedIn preview of the profile; a Share button; Method linked from the profile and ladder.

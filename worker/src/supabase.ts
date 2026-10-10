@@ -6,12 +6,17 @@ import type { WorkerEnv } from './env'
 import { describeError, logEvent } from './log'
 
 export type ArchiveCall = {
-  rpc: 'record_match' | 'record_hand' | 'record_incident'
+  /** apply_rating's payload is computed when it is sent (worker/src/rating.ts). */
+  rpc: 'record_match' | 'record_hand' | 'record_incident' | 'apply_rating'
   body: Record<string, unknown>
 }
 
 /** The service-role functions the Worker may call (secret key only). */
-type ServiceFn = ArchiveCall['rpc'] | 'audit_hand' | 'verify_hand'
+type ServiceFn =
+  | ArchiveCall['rpc']
+  | 'audit_hand'
+  | 'verify_hand'
+  | 'record_grades'
 
 /** A call that must succeed: throws on any failure, returns the JSON result. */
 export async function rpc<T = unknown>(

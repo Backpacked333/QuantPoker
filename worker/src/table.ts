@@ -32,6 +32,7 @@ import type {
   MatchInfo,
   MatchKind,
   Outcome,
+  RatingChange,
   RematchState,
   Reveal,
   ServerMsg,
@@ -59,6 +60,8 @@ import { describeError, logEvent } from './log'
 import { GRACE_MS, outcomes, RATED_CONFIG, REMATCH_MS } from './rated'
 import { archive, refusedForData } from './supabase'
 import type { ArchiveCall, ArchiveOutcome } from './supabase'
+import { applyRating } from './rating'
+import type { RateCall } from './rating'
 import type { HandMessage } from './verify'
 
 export const DEFAULT_CONFIG: MatchConfig = {
@@ -119,6 +122,8 @@ type Match = {
   rematchOf?: string
   /** Rated, finished with a result: the rematch offer (P1-04). */
   rematch?: Rematch
+  /** Rated, once applied: each seat's rating change (P1-12). */
+  rating?: Record<SeatId, RatingChange>
 }
 type Rematch = {
   state: RematchState
@@ -910,7 +915,11 @@ export class TableDO extends DurableObject<WorkerEnv> {
       // Sorts after this hand's archive call, so it is sent only once
       // Postgres has the hand: the consumer never races the archive.
       writes[key(match.handNo, 'verify')] = {
-        send: { matchId: match.id, handNo: match.handNo },
+        send: {
+          matchId: match.id,
+          handNo: match.handNo,
+          ...(match.config.kind === 'hu-rated' ? { rated: true as const } : {}),
+        },
         attempts: 0,
       } satisfies Outbox
     }
@@ -1118,7 +1127,25 @@ export class TableDO extends DurableObject<WorkerEnv> {
       seq: this.seq,
       deadlines: this.deadlines,
     }
-    if (this.recordable()) writes[outboxKey(9999, 'end')] = this.matchCall()
+    if (this.recordable()) {
+      writes[outboxKey(9999, 'end')] = this.matchCall()
+      // Rated with a result (not void): rated once the match is archived;
+      // 'rate' sorts after 'end', and the flush stops at a failure.
+      if (match.outcome)
+        writes[outboxKey(9999, 'rate')] = {
+          rpc: 'apply_rating',
+          body: {
+            matchId: match.id,
+            players: match.players.map((p) => ({
+              seat: p.seat,
+              userId: p.userId,
+              outcome: match.outcome![p.seat],
+            })),
+            finishedAt: this.clock(),
+          } satisfies RateCall,
+          attempts: 0,
+        } satisfies Outbox
+    }
     this.expectArchive(writes)
     await this.ctx.storage.put(writes)
     await this.armAlarm()
@@ -1278,9 +1305,32 @@ export class TableDO extends DurableObject<WorkerEnv> {
       matchId: match.id,
       result: this.result(),
     })
+    if (match.rating) this.send(ws, this.ratingFrame(match.rating))
     if (match.rematch) this.send(ws, this.rematchFrame())
     // A result whose offer was lost to a restart: made now, for both.
     else if (match.outcome) void this.offerRematch()
+  }
+
+  private ratingFrame(change: Record<SeatId, RatingChange>): ServerMsg {
+    return { t: 'rating', seq: this.seq, matchId: this.match!.id, change }
+  }
+
+  /**
+   * Applies a finished rated match's ratings (worker/src/rating.ts) and
+   * shows both players the change. A failure is retried from the outbox
+   * like any archive call; play and the result never wait on it.
+   */
+  private async rate(call: RateCall): Promise<ArchiveOutcome> {
+    const outcome = await applyRating(this.env, call, this.clock())
+    const match = this.match
+    if (!outcome.ok || !outcome.change || match?.id !== call.matchId)
+      return outcome
+    match.rating = outcome.change
+    this.seq++
+    await this.ctx.storage.put({ match, seq: this.seq })
+    for (const ws of this.openSockets())
+      this.send(ws, this.ratingFrame(outcome.change))
+    return outcome
   }
 
   private logFinish(
@@ -1392,7 +1442,9 @@ export class TableDO extends DurableObject<WorkerEnv> {
       const outcome: ArchiveOutcome =
         'send' in call
           ? { ok: await this.enqueue(call.send) }
-          : await archive(this.env, call)
+          : call.rpc === 'apply_rating'
+            ? await this.rate(call.body as RateCall)
+            : await archive(this.env, call)
       if (outcome.ok) {
         await this.ctx.storage.delete(key)
         continue

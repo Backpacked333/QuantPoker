@@ -1,29 +1,20 @@
-// Fair play and terms for online play (#fair-play, #terms). A lazy chunk:
-// nothing here loads with the trainer. The copy says what exists today and
-// what does not; it must change when the platform does.
-import type { ReactNode } from 'react'
+// Fair play, terms and the rating method (#fair-play, #terms, #method). A
+// lazy chunk: nothing here loads with the trainer. The copy says what
+// exists today and what does not; it must change when the platform does.
 import { REPORT_CONTACT } from './contact'
+import { Method } from './Method'
+import { Section } from './Section'
+import './info.css'
 
-export type InfoPageId = 'fair-play' | 'terms'
+export type InfoPageId = 'fair-play' | 'terms' | 'method'
 
 export default function InfoPage({ page }: { page: InfoPageId }) {
-  return page === 'terms' ? <Terms /> : <FairPlay />
-}
-
-function Section({
-  id,
-  title,
-  children,
-}: {
-  id: string
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <section className="panel info-section" aria-labelledby={id}>
-      <h2 id={id}>{title}</h2>
-      {children}
-    </section>
+  return page === 'terms' ? (
+    <Terms />
+  ) : page === 'method' ? (
+    <Method />
+  ) : (
+    <FairPlay />
   )
 }
 

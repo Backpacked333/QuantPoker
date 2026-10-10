@@ -1,5 +1,5 @@
 // The Worker in front of everything. Static files come from ./dist without
-// reaching this code; only /api/* and /ws/* do (see wrangler.jsonc).
+// reaching this code; only /api/*, /ws/* and /u/* do (see wrangler.jsonc).
 import { PROTOCOL } from '../../src/shared/protocol'
 import {
   bearerToken,
@@ -10,6 +10,7 @@ import {
 import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
 import { describeError, logEvent } from './log'
+import { profilePage } from './profile'
 import type { InitBody } from './table'
 import { HANDS_DLQ } from './queues'
 import { handsPerDay } from './stats'
@@ -131,6 +132,9 @@ export default {
         },
       })
     }
+
+    // A shared profile: the app, with that player's link preview.
+    if (pathname.startsWith('/u/')) return profilePage(request, env)
 
     if (pathname.startsWith('/api/') || pathname.startsWith('/ws/'))
       return json({ error: 'not found' }, 404)

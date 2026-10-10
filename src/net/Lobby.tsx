@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Link2, Swords, Trophy, Users } from 'lucide-react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MatchKind } from '../shared/protocol'
+import { AccuracyPanel } from './AccuracyPanel'
 import { createMatch, fetchActiveMatch } from './api'
 import type { Identity } from './api'
 import type { LobbyState } from './lobbyClient'
@@ -8,6 +10,8 @@ import { useLobby } from './useLobby'
 
 /** With nobody else queued this long, offer a way out. */
 export const BAIL_OUT_MS = 60_000
+/** Rated: the rating window has visibly widened (worker/src/pairing.ts). */
+export const WIDEN_AFTER_MS = 60_000
 
 const clock = (ms: number) => {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -19,11 +23,14 @@ export function Lobby({
   identity,
   fetcher,
   autoFind = false,
+  client = null,
 }: {
   identity: Identity
   fetcher?: typeof fetch
   /** Start looking for a match on arrival (from "Find another match"). */
   autoFind?: boolean
+  /** Reads the player's accuracy; absent with a dev identity. */
+  client?: SupabaseClient | null
 }) {
   const { state, connection } = useLobby(identity.getToken)
   const [busy, setBusy] = useState(false)
@@ -106,6 +113,9 @@ export function Lobby({
             onFind={() => connection?.find('hu-rated')}
             onCancel={() => connection?.cancel()}
           />
+          <p className="live-muted">
+            <a href="#ladder">See the ladder</a>
+          </p>
           {state.refused && (
             <p className="live-error" role="alert">
               {state.refused}
@@ -144,6 +154,9 @@ export function Lobby({
           </a>
         </article>
       </div>
+      {client && (
+        <AccuracyPanel client={client} userId={identity.player.userId} />
+      )}
     </>
   )
 }
@@ -221,6 +234,11 @@ function QuickMatch({
       {state.status === 'reconnecting' && (
         <p className="live-warn">
           {state.error ?? 'Reconnecting to the lobby…'}
+        </p>
+      )}
+      {kind === 'hu-rated' && waited >= WIDEN_AFTER_MS && !alone && (
+        <p className="live-muted">
+          Widening search… opponents further from your rating now qualify.
         </p>
       )}
       {waited >= BAIL_OUT_MS && alone && !keepWaiting ? (

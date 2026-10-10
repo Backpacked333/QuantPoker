@@ -83,6 +83,8 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'message',
     'reqId?',
   ]),
+  // After a rated match: public ratings only (RATING_CHANGE_KEYS per seat).
+  rating: keysOf<Msg<'rating'>>()(['t', 'seq', 'matchId', 'change']),
   rematch_state: keysOf<Msg<'rematch_state'>>()([
     't',
     'seq',
@@ -93,6 +95,9 @@ export const FRAME_KEYS: Record<ServerMsg['t'], string[]> = {
     'next?',
   ]),
 }
+export const RATING_CHANGE_KEYS = keysOf<
+  Msg<'rating'>['change'][keyof Msg<'rating'>['change']]
+>()(['before', 'after', 'matches'])
 type View = NonNullable<Msg<'welcome'>['view']>
 export const VIEW_KEYS = keysOf<View>()([
   'matchId',

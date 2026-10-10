@@ -62,7 +62,11 @@ const potOdds = ({ toCall, pot }: PolicyContext) =>
  * shoves would be exploitably profitable against Atlas.
  */
 export const defendRate = (style: AtlasStyle, odds: number) =>
-  STYLES[style].stickiness * Math.max(0, Math.min(1, (0.45 - odds) / 0.25))
+  defendRateWith(STYLES[style], odds)
+
+/** defendRate for any parameter set (the population model has its own). */
+export const defendRateWith = (p: StyleParams, odds: number) =>
+  p.stickiness * Math.max(0, Math.min(1, (0.45 - odds) / 0.25))
 
 // Standard normal CDF (Abramowitz–Stegun 7.1.26 via erf).
 function normalCdf(x: number) {
@@ -76,7 +80,8 @@ function normalCdf(x: number) {
       Math.exp(-(x * x) / 2)
   return x >= 0 ? (1 + y) / 2 : (1 - y) / 2
 }
-const below = (value: number, threshold: number, sigma: number) =>
+/** Probability that `value` is under `threshold`, smoothed by `sigma`. */
+export const below = (value: number, threshold: number, sigma: number) =>
   sigma > 0 ? normalCdf((threshold - value) / sigma) : value < threshold ? 1 : 0
 
 /**
@@ -90,7 +95,16 @@ export function policy(
   style: AtlasStyle,
   sigma = 0,
 ): PolicyMix {
-  const p = STYLES[style]
+  return policyWith(STYLES[style], equity, context, sigma)
+}
+
+/** Atlas's policy shape with any parameter set. */
+export function policyWith(
+  p: StyleParams,
+  equity: number,
+  context: PolicyContext,
+  sigma = 0,
+): PolicyMix {
   const weak = context.toCall
     ? below(equity, potOdds(context) + p.foldMargin, sigma)
     : 0
@@ -99,7 +113,7 @@ export function policy(
     ? p.bluffFrequency +
       strong * (Math.max(p.valueFrequency, p.bluffFrequency) - p.bluffFrequency)
     : 0
-  const defend = defendRate(style, potOdds(context))
+  const defend = defendRateWith(p, potOdds(context))
   const raiseWhenWeak = context.canRaise
     ? Math.min(p.bluffFrequency, defend)
     : 0

@@ -356,6 +356,7 @@ function LiveHand({
           bb={bb}
           opponent={opponent}
           rematch={state.rematch}
+          rating={state.rating}
           clockOffset={state.clockOffset}
           onRematch={rematch}
         />

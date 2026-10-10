@@ -1,6 +1,120 @@
 # Handoff
 
-## Current handoff: SDE → User (P1-03 live; P1-04 next)
+## Current handoff: SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
+
+Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, P1-13 and P1-14 are merged and verified live; P1-15/16 is PR #29.
+
+### What changed
+
+- **The number moves after every match** (P1-12, live). The end screen shows the real change and why: "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92."
+- **Matchmaking near rating** (P1-13, live). The window starts at ±100 and widens by 50 a minute; the ≤ 2 pairings per pair per day cap holds.
+- **The ladder** (P1-14, PR #27).
+  - `#ladder` and `#ladder/month`, public, with keyset pages and RD always shown.
+  - Eligibility: not provisional, a match in 30 days, abandonment under 10%.
+  - Provisional viewers see "X rated matches to go".
+- **Metrics you can run today:** `supabase/metrics/rating-metrics.sql` (read-only). Production says "insufficient data" for all three. The simulated season meets them: 65.4%, 13.4 and 0.860.
+- **Profile, review and method** (P1-15/16).
+  - `/u/<username>` carries a link preview.
+  - The profile shows rating ± RD over time, volume, abandonment, an empty sanctions field, accuracy, and the last 20 rated matches.
+  - `#match/<id>` reviews a match hand by hand with showdown cards only.
+  - `#method` states the formulas and versions.
+  - A generic share card.
+
+### Decisions I took (reversible)
+
+- **Win rate counts wins only;** draws are visible as the gap. This is stated under the table and on Method.
+- **Profiles list rated matches only.** ToS consent covers rated hand histories.
+- **The public review leaves out decision times,** the recommendation of Q5, which is still yours.
+- **Link previews use one static card** (the ticket's cut line); the player's numbers are in the preview text.
+- **Counting profile views from outside the app is deferred** (P1-16's `profile_views`).
+
+### User actions
+
+- **Unchanged:** U-4 (until then no rated match is archived or rated in production), U-8, Q7, and the open rematch-link finding on #19.
+- **Optional:** say if you want profile-view counting built next.
+
+### 6-max arena mission: stopped at the pre-check
+
+- 100,000 simulated 6-max hands with 0 failures (VERIFIED).
+- 0 of 1,000 human casual 6-max hands (VERIFIED: production holds 0 hands; casual 6-max is unbuilt; U-4).
+- No design note or build until the gate passes. The path is in `.10x/decisions/architect/six-max-arena.md`.
+
+### Next step
+
+#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is in review: three Devin findings are fixed, and one security finding waits on your decision (hands of a live match are readable through the public API; a restrictive RLS policy is proposed on the thread). Merge #29 when green and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
+
+Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going through its PR.**
+
+### What changed
+
+- **Grades after every rated hand** (PRs #21 and #23, live).
+  - The hands consumer grades every move of both players once a hand is verified, against the population model, from each player's redacted view.
+  - Nobody reads a grade mid-match; after it, the match's two players do.
+  - A failure retries and never blocks play, the result or the rating.
+- **The QA attack** (`.10x/decisions/qa/accuracy.md`):
+  - the mission's sanity order holds;
+  - letting the clock play hard spots dodged grading, so clock moves are now graded;
+  - a plain mean barely separates "raise every street" from a thinking player, although the model's EV ranks them right. Pot-weighted variants broke the required order, so the plain mean stays, and the pot is stored for the real-data Spearman comparison.
+- **P1-10:** a public accuracy number (latest 500 decisions) and the grade distribution, refreshed when a rated match ends. Also luck versus skill across rated matches, and a "Rated play" panel in the lobby with the exact label and "Not graded yet".
+
+### Decisions I took (reversible)
+
+- **Clock moves are graded.** A disconnected player's auto-folds count too.
+- **The shown accuracy is the plain mean.** The pot-weighted alternatives wait for real data.
+- **The accuracy lives in `public.accuracy`,** not on `ratings`. The P1-12 proposal now joins it.
+- **The panel sits in the lobby** until the P1-15 profile exists.
+
+### User actions
+
+- **Unchanged:** U-4, U-8, Q7, and the open rematch-link finding on #19.
+
+### Next step
+
+Me: open the P1-10 PR, merge when green, verify the deploy, then P1-12 ratings.
+
+---
+
+### 2026-10-10 — SDE → User (P1-04 live; P1-12 next)
+
+Date: 2026-10-10 · Status: **P1-04 is merged and live.**
+
+- **Database:** PR #18 (`cfd0bd0`). Production recorded `20261010043000_rematch`; checked read-only.
+- **Table, lobby and screen:** PR #19 (`6a79a93`). `verify-deploy` passed, and a search of the deployed Worker code found the new code.
+
+#### What changed
+
+- **After a rated match** each player sees "+12.5 bb · Win" (the luck-adjusted total) and the chips actually won.
+- **The Rematch button.**
+  - Both press within 60 s and a new rated match starts, with seats swapped and linked in the archive (`matches.rematch_of`).
+  - A rematch counts toward the cap of 2 pairings per pair per day. At the cap the button reads "Rematch limit reached (2 per day)".
+  - The offer survives a restart, a late alarm and the table's cleanup (review fold-ins).
+- **A reload after the end** shows the result and the offer again.
+- **Gates:**
+  - typecheck, worker typecheck and lint are clean;
+  - 728 unit, 154 worker, 60 SQL and 21 e2e tests pass;
+  - plans 12/12;
+  - the entry bundle is 141.5 kB.
+- Details: `.10x/decisions/sde/heads-up-duplicate-ladder.md` §P1-04.
+
+#### Decisions I took (reversible)
+
+- **The headline is the luck-adjusted total** under B, with the actual chips beside it. The rating change waits for P1-12 and the swings for P1-20, with no placeholder.
+- **A rematch does not repeat the email check.** Both players passed it minutes earlier.
+
+#### User actions
+
+- **New:** decide the open Devin finding on #19. A rematch stays unlinked when the earlier match's archive is delayed past the rematch's finish, which takes an outage of about 15 minutes or more. Recommendation: leave it. Fixing it is a `rematch_request` column plus a v6 migration.
+- **Unchanged:** U-4, U-8, Q6 before P1-09, Q7.
+
+#### Next step
+
+Me: P1-12, the rating update at match end (the `ratings` migration, Glicko-2 through the outbox), then the ladder.
+
+### 2026-10-10 — SDE → User (P1-03 live; P1-04 next)
 
 Date: 2026-10-10 · Status: **P1-03 is merged (PR #17, `d042683`) and live.** `verify-deploy` confirmed production serves the merged build file by file.
 
@@ -31,10 +145,6 @@ Unchanged: U-4, U-8, Q6 before P1-09, Q7 whenever you like.
 ### Next step
 
 Me: P1-04 (end of match and rematch, on your "build P1-04 and merge when green"). It includes resending `match_end` to a socket that reconnects after the end, which P1-03 found missing.
-
----
-
-## Handoff history
 
 ### 2026-10-10 — SDE → User (P1-01 database live; rated match in the table server)
 

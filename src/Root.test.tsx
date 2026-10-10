@@ -2,6 +2,7 @@ import { act, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import Root from './Root'
 import { rememberAuthReturn, restoreAuthReturn } from './lib/authReturn'
+import { profilePathToHash } from './lib/profilePath'
 
 const appLoad = vi.hoisted(() => vi.fn())
 vi.mock('./App', () => {
@@ -46,6 +47,11 @@ describe('root navigation', () => {
     '#play/33333333-3333-4333-8333-333333333333',
     '#fair-play',
     '#terms',
+    '#method',
+    '#ladder',
+    '#ladder/month',
+    '#u/atlas',
+    '#match/33333333-3333-4333-8333-333333333333',
   ])('preserves the existing %s deep link', async (hash) => {
     navigate(hash)
     render(<Root />)
@@ -70,5 +76,14 @@ describe('root navigation', () => {
     render(<Root />)
     expect(await screen.findByText('Existing QuantPoker app')).toBeVisible()
     expect(window.location.hash).toBe('#lobby')
+  })
+
+  it('opens the online app for a shared profile path rather than the homepage', async () => {
+    window.history.replaceState(null, '', '/u/atlas')
+    profilePathToHash()
+    render(<Root />)
+    expect(await screen.findByText('Existing QuantPoker app')).toBeVisible()
+    expect(window.location.hash).toBe('#u/atlas')
+    expect(window.location.pathname).toBe('/')
   })
 })

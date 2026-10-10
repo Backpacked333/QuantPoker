@@ -8,7 +8,7 @@ Date: 2026-10-10 · Status: **phase 1 is built and tested in PR #30, which is no
 
 - **The landing page.** A first visit to the bare URL plays one of six curated hands against Atlas, graded per decision, with no account. The score card shows accuracy, a percentile ranked by the server, luck shown apart from skill, and Atlas's reasoning. `#start` reopens it.
 - **The server.** `ScoreDO` re-scores every line from the pre-scored trees, so a score cannot be forged. It keeps the percentile histograms and the "x% of players chose this" counts, counts funnel events once per visitor per day (`GET /api/funnel`), and queues score claims to Postgres.
-- **The database** (`20261010100000_landing.sql`): `school_domains` (our own list), a trigger that sets `players.school` from a confirmed school email, and `challenge_scores` with `record_challenge_claim`.
+- **The database** (`20261010110000_landing.sql`): `school_domains` (our own list), a trigger that sets `players.school` from a confirmed school email, and `challenge_scores` with `record_challenge_claim`.
 - **Onboarding** (`#welcome/onboard`): the sign-in screen names the score, then username, school badge and first move. The score is attached after sign-in.
 
 ### Decisions I took (reversible)
@@ -111,7 +111,7 @@ Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, 
 
 #### Next step
 
-#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is in review: three Devin findings are fixed, and one security finding waits on your decision (hands of a live match are readable through the public API; a restrictive RLS policy is proposed on the thread). Merge #29 when green and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is merged and verified live. The security finding on it (hands of a live match readable through the public API) is fixed by the restrictive `hands_after_match` policy, which you approved; see `.10x/decisions/dba/hands-after-match.md`. Next: casual 6-max (P2-01..P2-06, P2-08, P2-11), which you approved. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
 
 ### 2026-10-10 — PM → Architect (landing page and onboarding)
 

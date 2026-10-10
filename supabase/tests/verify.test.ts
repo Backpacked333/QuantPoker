@@ -123,8 +123,10 @@ describe('the verify functions', () => {
   it('verify_hand marks the hand verified, and again changes nothing', async () => {
     await as('service_role', call('verify_hand', { id: HAND }))
     await as('service_role', call('verify_hand', { id: HAND }))
+    // Read as the server: the hand's match is still in play, so clients see
+    // it only once the match ends (hands-live.test.ts).
     const rows = await as<{ verified: boolean }>(
-      'anon',
+      'service_role',
       `select verified from public.hands where id = '${HAND}'`,
     )
     expect(rows).toEqual([{ verified: true }])

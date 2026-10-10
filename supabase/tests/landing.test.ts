@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The landing page's database side (20261010100000_landing.sql): a school
+// The landing page's database side (20261010110000_landing.sql): a school
 // badge set only from a confirmed email by the auth trigger, never by the
 // player, and claimed challenge scores written only by the server, best
 // score per hand, idempotent on the receipt.

@@ -25,7 +25,7 @@ A first visit to the bare URL (no progress, no account, never landed before) ope
 - **The score card:** the accuracy, a percentile ranked by the Worker (against model players until a hand has 200 real scores), the luck of the cards shown apart from the decisions, and Atlas's reasoning. Its CTA, "Save your score and get rated", leads to sign-up and a three-step onboarding (`#welcome/onboard`).
 - **The trees:** every reachable decision is priced offline by the trainer's own grader into `src/challenge/trees.generated.json`. `src/challenge/generate.test.ts` rebuilds it on every test run and fails on any difference. To regenerate after changing a hand or the grader: `CHALLENGE_WRITE=1 npx vitest run src/challenge/generate.test.ts`.
 - **The server side:** `ScoreDO` in the Worker re-scores each line by lookup, keeps the histograms, counts funnel events (`GET /api/funnel`, aggregates only) and sends claimed scores to Postgres through an outbox.
-- **School badges:** a confirmed school email sets a badge (`20261010100000_landing.sql`).
+- **School badges:** a confirmed school email sets a badge (`20261010110000_landing.sql`).
 
 ### Online play
 

@@ -245,7 +245,14 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
   },
   'public.matches': { ...PUBLIC_READ, ...SERVICE },
   'public.match_players': { ...PUBLIC_READ, ...SERVICE },
-  'public.hands': { ...PUBLIC_READ, ...SERVICE },
+  // Public once the match is over; the fixture's match is still in play, so
+  // no client reads its hand (hands-live.test.ts covers both states).
+  'public.hands': {
+    anon: [0, D, D, D],
+    self: [0, D, D, D],
+    other: [0, D, D, D],
+    ...SERVICE,
+  },
   'public.abandonments': { ...PUBLIC_READ, ...SERVICE },
   // The deck, the hand secret and every hole card: the server only.
   'public.hands_private': { ...PRIVATE, ...SERVICE },

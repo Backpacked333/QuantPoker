@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test'
 
 /** Fresh visitor: welcome, choose a mode, skip the tour. */
 export async function onboard(page: Page, mode: 'new' | 'rules' = 'new') {
-  await page.goto('/')
+  await page.goto('/#table')
   await page
     .getByRole('button', {
       name: mode === 'new' ? /new to poker/ : /know the rules/,

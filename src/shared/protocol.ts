@@ -189,6 +189,14 @@ export type RematchState =
   | 'declined'
   | 'limit'
 
+/** One player's rating change from a rated match (P1-12). Ratings are public. */
+export type RatingChange = {
+  before: { rating: number; rd: number }
+  after: { rating: number; rd: number }
+  /** Rated matches played, counting this one (for the provisional rule). */
+  matches: number
+}
+
 /** `abandoned`: both players were gone past the grace (rated; void). */
 export type MatchEndReason =
   | 'complete'
@@ -234,6 +242,11 @@ export type ServerMsg = { seq: number; matchId: string } & (
       }
     }
   | { t: 'error'; code: ErrorCode; reqId?: string; message: string }
+  | {
+      t: 'rating'
+      /** Rated, after the match: each seat's change, once it is applied. */
+      change: Record<SeatId, RatingChange>
+    }
   | {
       t: 'rematch_state'
       state: RematchState

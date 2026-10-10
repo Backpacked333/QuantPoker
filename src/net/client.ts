@@ -58,6 +58,8 @@ export type TableState = {
   error: { code: ErrorCode; message: string } | null
   ended: Extract<ServerMsg, { t: 'match_end' }>['result'] | null
   rematch: RematchView | null
+  /** Rated, once applied: each seat's rating change. */
+  rating: Extract<ServerMsg, { t: 'rating' }>['change'] | null
   /** The table this account is already playing at, when refused here. */
   elsewhere: string | null
   /** Server time minus this device's time, from the latest snapshot. */
@@ -79,6 +81,7 @@ export const INITIAL_STATE: TableState = {
   error: null,
   ended: null,
   rematch: null,
+  rating: null,
   elsewhere: null,
   clockOffset: 0,
   hands: {},
@@ -259,6 +262,10 @@ export class TableConnection {
     }
     if (msg.t === 'match_end') {
       this.set({ ended: msg.result })
+      return
+    }
+    if (msg.t === 'rating') {
+      this.set({ rating: msg.change })
       return
     }
     if (msg.t === 'rematch_state') {

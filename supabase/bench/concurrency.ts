@@ -223,8 +223,13 @@ try {
   //    of it is written; recomputed from fresh versions it applies.
   const m3 = crypto.randomUUID()
   const m4 = crypto.randomUUID()
+  // Finished rated matches with each seat's outcome, which apply_rating
+  // checks the payload against.
   await sql(
-    `insert into public.matches (id, kind, status, config) values ('${m3}', 'hu-rated', 'finished', '{}'), ('${m4}', 'hu-rated', 'finished', '{}')`,
+    `insert into public.matches (id, kind, status, config) values ('${m3}', 'hu-rated', 'finished', '{}'), ('${m4}', 'hu-rated', 'finished', '{}');
+     insert into public.match_players (match_id, user_id, seat, outcome) values
+       ('${m3}', '${ALICE}', 0, 'win'), ('${m3}', '${BOB}', 1, 'loss'),
+       ('${m4}', '${CARL}', 0, 'loss'), ('${m4}', '${ALICE}', 1, 'win')`,
   )
   const rate = (matchId: string, other: string, v: Record<string, number>) => ({
     matchId,
@@ -285,6 +290,61 @@ try {
         values ('${id}:1', '${id}', 1, 0, repeat('a', 64), decode(repeat('00', 1664), 'hex'), '[]', '{}', true)`)
     return id
   }
+
+  // 4b. apply_rating twice at once for one match (a retry overlapping a slow
+  //     first call): the second waits on the match row, then reports the
+  //     same change instead of colliding on rating_history_once.
+  const m4b = crypto.randomUUID()
+  await sql(
+    `insert into public.matches (id, kind, status, config) values ('${m4b}', 'hu-rated', 'finished', '{}');
+     insert into public.match_players (match_id, user_id, seat, outcome) values
+       ('${m4b}', '${BOB}', 0, 'win'), ('${m4b}', '${CARL}', 1, 'loss')`,
+  )
+  const versions = Object.fromEntries(
+    (await sql(`select user_id || '=' || version from public.ratings`))
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => {
+        const [u, n] = l.split('=')
+        return [u, Number(n)]
+      }),
+  )
+  const once = `select public.apply_rating(${lit({
+    matchId: m4b,
+    format: 'hu-duplicate',
+    modelVersion: 'glicko2.v1',
+    players: [
+      {
+        userId: BOB,
+        outcome: 'win',
+        version: versions[BOB] ?? 0,
+        rating: 1550,
+        rd: 280,
+        sigma: 0.06,
+      },
+      {
+        userId: CARL,
+        outcome: 'loss',
+        version: versions[CARL] ?? 0,
+        rating: 1450,
+        rd: 280,
+        sigma: 0.06,
+      },
+    ],
+  })})`
+  const r4b = await race(once, once)
+  const s4b = await sql(
+    `select count(*) from public.rating_history where match_id = '${m4b}'`,
+  )
+  check(
+    'apply_rating twice at once for one match: the second waits, then reports the same change; history written once',
+    r4b.a.ok &&
+      r4b.b.ok &&
+      r4b.waitedMs > 900 &&
+      s4b === '2' &&
+      r4b.b.out.includes('"after"'),
+    `B ${r4b.b.ok ? 'ok' : r4b.b.err.split('\n')[0]}; waited ${r4b.waitedMs} ms; history ${s4b}`,
+  )
 
   // 5. record_grades twice at once: one row per decision. (Only a verified
   // hand of a rated match can be graded.)

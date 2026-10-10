@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { matchHeadline, matchOverText } from './matchResult'
+import { matchHeadline, matchOverText, ratingLine } from './matchResult'
 
 describe('the match-over text', () => {
   it('reads the rated outcome, not the chips: a forfeit while ahead is a loss', () => {
@@ -128,6 +128,65 @@ describe('the match-over text', () => {
         0,
         20,
       ),
+    ).toBeNull()
+  })
+})
+
+describe('the rating line', () => {
+  const change = (
+    me: [number, number, number, number],
+    them: [number, number],
+    matches: number,
+  ) => ({
+    0: {
+      before: { rating: me[0], rd: me[1] },
+      after: { rating: me[2], rd: me[3] },
+      matches,
+    },
+    1: {
+      before: { rating: them[0], rd: them[1] },
+      after: { rating: them[0] - 10, rd: them[1] },
+      matches: 30,
+    },
+  })
+
+  it('reads the change and why: "1520 → 1534 (+14): beat a 1610 ± 80 player"', () => {
+    expect(
+      ratingLine(change([1520, 95, 1534.4, 92], [1610.2, 80.4], 25), 0, 'win'),
+    ).toEqual({
+      line: 'Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92.',
+      standing: 'Established rating.',
+    })
+  })
+
+  it('reads a loss and a draw, with the minus sign', () => {
+    expect(
+      ratingLine(change([1500, 120, 1488, 115], [1400, 60], 25), 0, 'loss')!
+        .line,
+    ).toBe(
+      'Rating 1500 → 1488 (−12): lost to a 1400 ± 60 player. Now 1488 ± 115.',
+    )
+    expect(
+      ratingLine(change([1500, 120, 1503, 115], [1550, 60], 25), 0, 'draw')!
+        .line,
+    ).toMatch(/\(\+3\): drew with a 1550 ± 60 player/)
+  })
+
+  it('says how long a rating stays provisional', () => {
+    expect(
+      ratingLine(change([1500, 350, 1662, 290], [1500, 350], 1), 0, 'win')!
+        .standing,
+    ).toBe('Provisional: 19 rated matches to go.')
+    expect(
+      ratingLine(change([1500, 130, 1510, 120], [1500, 80], 24), 0, 'win')!
+        .standing,
+    ).toBe('Provisional until your rating deviation is under 100.')
+  })
+
+  it('is nothing until the change is applied, or for a match without an outcome', () => {
+    expect(ratingLine(null, 0, 'win')).toBeNull()
+    expect(
+      ratingLine(change([1500, 350, 1662, 290], [1500, 350], 1), 0, undefined),
     ).toBeNull()
   })
 })

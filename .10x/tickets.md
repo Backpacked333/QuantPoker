@@ -767,6 +767,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-12 · Rating update when a rated match finishes
 
+**Status 2026-10-10: built** (this branch). `ratings`, `rating_history`, `apply_rating` (returns the change; checks the archived result) and an abandonment trigger; the outbox `rate` step with compare-and-set retries; a `rating` frame and the end-screen line "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player". Every acceptance test exists under its name or a close variant (SDE log §P1-12).
+
 - **Goal.** Each finished rated match updates both players' ratings exactly once, in one transaction, with append-only history. Outcomes: forfeit or abandon = loss; no-show = void, not rated (R-14); draw = 0.5. Provisional while RD ≥ 100 or matches < 20.
 - **User-visible outcome.** The end screen shows "1520 → 1534 (+14): beat a 1610 ± 80 player".
 - **Files.**

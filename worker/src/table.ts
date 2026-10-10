@@ -1157,7 +1157,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
    */
   private async offerRematch() {
     const match = this.match!
-    if (!match.outcome) return
+    if (!match.outcome || match.rematch) return
     let left = 1
     try {
       left = await lobbyStub(this.env).pairsLeft(
@@ -1171,18 +1171,27 @@ export class TableDO extends DurableObject<WorkerEnv> {
         detail: describeError(error),
       })
     }
+    // Made meanwhile by a join or a press, or the table closed.
+    if (this.match !== match || match.rematch) return
     await this.setRematch({ state: left > 0 ? 'open' : 'limit', pressed: [] })
   }
 
   /** Both press within REMATCH_MS and the lobby starts a new rated table. */
   private async pressRematch(ws: WebSocket, seat: SeatId) {
     const match = this.match!
+    // Finished with a result but no offer yet (on its way, or lost to a
+    // restart after the result was stored): make it now.
+    if (match.outcome && !match.rematch) await this.offerRematch()
     const offer = match.rematch
-    if (!offer) {
-      // Finished with a result: the offer is on its way.
-      if (match.outcome) return
+    if (!offer)
       return this.illegal(ws, seat, 'There is no rematch at this table')
-    }
+    // The minute is over, even if its alarm has not run yet.
+    if (
+      offer.state === 'waiting' &&
+      offer.until !== undefined &&
+      this.clock() >= offer.until
+    )
+      return this.rematchExpired()
     // Pressed already, or nothing left to press: how it stands.
     if (
       (offer.state !== 'open' && offer.state !== 'waiting') ||
@@ -1192,6 +1201,13 @@ export class TableDO extends DurableObject<WorkerEnv> {
     const pressed = [...offer.pressed, seat].sort((a, b) => a - b)
     if (pressed.length < 2) {
       const until = this.clock() + REMATCH_MS
+      // However late the press, the table stays for the whole minute, and
+      // a while after it so both see how it ended.
+      this.deadlines = this.deadlines.map((d) =>
+        d.kind === 'idle'
+          ? { ...d, at: Math.max(d.at, until + REMATCH_MS) }
+          : d,
+      )
       this.deadlines.push({ kind: 'rematch', at: until })
       return this.setRematch({ state: 'waiting', pressed, until })
     }
@@ -1224,6 +1240,7 @@ export class TableDO extends DurableObject<WorkerEnv> {
   private async rematchExpired() {
     const offer = this.match?.rematch
     if (offer?.state !== 'waiting') return
+    this.deadlines = this.deadlines.filter((d) => d.kind !== 'rematch')
     await this.setRematch({ state: 'declined', pressed: offer.pressed })
   }
 
@@ -1262,6 +1279,8 @@ export class TableDO extends DurableObject<WorkerEnv> {
       result: this.result(),
     })
     if (match.rematch) this.send(ws, this.rematchFrame())
+    // A result whose offer was lost to a restart: made now, for both.
+    else if (match.outcome) void this.offerRematch()
   }
 
   private logFinish(

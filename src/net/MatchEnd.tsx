@@ -33,14 +33,11 @@ export function MatchEnd({
 }) {
   const headline = matchHeadline(result, you, bb) ?? 'Match over'
   const net = result.netBySeat[you] ?? 0
+  const chips = bb ? ` Chips won: ${inBb(net, bb)} bb.` : ''
   const detail =
     result.reason === 'forfeit'
-      ? result.forfeit === you
-        ? 'You ran out of time three times in a row.'
-        : `${opponent} ran out of time three times in a row.`
-      : bb
-        ? `Luck-adjusted: all-in pots are settled at equity, and within 2 bb is a draw. Chips won: ${inBb(net, bb)} bb.`
-        : 'Luck-adjusted: all-in pots are settled at equity.'
+      ? `${result.forfeit === you ? 'You' : opponent} ran out of time three times in a row.${chips}`
+      : `Luck-adjusted: all-in pots are settled at equity${bb ? ', and within 2 bb is a draw' : ''}.${chips}`
   return (
     <section className="panel live-matchend" aria-labelledby="match-end-title">
       <h2 id="match-end-title">{headline}</h2>

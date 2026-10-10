@@ -17,6 +17,7 @@ import {
 import type { PlayerAction, SeatId } from '../../src/engine/types'
 import type { ServerMsg } from '../../src/shared/protocol'
 import { forgetUsernames } from '../src/auth'
+import { IDLE_MS } from '../src/deadlines'
 import { lobbyStub, PAIRS_PER_DAY } from '../src/lobby'
 import { RATED_CONFIG, REMATCH_MS } from '../src/rated'
 import { NEXT_HAND_MS } from '../src/table'
@@ -30,7 +31,9 @@ import {
   isState,
   move,
   peek,
+  setClock,
   setLobbyClock,
+  storageOf,
   stub,
 } from './helpers'
 import type { Client } from './helpers'
@@ -197,6 +200,56 @@ describe('the end of a rated match', () => {
     await bob.next(isRematch('declined'), from)
     expect(bob.frames.some(isRematch('starting'))).toBe(false)
     expect(await lobbyGet(pairKey(a, b))).toBeUndefined()
+  })
+
+  it('a second press after the minute starts nothing, even when the expiry alarm is late', async () => {
+    const [a, b] = accounts()
+    const { matchId, alice, bob } = await forfeited(a, b)
+    await alice.next(isRematch('open'))
+    alice.send({ t: 'rematch' })
+    const waiting = await bob.next(isRematch('waiting'))
+    const until = waiting.t === 'rematch_state' ? waiting.until! : 0
+    // The clock passes the minute, but no alarm has run.
+    await setClock(matchId, until + 1)
+    bob.send({ t: 'rematch' })
+    await alice.next(isRematch('declined'))
+    expect(alice.frames.some(isRematch('starting'))).toBe(false)
+    expect(await lobbyGet(pairKey(a, b))).toBeUndefined()
+  })
+
+  it('an offer lost to a restart between the result and the offer is made on the next join or press', async () => {
+    const [a, b] = accounts()
+    const { matchId, alice, bob } = await forfeited(a, b)
+    await alice.next(isRematch('open'))
+    // As if the object restarted after storing the result, before the offer.
+    await runInDurableObject(stub(matchId), async (instance, state) => {
+      const t = instance as unknown as { match: { rematch?: unknown } }
+      delete t.match.rematch
+      await state.storage.put('match', t.match)
+    })
+    const again = await connect(matchId, a)
+    await again.next(isRematch('open'))
+    again.send({ t: 'rematch' })
+    await bob.next(isRematch('waiting'))
+    bob.send({ t: 'rematch' })
+    await again.next(isRematch('starting'))
+    expect(alice.closed?.code).toBe(4001)
+  })
+
+  it('a press near cleanup keeps the table for the whole minute', async () => {
+    const [a, b] = accounts()
+    const { matchId, alice, bob } = await forfeited(a, b)
+    await alice.next(isRematch('open'))
+    // Ten seconds before the finished table would clean itself up.
+    const idle = (await storageOf(matchId)).alarm!
+    await setClock(matchId, idle - 10_000)
+    alice.send({ t: 'rematch' })
+    await bob.next(isRematch('waiting'))
+    await elapse(matchId, 10_000)
+    expect((await peek(matchId)).match?.status).toBe('finished')
+    bob.send({ t: 'rematch' })
+    await alice.next(isRematch('starting'))
+    expect(IDLE_MS).toBeGreaterThan(REMATCH_MS)
   })
 
   it('at the pair cap the state is limit and a forced rematch frame is refused', async () => {

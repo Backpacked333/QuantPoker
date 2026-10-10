@@ -109,7 +109,9 @@ describe('the end of a rated match', () => {
       screen.getByRole('heading', { name: 'Win by forfeit' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByText('bob ran out of time three times in a row.'),
+      screen.getByText(
+        'bob ran out of time three times in a row. Chips won: +11.0 bb.',
+      ),
     ).toBeInTheDocument()
   })
 })

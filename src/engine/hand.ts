@@ -61,8 +61,9 @@ function validateConfig(config: HandConfig) {
   const { seats, button, blinds, handNo } = config
   if (!Number.isInteger(handNo) || handNo < 1)
     throw new EngineError('Hand number must be a positive integer')
-  if (seats.length < 2 || seats.length > 10)
-    throw new EngineError('A hand needs 2 to 10 players')
+  // Six is the table size (SeatId 0..5) and the most positionNames labels.
+  if (seats.length < 2 || seats.length > 6)
+    throw new EngineError('A hand needs 2 to 6 players')
   seats.forEach((s, i) => {
     if (!Number.isInteger(s.seat) || s.seat < 0)
       throw new EngineError('Seats must be non-negative integers')

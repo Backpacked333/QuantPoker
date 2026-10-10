@@ -208,3 +208,24 @@
 .live-review-streets small {
   color: var(--text-2);
 }
+
+/* Rated play (P1-10): accuracy, grade distribution, luck versus skill. */
+.live-accuracy {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+.live-accuracy h2,
+.live-accuracy h3 {
+  margin: 0;
+}
+.live-accuracy h3 {
+  font-size: 15px;
+}
+.live-accuracy-tile .live-accuracy-empty {
+  font-size: 20px;
+}
+.live-accuracy-luck {
+  display: grid;
+  gap: 8px;
+}

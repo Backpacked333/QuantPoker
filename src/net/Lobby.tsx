@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Link2, Swords, Trophy, Users } from 'lucide-react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MatchKind } from '../shared/protocol'
+import { AccuracyPanel } from './AccuracyPanel'
 import { createMatch, fetchActiveMatch } from './api'
 import type { Identity } from './api'
 import type { LobbyState } from './lobbyClient'
@@ -19,11 +21,14 @@ export function Lobby({
   identity,
   fetcher,
   autoFind = false,
+  client = null,
 }: {
   identity: Identity
   fetcher?: typeof fetch
   /** Start looking for a match on arrival (from "Find another match"). */
   autoFind?: boolean
+  /** Reads the player's accuracy; absent with a dev identity. */
+  client?: SupabaseClient | null
 }) {
   const { state, connection } = useLobby(identity.getToken)
   const [busy, setBusy] = useState(false)
@@ -144,6 +149,9 @@ export function Lobby({
           </a>
         </article>
       </div>
+      {client && (
+        <AccuracyPanel client={client} userId={identity.player.userId} />
+      )}
     </>
   )
 }

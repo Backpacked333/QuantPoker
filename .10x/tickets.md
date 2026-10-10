@@ -688,6 +688,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-08 · Population opponent model
 
+**Status 2026-10-10: done** (PR #20, live). `src/lib/population.ts`: position-aware preflop shares and a human-typical postflop policy, every number with its reasoning; key-seeded analysis tables make grades repeatable. Sanity order holds (TAG > Atlas > station > folder). Details: SDE log `accuracy.md` §P1-08.
+
 - **Goal.** Grade human decisions against a documented, position-aware population model, behind the same `OpponentModel` switch as `'uniform'` (`src/lib/model.ts`).
 - **User-visible outcome.** None directly. It feeds accuracy (label: "Accuracy vs. a model opponent, not a solver.").
 - **Files.**
@@ -706,6 +708,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** None expected.
 
 ### P1-09 · Grading consumer and `hand_grades`
+
+**Status 2026-10-10: done** (PR #21 `hand_grades`, live; PR #23 consumer, live). Every move of a rated heads-up hand is graded after verification, clock moves included (QA finding), with each decision's pot stored. Golden set (50 hands) equal to the trainer; redelivery idempotent; failures block nothing. Details: SDE log `accuracy.md` §P1-09, QA `accuracy.md`.
 
 - **Goal.** Every archived rated HU hand gets per-decision grades for both seats, server-side, after verification. Grading is idempotent and never blocks play, the result or the rating; a failure degrades to "not graded yet" plus a retry.
 - **User-visible outcome.** Review shows Best/Good/Inaccuracy/Mistake/Blunder after the match.
@@ -728,6 +732,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** DBA (table, RLS by match status), Security item 3.
 
 ### P1-10 · Accuracy on the profile
+
+**Status 2026-10-10: built** (this branch). `public.accuracy` (plain mean of the latest 500 graded decisions plus the distribution, public, written only by `private.refresh_accuracy` on finish and on late grades) and `public.rated_luck`; a "Rated play" panel in the lobby with the exact label and "Not graded yet", reusable on the P1-15 profile. Depends on P1-15 only for its final home.
 
 - **Goal.** Rolling accuracy over the last 500 graded decisions, the grade distribution, and the luck-vs-skill chart across rated matches.
 - **User-visible outcome.** A profile panel labelled exactly "Accuracy vs. a model opponent, not a solver.", with "Not graded yet" when empty.

@@ -132,6 +132,12 @@ const TABLES: Record<string, Spec> = {
       `insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, model_version)
        values ('${H}', 0, 7, '${u}', 'hu-duplicate', 'best', 0, 100, 'x') on conflict do nothing`,
   ),
+  'public.accuracy': owned(
+    'public.accuracy',
+    'accuracy = accuracy',
+    (u) =>
+      `insert into public.accuracy (user_id, format) values ('${u}', '6max') on conflict do nothing`,
+  ),
   'public.abandonments': owned(
     'public.abandonments',
     'kind = kind',
@@ -231,6 +237,9 @@ const EXPECTED: Record<string, Record<Who, Cell[]>> = {
     other: [0, D, D, D],
     ...SERVICE,
   },
+  // The accuracy on every profile: anyone reads it, only the server's
+  // refresh writes it (supabase/tests/accuracy.test.ts).
+  'public.accuracy': { ...PUBLIC_READ, ...SERVICE },
   // The earlier app's learning tables: strictly per owner.
   'public.profiles': { ...OWN_ONLY, ...SERVICE },
   'public.hand_results': { ...OWN_ONLY, ...SERVICE },
@@ -260,6 +269,7 @@ beforeAll(async () => {
     insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade, ev_lost, accuracy, model_version)
       values ('${H}', 0, 0, '${ALICE}', 'hu-duplicate', 'best', 0, 100, 'x'),
              ('${H}', 1, 1, '${BOB}', 'hu-duplicate', 'good', 1, 90, 'x');
+    insert into public.accuracy (user_id, format, accuracy, graded, best) values ('${ALICE}', 'hu-duplicate', 100, 1, 1), ('${BOB}', 'hu-duplicate', 90, 1, 0);
     insert into public.abandonments (user_id, match_id, kind) values ('${ALICE}', '${M}', 'no_show'), ('${BOB}', '${M}', 'no_show');
     insert into public.incidents (kind, detail) values ('seed', '{}');
     insert into public.profiles (user_id) values ('${ALICE}'), ('${BOB}');
@@ -337,9 +347,13 @@ describe('functions', () => {
   it('pin search_path and keep every security definer away from browsers', async () => {
     const all = await fns()
     expect(all.map((f) => f.name)).toEqual([
+      'private.player_accuracy',
+      'private.refresh_accuracy',
+      'private.refresh_finished_match',
       'public.audit_hand',
       'public.clear_learning_progress',
       'public.handle_new_player',
+      'public.rated_luck',
       'public.record_grades',
       'public.record_hand',
       'public.record_incident',

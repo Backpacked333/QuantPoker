@@ -40,11 +40,8 @@ create table public.ratings (
   -- runs once under the match row lock. The ladder rule is abandoned /
   -- matches over the lifetime (R-13: "until it falls" works by dilution).
   abandoned integer not null default 0 check (abandoned >= 0),
-  -- Rolling accuracy over the latest 500 graded decisions of finished
-  -- matches, and how many decisions it covers (P1-10). Refreshed by
-  -- private.refresh_accuracy, never by clients.
-  accuracy real check (accuracy between 0 and 100),
-  graded integer not null default 0 check (graded between 0 and 500),
+  -- Accuracy is not kept here: it shipped in P1-10 as public.accuracy
+  -- (supabase/migrations/*_accuracy.sql), which the ladders join.
   last_match_at timestamptz,
   -- Compare-and-set: apply_rating names the version it computed from.
   version integer not null default 0 check (version >= 0),
@@ -151,86 +148,9 @@ begin
 end $$;
 
 -- ---- P1-09 / P1-10: grades and accuracy -------------------------------------
--- hand_grades and record_grades shipped as supabase/migrations/*_hand_grades.sql
--- (P1-09), readable by the match's two players once it is over (Q6). What
--- follows is what P1-10 and P1-12 add on top.
-
--- Accuracy over the latest 500 graded decisions of finished matches.
--- Private, and never called by a browser: a player's raw grades are readable
--- only by the two players of each match (hand_grades RLS), so under invoker
--- rights anon would average nothing and another player only their shared
--- matches; and a security definer callable by browsers breaks the RLS-matrix
--- rule. The public number is the stored aggregate that the definer
--- private.refresh_accuracy writes (ratings.accuracy here; P1-10 decides where
--- it lives until P1-12 creates ratings), tested as anon and as an unrelated
--- player. The status filter keeps a match in play out of it.
-create function private.player_accuracy(p_user uuid, p_format text default 'hu-duplicate')
-returns table (accuracy real, graded integer)
-language sql stable set search_path = '' as $$
-  select avg(l.accuracy)::real, count(*)::int from (
-    select g.accuracy from public.hand_grades g
-    join public.hands h on h.id = g.hand_id
-    join public.matches m on m.id = h.match_id
-    where g.user_id = p_user and g.format = p_format and m.status <> 'playing'
-    order by g.created_at desc
-    limit 500
-  ) l
-$$;
-
-create function private.refresh_accuracy(p_user uuid, p_format text) returns void
-language sql security definer set search_path = '' as $$
-  insert into public.ratings (user_id, format) values (p_user, p_format)
-  on conflict do nothing;
-  update public.ratings r set accuracy = a.accuracy, graded = a.graded
-  from private.player_accuracy(p_user, p_format) a
-  where r.user_id = p_user and r.format = p_format;
-$$;
-
--- P1-12 redefines the shipped record_grades: grades that land after their
--- match finished refresh the aggregate here; the rest are counted when
--- record_match finishes the match and calls private.refresh_accuracy for
--- both players.
-create or replace function public.record_grades(p jsonb) returns void
-language plpgsql security definer set search_path = '' as $$
-declare
-  v_hand text := p ->> 'handId';
-  v_match uuid;
-  v_verified boolean;
-  v_kind text;
-  v_user uuid;
-begin
-  select h.match_id, h.verified, m.kind into v_match, v_verified, v_kind
-  from public.hands h join public.matches m on m.id = h.match_id
-  where h.id = v_hand;
-  if v_match is null then
-    raise exception 'hand % is not archived', v_hand using errcode = 'P0002';
-  end if;
-  if not v_verified then
-    raise exception 'hand % is not verified', v_hand;
-  end if;
-  if v_kind <> 'hu-rated' then
-    raise exception 'hand % is not rated', v_hand;
-  end if;
-  insert into public.hand_grades (hand_id, seat, idx, user_id, format, grade,
-                                  ev_lost, accuracy, pot, model_version)
-  select v_hand, (g ->> 'seat')::smallint, (g ->> 'idx')::smallint,
-         mp.user_id, p ->> 'format', g ->> 'grade',
-         (g ->> 'evLost')::real, (g ->> 'accuracy')::real, (g ->> 'pot')::real,
-         p ->> 'modelVersion'
-  from jsonb_array_elements(p -> 'grades') g
-  join public.match_players mp
-    on mp.match_id = v_match and mp.seat = (g ->> 'seat')::smallint
-  on conflict do nothing;
-  if exists (
-    select 1 from public.matches m where m.id = v_match and m.status <> 'playing'
-  ) then
-    for v_user in
-      select mp.user_id from public.match_players mp where mp.match_id = v_match
-    loop
-      perform private.refresh_accuracy(v_user, p ->> 'format');
-    end loop;
-  end if;
-end $$;
+-- Shipped: hand_grades and record_grades (P1-09, *_hand_grades*.sql), and
+-- public.accuracy with private.player_accuracy, private.refresh_accuracy and
+-- the finish trigger (P1-10, *_accuracy.sql). Nothing left to propose.
 
 -- ---- P1-17: reports ------------------------------------------------------------
 create table public.reports (
@@ -376,9 +296,10 @@ language sql stable set search_path = '' as $$
       limit 1) as trend
   from (
     select r.user_id, p.username, r.rating, r.rd, r.matches, r.wins, r.draws,
-           r.accuracy
+           a.accuracy
     from public.ratings r
     join public.players p on p.user_id = r.user_id
+    left join public.accuracy a on a.user_id = r.user_id and a.format = r.format
     where r.format = p_format
       and r.rd < 100 and r.matches >= 20
       and r.last_match_at >= now() - interval '30 days'
@@ -419,10 +340,11 @@ language sql stable set search_path = '' as $$
       and h.created_at < (p_month + interval '1 month')::timestamp at time zone 'utc'
     group by h.user_id)
   select r.user_id, p.username, r.rating, r.rd, mo.matches, mo.wins, mo.draws,
-         r.accuracy, mo.trend
+         a.accuracy, mo.trend
   from month mo
   join public.ratings r on r.user_id = mo.user_id and r.format = p_format
   join public.players p on p.user_id = r.user_id
+  left join public.accuracy a on a.user_id = r.user_id and a.format = r.format
   where r.rd < 100 and r.matches >= 20
     and r.last_match_at >= now() - interval '30 days'
     and 10 * r.abandoned < r.matches
@@ -505,8 +427,7 @@ create policy sanctions_appeal on public.sanctions
 do $$
 declare f text;
 begin
-  foreach f in array array['public.apply_rating(jsonb)', 'public.record_grades(jsonb)',
-                           'public.apply_sanction(jsonb)'] loop
+  foreach f in array array['public.apply_rating(jsonb)', 'public.apply_sanction(jsonb)'] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
     execute format('grant execute on function %s to service_role', f);
   end loop;
@@ -514,6 +435,5 @@ end $$;
 revoke all on function public.appeal_sanction(bigint, text) from public, anon;
 grant execute on function public.appeal_sanction(bigint, text) to authenticated;
 revoke all on function private.refuse_change() from public, anon, authenticated;
-revoke all on function private.refresh_accuracy(uuid, text) from public, anon, authenticated;
 revoke all on function private.reports_daily_cap() from public, anon, authenticated;
 revoke all on function private.stamp_appeal() from public, anon, authenticated;

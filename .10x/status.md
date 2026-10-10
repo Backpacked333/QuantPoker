@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE (P1-04 live: end of match and rematch; P1-12 ratings next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (accuracy: P1-08 and P1-09 live, QA attack run, P1-10 built; P1-12 ratings next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
@@ -34,6 +34,19 @@ Merged and deployed, each one verified in production after its merge:
 - **#19:** after a rated match, both players can press Rematch within 60 s for a new rated match with seats swapped, within 2 pairings per pair per day. The end panel reads "+12.5 bb · Win", the luck-adjusted total. A reload after the end shows the result again.
 - **Deploy:** production serves the build (`verify-deploy`), and the deployed Worker carries the new code.
 - **Your call:** one Devin finding about rematch links lost in long archive outages is open on #19 (decline recommended).
+
+**PRs #20 (`33eae10`), #21 (`3ec0f0b`) and #23 (`989ed07`): accuracy against a model opponent (P1-08, P1-09).**
+
+- **#20:** the population opponent model, with repeatable, key-seeded analysis tables.
+- **#21:** `hand_grades`. Nobody reads a grade mid-match; afterwards only the match's two players do. `record_grades` refuses unverified and casual hands.
+- **#23:** the grading consumer, which grades every move of a rated hand after verification, and the per-decision pot. Production holds migrations `20261010053000` and `20261010060000` (checked read-only), the deployed Worker carries the consumer, and `verify-deploy` passed.
+- **QA attack** (`.10x/reviews/2026-10-10-qa-report.md`):
+  - leaving moves to the clock dodged grading; fixed;
+  - a plain mean barely separates raising every street from a thinking player; measured and documented, with the pot stored for the real-data comparison.
+
+  The mission's sanity order holds.
+
+**P1-10 (built, PR next):** the public accuracy number with its distribution, the luck-versus-skill series across rated matches, and the "Rated play" panel in the lobby.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.
 
@@ -147,7 +160,7 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
   - Retry safety: PGlite plus a real-Postgres concurrency script.
   - Growth model.
   - Phase 1 schema proposed, not applied.
-- [ ] User: Q6 (grade visibility vs the Terms) before P1-09; Q7 (`hands_private` retention) whenever you like
+- [x] Q6 answered by the accuracy mission: grades are readable only by the match's two players, after the match. Open: Q7 (`hands_private` retention) whenever you like
 - [x] SDE: S7-13 (park an archive call that can never succeed; PR #11)
 - [x] SDE: P1-11 Glicko-2 (PR #10), P1-02 luck adjustment (PR #11), P1-00 design (PR #11), P1-01 database (PR #12, live)
 - [x] SDE: P1-01b-1, the rated match in `TableDO` (PR #13, live)
@@ -156,6 +169,9 @@ Site + game server: one Cloudflare Worker `quantpoker` (Workers Paid, Git-connec
 - [x] SDE: P1-01c, the lobby's Rated card and the match bar (PR #16, live)
 - [x] SDE: P1-03, nothing to analyse on a rated table (PR #17, live)
 - [x] SDE: P1-04, end of match and rematch (PRs #18, #19, live)
+- [x] SDE: P1-08, the population model (PR #20, live); P1-09, grades and the consumer (PRs #21 and #23, live)
+- [x] QA: attack on the accuracy grading (`.10x/decisions/qa/accuracy.md`): 13 scripted players, 1 exploit fixed, the averaging weakness documented, the ordering locked in CI
+- [ ] SDE: P1-10, the accuracy shown (built; PR, merge and deploy check next)
 - [ ] Next in Phase 1: P1-12 ratings (`ratings` migration, Glicko-2 at match end), S7-05 telemetry
 - [ ] User: decide the open rematch-link finding on PR #19 (recommendation: leave it; it only undercounts rematches during an archive outage of about 15 minutes or more)
 - [ ] SDE: a build marker in `/api/health` so `verify-deploy` sees Worker-only changes

@@ -42,7 +42,11 @@ export default function LiveApp() {
     matchId ? (
       <LiveTable key={matchId} matchId={matchId} identity={identity} />
     ) : (
-      <Lobby identity={identity} autoFind={autoFind} />
+      <Lobby
+        identity={identity}
+        autoFind={autoFind}
+        client={online?.client ?? null}
+      />
     )
 
   return (

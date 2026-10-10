@@ -5,7 +5,8 @@
 import { policy } from './atlas'
 import type { AtlasStyle } from './atlas'
 import type { Card, HistoryEntry } from './poker'
-import { drawTail, liveIds, score, toId } from './sim'
+import { hashString } from './random'
+import { drawTail, lcg, liveIds, score, toId } from './sim'
 
 export const COMBOS = 1326
 export const COMBO_A = new Uint8Array(COMBOS)
@@ -76,6 +77,14 @@ export type SpotAnalysis = QuickSpot | FullSpot
 /** Smoothing for Atlas's own equity-estimate noise when inverting its policy. */
 export const POLICY_SIGMA = 0.03
 
+/**
+ * Each table below is sampled from its own stream, seeded by what the table
+ * depends on, so a spot's analysis never depends on which spots the caches
+ * saw first: the trainer and the grading consumer read the same numbers in
+ * any order, in any isolate, on every redelivery.
+ */
+const tableRandom = (key: string) => lcg(hashString(key))
+
 const cacheLimit = 24
 function remember<T>(cache: Map<string, T>, key: string, value: T) {
   cache.set(key, value)
@@ -86,8 +95,9 @@ function remember<T>(cache: Map<string, T>, key: string, value: T) {
 // ---- Atlas's equity against a random hand, per combo ----------------------
 
 let preflopClasses: Float32Array | null = null
-function preflopClassEquity(random: () => number) {
+function preflopClassEquity() {
   if (preflopClasses) return preflopClasses
+  const random = tableRandom('preflop')
   const table = new Float32Array(169).fill(NaN)
   const hand = new Array<number>(7)
   const villain = new Array<number>(7)
@@ -121,10 +131,9 @@ function preflopClassEquity(random: () => number) {
 export function preflopRangeAfter(
   action: 'raise' | 'passive' | 'any',
   style: AtlasStyle,
-  random: () => number,
   context = { toCall: 0, pot: 30, canRaise: true },
 ) {
-  const classes = preflopClassEquity(random)
+  const classes = preflopClassEquity()
   const weights = Array.from(classes, (equity) =>
     action === 'any' ? 1 : policy(equity, context, style, POLICY_SIGMA)[action],
   )
@@ -133,14 +142,15 @@ export function preflopRangeAfter(
 }
 
 const atlasCache = new Map<string, Float32Array>()
-export function atlasEquityTable(board: number[], random: () => number) {
+export function atlasEquityTable(board: number[]) {
   const key = board.join(',')
   const cached = atlasCache.get(key)
   if (cached) return cached
+  const random = tableRandom(`atlas|${key}`)
   const table = new Float32Array(COMBOS).fill(NaN)
   const dead = new Set(board)
   if (!board.length) {
-    const classes = preflopClassEquity(random)
+    const classes = preflopClassEquity()
     for (let k = 0; k < COMBOS; k++)
       table[k] = classes[gridCell(COMBO_A[k], COMBO_B[k])]
     return remember(atlasCache, key, table)
@@ -180,11 +190,11 @@ const heroCache = new Map<string, [Float32Array, Float32Array]>()
 export function heroTables(
   hole: number[],
   board: number[],
-  random: () => number,
 ): [Float32Array, Float32Array] {
   const key = `${hole.join(',')}|${board.join(',')}`
   const cached = heroCache.get(key)
   if (cached) return cached
+  const random = tableRandom(`hero|${key}`)
   const win = new Float32Array(COMBOS).fill(NaN)
   const tie = new Float32Array(COMBOS).fill(NaN)
   const dead = new Set([...hole, ...board])
@@ -283,19 +293,18 @@ export function rangeWeights(
   board: number[],
   history: HistoryEntry[],
   style: AtlasStyle,
-  random: () => number,
 ) {
   const weights = new Float32Array(COMBOS)
   const dead = new Set([...hole, ...board])
   for (let k = 0; k < COMBOS; k++)
     weights[k] = dead.has(COMBO_A[k]) || dead.has(COMBO_B[k]) ? 0 : 1
-  const current = atlasEquityTable(board, random)
+  const current = atlasEquityTable(board)
   const steps: RangeStep[] = [
     { label: 'Any two cards', buckets: bucketsOf(weights, current) },
   ]
   for (const entry of history) {
     if (entry.player !== 1 || entry.action === 'fold') continue
-    const table = atlasEquityTable(board.slice(0, entry.boardCount), random)
+    const table = atlasEquityTable(board.slice(0, entry.boardCount))
     const context = {
       toCall: entry.toCall,
       pot: entry.pot,
@@ -462,9 +471,8 @@ export function analyzeSpot(
     board,
     request.history,
     request.style,
-    random,
   )
-  const [heroWin, heroTie] = heroTables(hole, board, random)
+  const [heroWin, heroTie] = heroTables(hole, board)
   let win = 0,
     tie = 0,
     n = 0

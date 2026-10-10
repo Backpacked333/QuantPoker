@@ -71,7 +71,7 @@ const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1]
 describe('grading CPU budget', () => {
   // First, while the module is cold: every isolate pays this once.
   it(`builds the one-time pre-flop table in under ${PREFLOP_TABLE_BUDGET_MS} ms CPU`, () => {
-    const ms = cpuMs(() => preflopRangeAfter('any', 'balanced', lcg(1)))
+    const ms = cpuMs(() => preflopRangeAfter('any', 'balanced'))
     console.log(`bench preflop table: ${ms.toFixed(0)} ms CPU`)
     expect(ms).toBeLessThan(PREFLOP_TABLE_BUDGET_MS)
   })

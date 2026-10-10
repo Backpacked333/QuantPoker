@@ -19,6 +19,13 @@
   --mono:
     ui-monospace, 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Menlo, Consolas,
     monospace;
+  /* The dark theme's grade chips: the desk is dark in either theme. */
+  --grade-best: #3cc48d;
+  --grade-good: #79c79d;
+  --grade-inaccuracy: #e0b443;
+  --grade-mistake: #ec8d53;
+  --grade-blunder: #f0697a;
+  --grade-ink: #0d1714;
   color-scheme: dark;
   color: var(--desk-text);
   /* Faint grid, like a terminal pane. */

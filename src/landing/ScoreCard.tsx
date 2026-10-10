@@ -81,10 +81,15 @@ export function ScoreCard({
   const notes = decisions.flatMap((d) => d.atlas.map((a) => a.note))
 
   return (
-    <section className="scorecard" aria-labelledby="scorecard-title">
+    <section
+      className="scorecard"
+      aria-labelledby="scorecard-label scorecard-title"
+    >
       <div className="scorecard-head">
         <div className="scorecard-score">
-          <span className="scorecard-label">Accuracy</span>
+          <span className="scorecard-label" id="scorecard-label">
+            Accuracy
+          </span>
           <span className="scorecard-number" id="scorecard-title">
             {accuracy}
             <small>/100</small>

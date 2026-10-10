@@ -17,18 +17,28 @@ import {
 } from './players'
 import type { Player } from './players'
 import type { Identity } from './api'
+import { readPendingClaim } from '../lib/landing'
+import { track } from '../lib/track'
 
 type Props = {
   client: SupabaseClient | null
   url: string
   apiKey: string
+  /** Signing up from the landing page: the score is the reason to. */
+  onboarding?: boolean
   children: (identity: Identity) => ReactNode
 }
 
-export function AuthGate({ client, url, apiKey, children }: Props) {
+export function AuthGate({
+  client,
+  url,
+  apiKey,
+  onboarding = false,
+  children,
+}: Props) {
   if (!client) return <NotConfigured />
   return (
-    <SignedIn client={client} url={url} apiKey={apiKey}>
+    <SignedIn client={client} url={url} apiKey={apiKey} onboarding={onboarding}>
       {children}
     </SignedIn>
   )
@@ -54,6 +64,7 @@ function SignedIn({
   client,
   url,
   apiKey,
+  onboarding,
   children,
 }: Props & { client: SupabaseClient }) {
   const auth = useAuth(client)
@@ -89,7 +100,14 @@ function SignedIn({
       </p>
     )
   if (auth.status === 'signed-out')
-    return <SignIn client={client} url={url} apiKey={apiKey} />
+    return (
+      <SignIn
+        client={client}
+        url={url}
+        apiKey={apiKey}
+        onboarding={!!onboarding}
+      />
+    )
   if (player === 'error' || player === null)
     return (
       <div className="empty live-empty" role="alert">
@@ -105,8 +123,12 @@ function SignedIn({
       <ChooseName
         client={client}
         player={player}
-        onSaved={setPlayer}
+        onSaved={(saved) => {
+          track('username_set')
+          setPlayer(saved)
+        }}
         onSignOut={signOut}
+        onboarding={!!onboarding}
       />
     )
   return <>{children({ player, getToken, signOut })}</>
@@ -121,11 +143,14 @@ function SignIn({
   client,
   url,
   apiKey,
+  onboarding,
 }: {
   client: SupabaseClient
   url: string
   apiKey: string
+  onboarding: boolean
 }) {
+  const [pending] = useState(() => (onboarding ? readPendingClaim() : null))
   const [providers, setProviders] = useState<Providers | null>(null)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState<string | null>(null)
@@ -161,7 +186,13 @@ function SignIn({
 
   return (
     <section className="panel live-signin" aria-labelledby="signin-title">
-      <h2 id="signin-title">Sign in to play real opponents</h2>
+      <h2 id="signin-title">
+        {pending
+          ? `Save your ${pending.accuracy} and get rated`
+          : onboarding
+            ? 'Create your account'
+            : 'Sign in to play real opponents'}
+      </h2>
       <p className="live-muted">
         Play money only. No prizes, no deposits. 18+. Your username and finished
         hands are public; your email is not.
@@ -227,11 +258,13 @@ function ChooseName({
   player,
   onSaved,
   onSignOut,
+  onboarding,
 }: {
   client: SupabaseClient
   player: Player
   onSaved: (player: Player) => void
   onSignOut: () => void
+  onboarding: boolean
 }) {
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -249,6 +282,7 @@ function ChooseName({
 
   return (
     <section className="panel live-signin" aria-labelledby="name-title">
+      {onboarding && <p className="onboard-step">Step 1 of 3</p>}
       <h2 id="name-title">Choose your table name</h2>
       <p className="live-muted">
         Opponents and the leaderboard will see it. 3–20 lowercase letters,

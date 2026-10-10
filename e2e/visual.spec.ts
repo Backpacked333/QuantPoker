@@ -28,7 +28,7 @@ for (const colorScheme of ['light', 'dark'] as const)
     test.use({ colorScheme })
 
     test('welcome', async ({ page }) => {
-      await page.goto(URL)
+      await page.goto(`${URL}#table`)
       await expect(page.getByRole('dialog')).toBeVisible()
       await snap(page, `${colorScheme}-welcome`)
     })

@@ -76,7 +76,8 @@ export function Ladder({
         {ACTIVE_DAYS} days and fewer than {Math.round(MAX_ABANDONMENT * 100)}%
         of rated matches abandoned.
         {month &&
-          ' This month lists players with a rated match this month (UTC), with that month’s matches, win rate and change.'}
+          ' This month lists players with a rated match this month (UTC), with that month’s matches, win rate and change.'}{' '}
+        <a href="#method">Method</a>
       </p>
       {page.status === 'loading' ? (
         <p className="live-muted" role="status">
@@ -126,7 +127,9 @@ export function Ladder({
                 {page.rows.map((r, i) => (
                   <tr key={r.userId}>
                     <td>{first + i + 1}</td>
-                    <th scope="row">{r.username}</th>
+                    <th scope="row">
+                      <a href={`#u/${r.username}`}>{r.username}</a>
+                    </th>
                     <td>{ratingText(r)}</td>
                     <td>
                       {r.accuracy === null ? '–' : Math.round(r.accuracy)}

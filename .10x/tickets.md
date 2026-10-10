@@ -841,6 +841,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-15 · Public profile
 
+**Status 2026-10-10: built** (this branch). `/u/<username>` with a Worker link preview (escaped, edge-cached); `#u/<username>` with rating ± RD and its graph, volume, abandonment, sanctions "None", accuracy, and the last 20 rated matches linking to `#match/<id>`, a public hand-by-hand review that shows only showdown cards. Edit profile is not built (cut line). Details: SDE log §P1-15/16.
+
 - **Goal.** `/u/<username>` (share URL) and `#u/<username>` (in-app). Shows rating ± RD over time, a provisional badge, accuracy (P1-10 fills it), volume, abandonment rate, the last 20 matches with review links, the sanctions field (empty until P1-18), and the optional fields. The optional fields are country and bio ("studying / where you work"); the avatar is the initial (no uploads, R-26).
 - **User-visible outcome.** A shareable profile and an "Edit profile" form.
 - **Files.**
@@ -862,6 +864,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Review fold-in.** Security item 5 (profile exposure).
 
 ### P1-16 · Share card, Method page, and counting external views
+
+**Status 2026-10-10: partly built** (this branch). The share card `public/og-default.png` (static, the cut line), the `#method` page and the Share button are built. **Counting views from outside the app is not built.** The PM metric stays "needs instrumentation" until a follow-up adds `profile_views`.
 
 - **Goal.** OG share card; `#method` page with formulas and versions (`glicko2.v1`, τ, provisional rule, draw band, eligibility, accuracy label and model version, what is not measured). Count profile views from outside the app, and share clicks.
 - **User-visible outcome.** A LinkedIn preview of the profile; a Share button; Method linked from the profile and ladder.

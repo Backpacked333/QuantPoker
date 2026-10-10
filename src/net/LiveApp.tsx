@@ -1,8 +1,10 @@
-// The online area: #lobby, #play/<matchId> and the public #ladder[/month].
-// Lazy-loaded so the account client never reaches the entry chunk; the
-// trainer works without any of it.
+// The online area: #lobby and #play/<matchId>, and the public pages:
+// #ladder[/month], #u/<username> and #match/<matchId>. Lazy-loaded so the
+// account client never reaches the entry chunk; the trainer works without
+// any of it.
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { useHash } from '../lib/navigation'
 import { devIdentity } from './api'
 import type { Identity } from './api'
@@ -10,17 +12,23 @@ import { AuthGate } from './AuthGate'
 import { Ladder } from './Ladder'
 import { LiveTable } from './LiveTable'
 import { Lobby } from './Lobby'
+import { MatchReview } from './MatchReview'
+import { Profile } from './profile/Profile'
 import { loadOnline } from './supabase'
 import type { Online } from './supabase'
 import './live.css'
 
 const PLAY = /^#play\/([0-9a-f-]{36})$/
 const LADDER = /^#ladder(\/month)?$/
+const PROFILE = /^#u\/([a-z0-9_]{3,20})$/
+const REVIEW = /^#match\/([0-9a-f-]{36})$/
 
 export default function LiveApp() {
   const hash = useHash()
   const matchId = hash.match(PLAY)?.[1] ?? null
   const ladder = hash.match(LADDER)
+  const profile = hash.match(PROFILE)?.[1] ?? null
+  const review = hash.match(REVIEW)?.[1] ?? null
   const [dev] = useState(devIdentity)
   const [online, setOnline] = useState<Online | null | undefined>(undefined)
   useEffect(() => {
@@ -53,15 +61,48 @@ export default function LiveApp() {
       />
     )
 
-  // The ladder is public: no sign-in, read with the anonymous key.
-  if (ladder)
+  // Public pages: no sign-in, read with the publishable key.
+  const page: {
+    title: string
+    intro?: string
+    body: (client: SupabaseClient) => ReactNode
+  } | null = ladder
+    ? {
+        title: 'Ladder',
+        intro: 'Rated heads-up: 40 hands a match, with all-in luck taken out.',
+        body: (client) => (
+          <Ladder
+            key={ladder[1] ? 'month' : 'all'}
+            client={client}
+            view={ladder[1] ? 'month' : 'all'}
+          />
+        ),
+      }
+    : profile
+      ? {
+          title: profile,
+          body: (client) => (
+            <Profile key={profile} client={client} username={profile} />
+          ),
+        }
+      : review
+        ? {
+            title: 'Match review',
+            intro: 'Every hand, with only the cards shown at showdown.',
+            body: (client) => (
+              <MatchReview key={review} client={client} matchId={review} />
+            ),
+          }
+        : null
+  if (page)
     return (
       <div className="page live-page">
         <header className="page-head">
-          <h1>Ladder</h1>
-          <p>Rated heads-up: 40 hands a match, with all-in luck taken out.</p>
+          <h1>{page.title}</h1>
+          {page.intro && <p>{page.intro}</p>}
           <p className="live-muted">
-            <a href="#lobby">Play rated</a> · <a href="#fair-play">Fair play</a>
+            <a href="#ladder">Ladder</a> · <a href="#lobby">Play rated</a> ·{' '}
+            <a href="#method">Method</a>
           </p>
         </header>
         {online === undefined && !dev ? (
@@ -69,14 +110,10 @@ export default function LiveApp() {
             Connecting…
           </p>
         ) : online ? (
-          <Ladder
-            key={ladder[1] ? 'month' : 'all'}
-            client={online.client}
-            view={ladder[1] ? 'month' : 'all'}
-          />
+          page.body(online.client)
         ) : (
           <p className="live-muted" role="status">
-            The ladder is not available on this site: it has no account service
+            This page is not available on this site: it has no account service
             configured.
           </p>
         )}

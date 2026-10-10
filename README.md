@@ -6,6 +6,14 @@ QuantPoker is a decision trainer disguised as a poker game. You play heads-up Te
 
 This is an **educational web app played for play money only**, not a gambling service, trading tool or source of investment advice. Casual heads-up play against other people runs online (see [Online play](#online-play)); the trainer works fully offline without it.
 
+## The front door
+
+The root URL opens the landing page: a lightweight introduction, an interactive expected-value example, curriculum entry points, and links to practice and online play. The example uses a supplied win probability (not odds calculated from its illustrative cards), a 100-chip pot and a 25-chip call, with no further betting, ties or rake.
+
+The `#experiment` section lets visitors set a win chance and call price, simulate 100 independent calls, compare cumulative results with expected value, and inspect each outcome. Expected value is an average, not a guaranteed result. Scroll reveals, card deals, chart animations, pointer-responsive depth, and a moving concept strip respect reduced-motion preferences and `?motion=off`; the header also includes a pause control. All experiments run locally, without accounts or network requests.
+
+Existing app links still open directly: `#table` for practice, `#learn/path` for the curriculum, `#lobby` for online play, and `#play/<matchId>` for a live match. The trainer and its analysis worker load only after leaving the landing page. Account-return routing is restored before the root renders, so sign-in callbacks still reach online play.
+
 ## Run locally
 
 Requirements: Node.js **22.12+** and npm (`.nvmrc` pins Node 22 LTS; Node 24 also works).

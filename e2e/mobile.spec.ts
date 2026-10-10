@@ -32,6 +32,19 @@ test('phone layout has no horizontal scroll and a working lab sheet', async ({
   await expect(page.locator('.sheet-body .review')).toBeVisible()
 })
 
+test('the landing page fits a phone and shows the table on the first screen', async ({
+  page,
+}) => {
+  await page.goto('/?motion=off')
+  const decision = page.getByRole('group', { name: /Your decision/ })
+  await expect(decision).toBeVisible({ timeout: 10_000 })
+  await expectNoOverflow(page)
+  const table = await page
+    .getByRole('region', { name: 'Poker table' })
+    .boundingBox()
+  expect(table!.y).toBeLessThan(page.viewportSize()!.height)
+})
+
 test('the lab sheet drags between snap points', async ({ page }) => {
   await onboard(page)
   await page.getByRole('button', { name: /Lock in/ }).click()

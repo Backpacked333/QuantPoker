@@ -358,3 +358,78 @@
 .series-end.band {
   display: none;
 }
+
+/* ---------- Onboarding after the landing page ---------- */
+.onboard {
+  display: grid;
+  gap: 16px;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 26px;
+}
+.onboard h2 {
+  margin: 0;
+}
+.onboard-step {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.onboard-score,
+.onboard-badge {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--positive-soft);
+  color: var(--text);
+}
+.onboard-score svg,
+.onboard-badge svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--positive);
+}
+.onboard-moves {
+  display: grid;
+  gap: 10px;
+}
+.onboard-move {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.onboard-move:hover {
+  border-color: var(--brand);
+  background: var(--surface-2);
+}
+.onboard-move svg {
+  grid-row: span 2;
+  margin-top: 2px;
+  color: var(--brand);
+}
+.onboard-move span {
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+.onboard-school {
+  display: grid;
+  gap: 12px;
+}
+.onboard-school > p svg {
+  vertical-align: -3px;
+}

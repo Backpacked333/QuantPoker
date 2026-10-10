@@ -1,10 +1,107 @@
 # Handoff
 
-## Current handoff: SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
+## Current handoff: SDE → User (landing page phase 2 built)
+
+Date: 2026-10-10 · Status: **phases 1 and 2 are built and tested in PR #30, which is not merged.**
+
+### What changed in phase 2
+
+- **Share links (L-12).** "Challenge a friend" on the score card shares `/c/<receipt>`. Its link preview reads "Beat 87/100 on “The nut flush draw”", over a new static card (`public/og-challenge.png`).
+- **Friend challenge (L-13).** The link opens the same hand with the score to beat, and ends with "You beat your friend: 91 to 87" (or the reverse). Links last 30 days and carry no name.
+- **School code by email (L-14).** A player without a badge can verify a school email in onboarding step 2: a six-digit code sent by Resend, only its hash kept, 15 minutes, 5 guesses, 3 sends a day. A right code sets the badge through the outbox (`set_player_school`).
+
+### Decisions I took (reversible)
+
+- **One static share card,** with the numbers in the preview text (P1-16's precedent), not an image rendered per score.
+- **Shared links are anonymous.**
+- **Without the Resend secrets, the school route answers 503** and onboarding says so; nothing else changes.
+
+### User actions
+
+- **Before launch:** U-9 (Google) and U-10 (SMTP).
+- **For school codes:** U-11 (the two Worker secrets).
+- **For claims and badges to reach Postgres:** U-4.
+- **Merging #30** launches the landing page and applies two migrations (`20261010110000_landing.sql`, `20261010120000_school_email.sql`).
+
+### Next step
+
+Read `/api/funnel` 2 weeks after launch against the PM targets. Then: school leaderboards once the ladder has data (P2 in the PM file).
+
+---
+
+## Handoff history
+
+### 2026-10-10 — SDE → User (landing page and onboarding, phase 1 built)
+
+Date: 2026-10-10 · Status: **phase 1 is built and tested in PR #30, which is not merged.**
+
+#### What changed
+
+- **The landing page.** A first visit to the bare URL plays one of six curated hands against Atlas, graded per decision, with no account. The score card shows accuracy, a percentile ranked by the server, luck shown apart from skill, and Atlas's reasoning. `#start` reopens it.
+- **The server.** `ScoreDO` re-scores every line from the pre-scored trees, so a score cannot be forged. It keeps the percentile histograms and the "x% of players chose this" counts, counts funnel events once per visitor per day (`GET /api/funnel`), and queues score claims to Postgres.
+- **The database** (`20261010110000_landing.sql`): `school_domains` (our own list), a trigger that sets `players.school` from a confirmed school email, and `challenge_scores` with `record_challenge_claim`.
+- **Onboarding** (`#welcome/onboard`): the sign-in screen names the score, then username, school badge and first move. The score is attached after sign-in.
+
+#### Decisions I took (reversible)
+
+- **Our own school list** of about 90 schools, plus any `.edu` or `.ac.uk` address shown by its domain. The public dataset has no license.
+- **Two challenge hands replaced:** one raise dominated, so the percentile meant nothing.
+- **Model players are read from the graded accuracy, not raw EV,** so shoves do not dominate.
+- **`AuthGate` stays the single sign-in surface;** no separate `SignIn.tsx`.
+
+#### User actions
+
+- **U-9** (Google sign-in) and **U-10** (custom SMTP) before launch. **U-4** for claimed scores to reach Postgres. Steps: `.10x/decisions/architect/landing-and-onboarding.md` §User gates.
+- **Your call:** merging #30 launches the landing page and applies the migration to production. It works on email links alone, but sign-up is slower until U-9 and U-10 are done.
+
+#### Next step
+
+Phase 2 when you want it: the share card and link previews (L-12), the friend challenge (L-13), and a school code to a second email (L-14). Read the funnel at `/api/funnel` 2 weeks after launch against the PM targets.
+
+### 2026-10-10 — Architect → Staff Engineer / EM (landing page and onboarding)
+
+Date: 2026-10-10 · Status: **architecture decided (design B), user aligned; ready to build phase 1.**
+
+#### Read first
+
+- `.10x/decisions/architect/landing-and-onboarding.md` (the design, contracts, failure modes, tests, build order)
+- `.10x/decisions/product-manager/landing-and-onboarding.md` (requirements L-1 to L-14)
+
+#### Components
+
+1. `src/challenge/`: curated hands, `scripts/build-challenges.ts` → `trees.generated.json` (with a regeneration guard), and a pure `scorePath` shared by the browser and the Worker.
+2. `ScoreDO` (SQLite, one instance), with routes `POST /api/challenge/score`, `POST /api/events`, `POST /api/challenge/claim` (Bearer) and `GET /api/funnel`. Binding plus the `v3` migration in `wrangler.jsonc`.
+3. The landing view: a `parseRoute` branch for a first visit or `#start` or `#c/…`, a lazy chunk prefetched at boot, the challenge on `Table`, the score card, the sections, and `track()`.
+4. `src/net/SignIn.tsx`, extracted from `AuthGate`, plus the `#welcome/onboard` steps (username → school → first move) and the claim through `qp.pendingClaim`.
+5. Migrations: `school_domains` with its seed, `players.school`/`school_verified_at`, the `set_player_school` trigger, and `challenge_scores` with `record_challenge_claim` (DBA review).
+
+#### Answers to the PM's open questions
+
+- **O-1:** a trigger verifies the school from a confirmed sign-in email or a Google Workspace account (phase 1). A code sent to a second address through Resend comes in phase 2.
+- **O-2:** a client-side `landing` route; every existing hash route is unchanged; `/c/*` goes to the Worker only in phase 2 (OG).
+- **O-3:** first-party `ScoreDO` counters, no third-party analytics.
+- **O-4:** a server-held receipt, kept in localStorage until it is claimed once after sign-in.
+
+#### Constraints
+
+- Entry chunk 141.5 kB of 150. Only the route branch, the lazy import and `track()` may enter it.
+- No grader call per request.
+- Write, then reply in `ScoreDO`.
+- Postgres only through the outbox.
+
+#### User gates
+
+U-9 (Google OAuth) and U-10 (Resend SMTP) before launch. U-4 is already open and gates the claim archive and the phase 2 school code.
+
+#### Next step
+
+EM: turn the 5 phase 1 steps into tickets (about 5 days), alongside P1-12.
+
+### 2026-10-10 — SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
 
 Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, P1-13 and P1-14 are merged and verified live; P1-15/16 is PR #29.
 
-### What changed
+#### What changed
 
 - **The number moves after every match** (P1-12, live). The end screen shows the real change and why: "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92."
 - **Matchmaking near rating** (P1-13, live). The window starts at ±100 and widens by 50 a minute; the ≤ 2 pairings per pair per day cap holds.
@@ -20,7 +117,7 @@ Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, 
   - `#method` states the formulas and versions.
   - A generic share card.
 
-### Decisions I took (reversible)
+#### Decisions I took (reversible)
 
 - **Win rate counts wins only;** draws are visible as the gap. This is stated under the table and on Method.
 - **Profiles list rated matches only.** ToS consent covers rated hand histories.
@@ -28,28 +125,60 @@ Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, 
 - **Link previews use one static card** (the ticket's cut line); the player's numbers are in the preview text.
 - **Counting profile views from outside the app is deferred** (P1-16's `profile_views`).
 
-### User actions
+#### User actions
 
 - **Unchanged:** U-4 (until then no rated match is archived or rated in production), U-8, Q7, and the open rematch-link finding on #19.
 - **Optional:** say if you want profile-view counting built next.
 
-### 6-max arena mission: stopped at the pre-check
+#### 6-max arena mission: stopped at the pre-check
 
 - 100,000 simulated 6-max hands with 0 failures (VERIFIED).
 - 0 of 1,000 human casual 6-max hands (VERIFIED: production holds 0 hands; casual 6-max is unbuilt; U-4).
 - No design note or build until the gate passes. The path is in `.10x/decisions/architect/six-max-arena.md`.
 
-### Next step
+#### Next step
 
 #27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is merged and verified live. The security finding on it (hands of a live match readable through the public API) is fixed by the restrictive `hands_after_match` policy, which you approved; see `.10x/decisions/dba/hands-after-match.md`. Next: casual 6-max (P2-01..P2-06, P2-08, P2-11), which you approved. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
 
-## Handoff history
+### 2026-10-10 — PM → Architect (landing page and onboarding)
+
+Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); architecture next.**
+
+#### Read first
+
+`.10x/decisions/product-manager/landing-and-onboarding.md` (slug `landing-and-onboarding`).
+
+#### What was decided
+
+- **Audience:** competitive, high-ability students (math, finance, physics, CS) aiming for IB or quant roles, mostly at elite schools. The user's hypothesis, to be validated.
+- **Hook:** the landing page hero is one curated hand against Atlas on the real table, graded per decision, with no account. It ends on a score card (accuracy, percentile, luck versus skill).
+- **Account:** "Save your score & get rated" → 1-click sign-up (Google first) → username → optional school badge (verified school email) → first move.
+- **Tone:** trading-desk elite. Dark, precise, monospace figures, no casino imagery.
+- **Scope B:** L-1 to L-11 are P0; the share card, the friend-challenge link and second-email school verification (L-12 to L-14) are P1.
+
+#### Priority order
+
+1. L-1/L-2/L-3/L-4/L-5 (landing page + challenge hand + score card), with L-10 analytics from the first PR.
+2. L-7/L-8 (one sign-up surface + onboarding), with the score carried over (O-4).
+3. L-6 (real percentile), L-9 (sections), L-11 (a11y, motion, frame time).
+4. P1: L-12 share card, L-13 friend link, L-14 school email sender.
+
+#### Open questions for you
+
+O-1 school verification (auto-verify vs an email sender) · O-2 routing `/` for first-time visitors without breaking hash deep links · O-3 anonymous score and event storage · O-4 carrying the score into the new account. Details and PM preferences are in the feature file.
+
+#### Constraints
+
+- The entry bundle budget (`scripts/check-bundle.mjs`): the landing page must not pull the lab or `src/net` into the entry chunk.
+- The lab is off during the challenge (same rule as rated play) and on in its review.
+- Play money only; no personal data in analytics events.
+- This runs alongside Phase 1 and does not displace P1-12 ratings.
 
 ### 2026-10-10 — SDE → User (accuracy: P1-08/P1-09 live, P1-10 built)
 
 Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going through its PR.**
 
-### What changed
+#### What changed
 
 - **Grades after every rated hand** (PRs #21 and #23, live).
   - The hands consumer grades every move of both players once a hand is verified, against the population model, from each player's redacted view.
@@ -61,22 +190,20 @@ Date: 2026-10-10 · Status: **P1-09 is merged and live; P1-10 is built and going
   - a plain mean barely separates "raise every street" from a thinking player, although the model's EV ranks them right. Pot-weighted variants broke the required order, so the plain mean stays, and the pot is stored for the real-data Spearman comparison.
 - **P1-10:** a public accuracy number (latest 500 decisions) and the grade distribution, refreshed when a rated match ends. Also luck versus skill across rated matches, and a "Rated play" panel in the lobby with the exact label and "Not graded yet".
 
-### Decisions I took (reversible)
+#### Decisions I took (reversible)
 
 - **Clock moves are graded.** A disconnected player's auto-folds count too.
 - **The shown accuracy is the plain mean.** The pot-weighted alternatives wait for real data.
 - **The accuracy lives in `public.accuracy`,** not on `ratings`. The P1-12 proposal now joins it.
 - **The panel sits in the lobby** until the P1-15 profile exists.
 
-### User actions
+#### User actions
 
 - **Unchanged:** U-4, U-8, Q7, and the open rematch-link finding on #19.
 
-### Next step
+#### Next step
 
 Me: open the P1-10 PR, merge when green, verify the deploy, then P1-12 ratings.
-
----
 
 ### 2026-10-10 — SDE → User (P1-04 live; P1-12 next)
 

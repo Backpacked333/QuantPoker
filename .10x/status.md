@@ -1,11 +1,34 @@
 # Project status
 
-Last updated: 2026-10-10 by SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
+Last updated: 2026-10-10 by SDE (landing page phases 1 and 2 built in PR #30) and SDE/DBA (rating: P1-12 to P1-16 live; hands of a live match closed to clients; 6-max arenas blocked at the pre-check, casual 6-max next; S7-11 waits on U-4)
 
 **Standing instructions from the user (2026-10-09):**
 
 - **Merge when green.** Open a PR for each finished piece and merge it to `main` once CI passes. A merge deploys to production, so verify the deploy after each one.
 - **Q1 is answered: B.** Rated heads-up uses fresh decks every hand, with the result luck-adjusted by settling all-in pots at equity.
+
+## Landing page and onboarding (2026-10-10)
+
+- **Scoped (PM) and designed (architect), scope B / design B:** `.10x/decisions/product-manager/landing-and-onboarding.md`, `.10x/decisions/architect/landing-and-onboarding.md` (see its §As built).
+- **Phase 1 built (SDE), PR #30, not merged:**
+  - the landing page with six pre-scored challenge hands and the score card;
+  - `ScoreDO` with `/api/challenge/score`, `/api/events`, `/api/challenge/claim` and `/api/funnel`;
+  - migration `20261010110000_landing.sql` (school badges, `challenge_scores`);
+  - `#welcome/onboard` (score claim, username, school, first move).
+- **Checks run locally:** 883 unit, 200 worker, 120 SQL and 33 e2e tests; entry bundle 142.9 kB of 150.
+- **Before launch (yours):**
+  - U-9 Google sign-in;
+  - U-10 custom SMTP;
+  - U-4 for claimed scores to reach Postgres.
+
+  Merging #30 launches the landing page and applies the migration to production.
+
+- **Phase 2 built, same PR:**
+  - `/c/<receipt>` share links with a link preview (L-12);
+  - the friend challenge on the same hand (L-13);
+  - school codes by email (L-14, migration `20261010120000_school_email.sql`, needs U-11).
+
+  Checks run locally: 893 unit, 212 worker, 126 SQL and 33 e2e tests; entry bundle 143.0 kB.
 
 ## Phase 1 progress (2026-10-10)
 

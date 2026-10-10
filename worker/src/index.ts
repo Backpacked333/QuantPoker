@@ -11,19 +11,24 @@ import type { WorkerEnv } from './env'
 import { lobbyStub, tableStub } from './lobby'
 import { describeError, logEvent } from './log'
 import { profilePage } from './profile'
+import { sharePage } from './share'
+import { challengeRoute } from './challenge'
+import { originAllowed } from './origin'
 import type { InitBody } from './table'
 import { HANDS_DLQ } from './queues'
 import { handsPerDay } from './stats'
 import { consumeDeadLetters, consumeHands } from './verify'
 
 export { LobbyDO } from './lobby'
+export { ScoreDO } from './scores'
 export { TableDO } from './table'
 
 const json = (body: unknown, status = 200, headers?: HeadersInit) =>
   Response.json(body, { status, headers })
 const MATCH_PATH = /^\/ws\/table\/([0-9a-f-]{36})$/
-/** Paths that verify a token and may wake a Durable Object. */
-const SIGNED_IN = /^\/(ws\/|api\/(matches|me)$)/
+/** Paths that verify a token or may wake a Durable Object. */
+const LIMITED =
+  /^\/(ws\/|c\/|api\/(matches|me|events|challenge\/(score|claim|shared\/[0-9a-f]{32})|school\/(start|confirm))$)/
 
 export default {
   async fetch(request: Request, env: WorkerEnv): Promise<Response> {
@@ -45,7 +50,7 @@ export default {
 
     // One address cannot make the server verify tokens and wake objects
     // without bound. Checked before any token work.
-    if (SIGNED_IN.test(pathname) && (await overAddressLimit(request, env))) {
+    if (LIMITED.test(pathname) && (await overAddressLimit(request, env))) {
       // The address itself is never logged.
       logEvent('limit_hit', { code: 429, reason: 'address' })
       return json({ error: 'rate_limited' }, 429, { 'Retry-After': '60' })
@@ -133,6 +138,13 @@ export default {
       })
     }
 
+    // The landing page: challenge scores, funnel events, score claims.
+    const landing = await challengeRoute(request, env, pathname)
+    if (landing) return landing
+
+    // A shared challenge score: the app, with the score to beat in its preview.
+    if (pathname.startsWith('/c/')) return sharePage(request, env)
+
     // A shared profile: the app, with that player's link preview.
     if (pathname.startsWith('/u/')) return profilePage(request, env)
 
@@ -164,23 +176,6 @@ export async function overAddressLimit(request: Request, env: WorkerEnv) {
     logEvent('error', { reason: 'ip_limiter', detail: describeError(error) })
     return false
   }
-}
-
-const LOCAL_HOST = /^(localhost|127\.0\.0\.1)$/
-const LOCAL_PAGE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/
-
-/**
- * A page may open a socket only to its own site. Browsers always send Origin
- * on a WebSocket handshake; a local server (wrangler dev) also takes pages
- * from localhost, such as Vite on :5173. Tokens are bearer subprotocols, not
- * cookies, so this is defence in depth against a hostile page, not the lock.
- */
-function originAllowed(request: Request) {
-  const origin = request.headers.get('Origin')
-  if (!origin) return false
-  const self = new URL(request.url)
-  if (origin === self.origin) return true
-  return LOCAL_HOST.test(self.hostname) && LOCAL_PAGE.test(origin)
 }
 
 /** Why a socket request cannot be upgraded, or null when it can. */

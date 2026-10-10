@@ -1,4 +1,5 @@
-// The online area: #lobby and #play/<matchId>, and the public pages:
+// The online area: #lobby, #play/<matchId> and #welcome/onboard (sign-up
+// from the landing page), and the public pages:
 // #ladder[/month], #u/<username> and #match/<matchId>. Lazy-loaded so the
 // account client never reaches the entry chunk; the trainer works without
 // any of it.
@@ -12,6 +13,7 @@ import { AuthGate } from './AuthGate'
 import { Ladder } from './Ladder'
 import { LiveTable } from './LiveTable'
 import { Lobby } from './Lobby'
+import { Onboarding } from './Onboarding'
 import { MatchReview } from './MatchReview'
 import { Profile } from './profile/Profile'
 import { loadOnline } from './supabase'
@@ -22,6 +24,8 @@ const PLAY = /^#play\/([0-9a-f-]{36})$/
 const LADDER = /^#ladder(\/month)?$/
 const PROFILE = /^#u\/([a-z0-9_]{3,20})$/
 const REVIEW = /^#match\/([0-9a-f-]{36})$/
+/** After the landing page's "Save your score" (L-8). */
+const ONBOARD = '#welcome/onboard'
 
 export default function LiveApp() {
   const hash = useHash()
@@ -50,8 +54,11 @@ export default function LiveApp() {
     if (hash === '#lobby/find') window.history.replaceState(null, '', '#lobby')
   }, [hash])
 
+  const onboarding = hash === ONBOARD
   const content = (identity: Identity): ReactNode =>
-    matchId ? (
+    onboarding ? (
+      <Onboarding identity={identity} client={online?.client ?? null} />
+    ) : matchId ? (
       <LiveTable key={matchId} matchId={matchId} identity={identity} />
     ) : (
       <Lobby
@@ -122,15 +129,22 @@ export default function LiveApp() {
 
   return (
     <div className={`page live-page ${matchId ? 'live-page-table' : ''}`}>
-      {!matchId && (
+      {onboarding ? (
         <header className="page-head">
-          <h1>Play online</h1>
-          <p>Real opponents, play money, every hand reviewable afterwards.</p>
-          <p className="live-muted">
-            <a href="#ladder">Ladder</a> · <a href="#fair-play">Fair play</a> ·{' '}
-            <a href="#terms">Terms</a>
-          </p>
+          <h1>Save your score</h1>
+          <p>One account: your score, a rating, a public profile.</p>
         </header>
+      ) : (
+        !matchId && (
+          <header className="page-head">
+            <h1>Play online</h1>
+            <p>Real opponents, play money, every hand reviewable afterwards.</p>
+            <p className="live-muted">
+              <a href="#ladder">Ladder</a> · <a href="#fair-play">Fair play</a>{' '}
+              · <a href="#terms">Terms</a>
+            </p>
+          </header>
+        )
       )}
       {dev ? (
         content(dev)
@@ -143,6 +157,7 @@ export default function LiveApp() {
           client={online?.client ?? null}
           url={online?.url ?? ''}
           apiKey={online?.key ?? ''}
+          onboarding={onboarding}
         >
           {content}
         </AuthGate>

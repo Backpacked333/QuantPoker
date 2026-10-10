@@ -17,6 +17,17 @@ npm run dev          # http://localhost:5173
 
 No API keys, database, account or environment variables are needed for the trainer. Online play is optional: `.env.example` lists the two browser-safe values that turn on sign-in.
 
+### The landing page
+
+A first visit to the bare URL (no progress, no account, never landed before) opens the landing page instead of the welcome dialog. `#start` opens it any time.
+
+- **The challenge:** one of six curated hands against Atlas on the real table, played from preset buttons (keys `1`–`6`), each decision graded on the spot.
+- **The score card:** the accuracy, a percentile ranked by the Worker (against model players until a hand has 200 real scores), the luck of the cards shown apart from the decisions, and Atlas's reasoning. Its CTA, "Save your score and get rated", leads to sign-up and a three-step onboarding (`#welcome/onboard`).
+- **The trees:** every reachable decision is priced offline by the trainer's own grader into `src/challenge/trees.generated.json`. `src/challenge/generate.test.ts` rebuilds it on every test run and fails on any difference. To regenerate after changing a hand or the grader: `CHALLENGE_WRITE=1 npx vitest run src/challenge/generate.test.ts`.
+- **The server side:** `ScoreDO` in the Worker re-scores each line by lookup, keeps the histograms, counts funnel events (`GET /api/funnel`, aggregates only) and sends claimed scores to Postgres through an outbox.
+- **School badges:** a confirmed school email sets a badge (`20261010110000_landing.sql`). A player who signed in with another address can verify a school email by a six-digit code (`worker/src/school.ts`), once the Worker has `RESEND_API_KEY` and `SCHOOL_EMAIL_FROM`.
+- **Sharing:** "Challenge a friend" shares `/c/<receipt>`. Its link preview names the hand and the score to beat, and it opens the same hand for the friend, ending in a head-to-head result. Links last 30 days.
+
 ### Online play
 
 `#lobby` (the **Online** tab) signs you in with an email link, or with Google or GitHub when the Supabase project enables them, and asks for a public username. **Find a match** pairs you with the next player waiting; **Play a friend by link** opens a table and gives you a link to send. A match is 20 hands of heads-up no-limit hold'em for play money, on the same table UI as the trainer, with the quant lab switched off during play. Each decision has a 20-second clock plus a 60-second bank for the match; three missed decisions in a row forfeit. After each hand you can open its review; **Deck verified** means your browser checked the board, the shown hands and your own two cards against the deck commitment it received before the deal. [Fair play](https://quantpoker.bbcroysalman.workers.dev/#fair-play) and [Terms](https://quantpoker.bbcroysalman.workers.dev/#terms) (in the app: `#fair-play`, `#terms`) say what is and is not guaranteed.

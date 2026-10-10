@@ -100,8 +100,9 @@ const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
- * Hash routes: #table (default), #progress, #lobby[/find], #play/<id> and
- * #ladder[/month] (online play), #fair-play and #terms, #learn/...
+ * Hash routes: #table (default), #progress, #lobby[/find], #play/<id>,
+ * #ladder[/month], #u/<username> and #match/<id> (online play), #fair-play,
+ * #terms and #method, #learn/...
  * and #learn/quick[/id].
  */
 function parseRoute(hash: string): Route {
@@ -115,10 +116,12 @@ function parseRoute(hash: string): Route {
   if (
     /^#lobby(?:\/find)?$/.test(hash) ||
     /^#play\/[0-9a-f-]{36}$/.test(hash) ||
-    /^#ladder(?:\/month)?$/.test(hash)
+    /^#ladder(?:\/month)?$/.test(hash) ||
+    /^#u\/[a-z0-9_]{3,20}$/.test(hash) ||
+    /^#match\/[0-9a-f-]{36}$/.test(hash)
   )
     return { view: 'live', lesson: null }
-  if (hash === '#fair-play' || hash === '#terms')
+  if (hash === '#fair-play' || hash === '#terms' || hash === '#method')
     return { view: 'info', lesson: null }
   if (import.meta.env.DEV && hash === '#dev/gallery')
     return { view: 'gallery', lesson: null }
@@ -1097,7 +1100,15 @@ export default function App() {
         )}
         {view === 'info' && (
           <Suspense fallback={null}>
-            <InfoPage page={hash === '#terms' ? 'terms' : 'fair-play'} />
+            <InfoPage
+              page={
+                hash === '#terms'
+                  ? 'terms'
+                  : hash === '#method'
+                    ? 'method'
+                    : 'fair-play'
+              }
+            />
           </Suspense>
         )}
         {view === 'gallery' && (

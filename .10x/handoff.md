@@ -43,6 +43,49 @@ EM: turn the 5 phase 1 steps into tickets (about 5 days), alongside P1-12.
 
 ## Handoff history
 
+### 2026-10-10 — SDE → User (rating: P1-12/P1-13 live, P1-14 in PR, P1-15/16 built)
+
+Date: 2026-10-10 · Status: **The rating mission's build list is done.** P1-12, P1-13 and P1-14 are merged and verified live; P1-15/16 is PR #29.
+
+#### What changed
+
+- **The number moves after every match** (P1-12, live). The end screen shows the real change and why: "Rating 1520 → 1534 (+14): beat a 1610 ± 80 player. Now 1534 ± 92."
+- **Matchmaking near rating** (P1-13, live). The window starts at ±100 and widens by 50 a minute; the ≤ 2 pairings per pair per day cap holds.
+- **The ladder** (P1-14, PR #27).
+  - `#ladder` and `#ladder/month`, public, with keyset pages and RD always shown.
+  - Eligibility: not provisional, a match in 30 days, abandonment under 10%.
+  - Provisional viewers see "X rated matches to go".
+- **Metrics you can run today:** `supabase/metrics/rating-metrics.sql` (read-only). Production says "insufficient data" for all three. The simulated season meets them: 65.4%, 13.4 and 0.860.
+- **Profile, review and method** (P1-15/16).
+  - `/u/<username>` carries a link preview.
+  - The profile shows rating ± RD over time, volume, abandonment, an empty sanctions field, accuracy, and the last 20 rated matches.
+  - `#match/<id>` reviews a match hand by hand with showdown cards only.
+  - `#method` states the formulas and versions.
+  - A generic share card.
+
+#### Decisions I took (reversible)
+
+- **Win rate counts wins only;** draws are visible as the gap. This is stated under the table and on Method.
+- **Profiles list rated matches only.** ToS consent covers rated hand histories.
+- **The public review leaves out decision times,** the recommendation of Q5, which is still yours.
+- **Link previews use one static card** (the ticket's cut line); the player's numbers are in the preview text.
+- **Counting profile views from outside the app is deferred** (P1-16's `profile_views`).
+
+#### User actions
+
+- **Unchanged:** U-4 (until then no rated match is archived or rated in production), U-8, Q7, and the open rematch-link finding on #19.
+- **Optional:** say if you want profile-view counting built next.
+
+#### 6-max arena mission: stopped at the pre-check
+
+- 100,000 simulated 6-max hands with 0 failures (VERIFIED).
+- 0 of 1,000 human casual 6-max hands (VERIFIED: production holds 0 hands; casual 6-max is unbuilt; U-4).
+- No design note or build until the gate passes. The path is in `.10x/decisions/architect/six-max-arena.md`.
+
+#### Next step
+
+#27 (P1-14) is merged and verified: the migration was checked read-only and `verify-deploy` passed. #29 (P1-15/16) is in review: three Devin findings are fixed, and one security finding waits on your decision (hands of a live match are readable through the public API; a restrictive RLS policy is proposed on the thread). Merge #29 when green and verify `/u/<name>` in production. After that, P1-17 (reports) and P1-18 (sanctions, which fill the profile's sanctions field and the ladder's removal clause).
+
 ### 2026-10-10 — PM → Architect (landing page and onboarding)
 
 Date: 2026-10-10 · Status: **requirements aligned with the user (scope B); architecture next.**

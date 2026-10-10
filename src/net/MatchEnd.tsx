@@ -82,7 +82,8 @@ function RatingResult({
     )
   return (
     <p className="live-rating" role="status">
-      <b>{shown.line}</b> {shown.standing}
+      <b>{shown.line}</b> {shown.standing}{' '}
+      <a href="#method">How ratings work</a>
     </p>
   )
 }

@@ -372,6 +372,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       ...(await this.ctx.storage.list<Waiting>({ prefix: 'queue:' })).values(),
     ].sort((a, b) => a.since - b.since)
     const online = new Set(sockets.map((ws) => this.who(ws).userId)).size
+    const rated = queue.filter((w) => kindOf(w) === 'hu-rated').length
     this.seq++
     await this.ctx.storage.put('seq', this.seq)
     for (const ws of sockets) {
@@ -382,7 +383,7 @@ export class LobbyDO extends DurableObject<WorkerEnv> {
       const at = line.findIndex((w) => w.userId === userId)
       if (at >= 0)
         this.send(ws, { t: 'queued', position: at + 1, since: line[at].since })
-      this.send(ws, { t: 'presence', online, queued: queue.length })
+      this.send(ws, { t: 'presence', online, queued: queue.length, rated })
     }
   }
 

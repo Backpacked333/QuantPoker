@@ -224,7 +224,8 @@ export type LobbyMsg = { seq: number } & (
   | { t: 'queued'; position: number; since: number }
   /** A table to go to: a new pairing, or (resumed) one already in play. */
   | { t: 'matched'; matchId: string; resumed?: boolean }
-  | { t: 'presence'; online: number; queued: number }
+  /** `queued` counts every line; `rated`, those of them waiting for rated. */
+  | { t: 'presence'; online: number; queued: number; rated?: number }
   | { t: 'error'; code: ErrorCode; message: string }
 )
 

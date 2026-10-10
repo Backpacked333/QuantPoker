@@ -122,6 +122,21 @@ describe('LiveTable', () => {
     expect(screen.queryByText(/you won/)).toBeNull()
   })
 
+  it('names a rated match in the match bar', async () => {
+    render(<LiveTable matchId={MATCH} identity={alice} />)
+    const socket = await opened()
+    const welcome = frame('welcome', 1, 0, firstHand())
+    if (welcome.t !== 'welcome' || !welcome.view) throw new Error('fixture')
+    const rated = {
+      ...welcome.table,
+      kind: 'hu-rated' as const,
+      handsTotal: 40,
+    }
+    const view = { ...welcome.view, match: rated }
+    act(() => socket.emit({ ...welcome, table: rated, view }))
+    expect(screen.getByText('Rated · Hand 1 of 40')).toBeInTheDocument()
+  })
+
   it('flags a dropped opponent and its own reconnects, and disables moves', async () => {
     render(<LiveTable matchId={MATCH} identity={alice} />)
     const socket = await opened()

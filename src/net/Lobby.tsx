@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, Link2, Swords, Users } from 'lucide-react'
+import { BookOpen, Link2, Swords, Trophy, Users } from 'lucide-react'
+import type { MatchKind } from '../shared/protocol'
 import { createMatch, fetchActiveMatch } from './api'
 import type { Identity } from './api'
 import type { LobbyState } from './lobbyClient'
@@ -84,9 +85,32 @@ export function Lobby({
           <p>Heads-up against the next player looking. 20 hands, casual.</p>
           <QuickMatch
             state={state}
+            kind="hu-casual"
+            label="Find a match"
             onFind={() => connection?.find()}
             onCancel={() => connection?.cancel()}
           />
+        </article>
+        <article className="panel live-card">
+          <Trophy size={22} />
+          <h2>Play rated 1v1</h2>
+          <p>
+            40 hands. All-in luck is taken out by settling those pots at equity,
+            and a result within 2 bb is a draw.
+          </p>
+          <QuickMatch
+            state={state}
+            kind="hu-rated"
+            label="Find a rated match"
+            presence={false}
+            onFind={() => connection?.find('hu-rated')}
+            onCancel={() => connection?.cancel()}
+          />
+          {state.refused && (
+            <p className="live-error" role="alert">
+              {state.refused}
+            </p>
+          )}
         </article>
         <article className="panel live-card">
           <Link2 size={22} />
@@ -126,17 +150,26 @@ export function Lobby({
 
 function QuickMatch({
   state,
+  kind,
+  label,
+  presence = true,
   onFind,
   onCancel,
 }: {
   state: LobbyState
+  kind: MatchKind
+  label: string
+  /** The lobby-wide line (who is here, connecting): shown on one card. */
+  presence?: boolean
   onFind: () => void
   onCancel: () => void
 }) {
   const [now, setNow] = useState(() => Date.now())
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [keepWaiting, setKeepWaiting] = useState(false)
-  const looking = state.looking
+  // One queue at a time: the other card waits while this one looks.
+  const looking = state.looking && state.kind === kind
+  const elsewhere = state.looking && state.kind !== kind
   useEffect(() => {
     if (!looking) return
     setStartedAt(Date.now())
@@ -149,23 +182,36 @@ function QuickMatch({
   if (!looking)
     return (
       <>
-        <button className="btn btn-primary" onClick={onFind}>
-          Find a match
+        <button
+          className="btn btn-primary"
+          onClick={onFind}
+          disabled={elsewhere}
+        >
+          {label}
         </button>
-        <p className="live-muted">
-          {state.presence
-            ? others === 0
-              ? 'Nobody else is in the lobby right now.'
-              : `${others} other ${others === 1 ? 'player' : 'players'} in the lobby.`
-            : state.status === 'failed'
-              ? (state.error ?? 'The lobby is unavailable.')
-              : 'Connecting to the lobby…'}
-        </p>
+        {presence && (
+          <p className="live-muted">
+            {state.presence
+              ? others === 0
+                ? 'Nobody else is in the lobby right now.'
+                : `${others} other ${others === 1 ? 'player' : 'players'} in the lobby.`
+              : state.status === 'failed'
+                ? (state.error ?? 'The lobby is unavailable.')
+                : 'Connecting to the lobby…'}
+          </p>
+        )}
       </>
     )
 
   const waited = startedAt === null ? 0 : now - startedAt
-  const alone = (state.presence?.queued ?? 1) <= 1
+  // Only this card's line can pair: count it alone.
+  const counts = state.presence
+  const inLine = counts
+    ? kind === 'hu-rated'
+      ? counts.rated
+      : counts.queued - counts.rated
+    : 1
+  const alone = inLine <= 1
   return (
     <div className="live-looking" role="status" aria-live="polite">
       <p>

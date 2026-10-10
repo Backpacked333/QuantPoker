@@ -121,6 +121,180 @@ describe('LobbyConnection', () => {
   })
 })
 
+describe('LobbyConnection: rated', () => {
+  function connect() {
+    const connection = new LobbyConnection(async () => 'jwt', {
+      origin: 'wss://qp.test',
+      WebSocketImpl: FakeSocket as unknown as typeof WebSocket,
+    })
+    connection.start()
+    return connection
+  }
+
+  it('queues for the kind asked, again after a reconnect', async () => {
+    const connection = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    connection.find('hu-rated')
+    expect(sent(socket)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+    expect(connection.getState()).toMatchObject({
+      looking: true,
+      kind: 'hu-rated',
+    })
+    vi.useFakeTimers()
+    socket.drop(1006, '')
+    await vi.advanceTimersByTimeAsync(1000)
+    const again = FakeSocket.last()
+    again.open()
+    expect(sent(again)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+  })
+
+  it('stops looking when the server refuses a rated queue, and says why', async () => {
+    const connection = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    connection.find('hu-rated')
+    socket.emit(
+      lobbyFrame({
+        t: 'error',
+        code: 'unverified',
+        message: 'Rated matches need a confirmed email address.',
+      }),
+    )
+    expect(connection.getState()).toMatchObject({
+      looking: false,
+      refused: 'Rated matches need a confirmed email address.',
+    })
+    // Casual is still open to them, and clears the refusal.
+    connection.find()
+    expect(sent(socket).at(-1)).toEqual({ t: 'queue', kind: 'hu-casual' })
+    expect(connection.getState().refused).toBeNull()
+  })
+
+  it('asks again over a fresh socket for rated after a refusal, even with a casual search between', async () => {
+    const connection = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    connection.find('hu-rated')
+    socket.emit(
+      lobbyFrame({
+        t: 'error',
+        code: 'unverified',
+        message: 'Rated matches need a confirmed email address.',
+      }),
+    )
+    connection.find() // a casual search clears the message, not the socket's answer
+    connection.cancel()
+    connection.find('hu-rated')
+    await flush()
+    const again = FakeSocket.last()
+    expect(again).not.toBe(socket)
+    again.open()
+    expect(sent(again)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+    // The fresh socket's answer is the one that counts from now on.
+    connection.cancel()
+    connection.find('hu-rated')
+    expect(FakeSocket.last()).toBe(again)
+  })
+
+  it('asks again over a fresh socket when a refused player retries rated', async () => {
+    const connection = connect()
+    await flush()
+    const socket = FakeSocket.last()
+    socket.open()
+    connection.find('hu-rated')
+    socket.emit(
+      lobbyFrame({
+        t: 'error',
+        code: 'unverified',
+        message:
+          'Could not check your account just now. Try again in a moment.',
+      }),
+    )
+    // The Worker checks once per socket, so the retry needs a new one.
+    connection.find('hu-rated')
+    await flush()
+    const again = FakeSocket.last()
+    expect(again).not.toBe(socket)
+    expect(socket.closedWith).toBe(1000)
+    again.open()
+    expect(sent(again)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+    expect(connection.getState()).toMatchObject({
+      status: 'open',
+      looking: true,
+      refused: null,
+    })
+  })
+})
+
+describe('Lobby: Play rated 1v1', () => {
+  async function lobbyPage() {
+    render(<Lobby identity={alice} fetcher={noActive} />)
+    await act(async () => {})
+    const socket = FakeSocket.last()
+    act(() => socket.open())
+    return socket
+  }
+
+  it('queues hu-rated from the Rated card, and holds the casual one meanwhile', async () => {
+    const socket = await lobbyPage()
+    expect(
+      screen.getByRole('heading', { name: 'Play rated 1v1' }),
+    ).toBeVisible()
+    expect(screen.getByText(/40 hands/)).toBeVisible()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Find a rated match' }),
+    )
+    expect(sent(socket)).toEqual([{ t: 'queue', kind: 'hu-rated' }])
+    expect(screen.getAllByText('Looking for an opponent')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Find a match' })).toBeDisabled()
+    act(() => socket.emit(lobbyFrame({ t: 'matched', matchId: MATCH })))
+    expect(window.location.hash).toBe(`#play/${MATCH}`)
+  })
+
+  it('offers Atlas after a minute alone in the rated line, whoever waits for casual', async () => {
+    const socket = await lobbyPage()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    act(() =>
+      screen.getByRole('button', { name: 'Find a rated match' }).click(),
+    )
+    // Two waiting, but one of them for casual: nobody to pair with.
+    act(() =>
+      socket.emit(
+        lobbyFrame({ t: 'presence', online: 2, queued: 2, rated: 1 }),
+      ),
+    )
+    await act(async () => vi.advanceTimersByTime(61_000))
+    expect(screen.getByText(/Nobody else is looking right now/)).toBeVisible()
+  })
+
+  it('tells an account without a confirmed email why it cannot play rated', async () => {
+    const socket = await lobbyPage()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Find a rated match' }),
+    )
+    act(() =>
+      socket.emit(
+        lobbyFrame({
+          t: 'error',
+          code: 'unverified',
+          message: 'Rated matches need a confirmed email address.',
+        }),
+      ),
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Rated matches need a confirmed email address.',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Find a rated match' }),
+    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Find a match' })).toBeEnabled()
+  })
+})
+
 describe('Lobby: Play 1v1', () => {
   async function lobbyPage(props: Partial<Parameters<typeof Lobby>[0]> = {}) {
     render(<Lobby identity={alice} fetcher={noActive} {...props} />)

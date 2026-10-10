@@ -506,7 +506,7 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 - **Rated rules in the table server.** Under B the "segments" below are halves that exist only for the clock: 40 hands, the bank refills at hand 21, and the match bar reads "Hand 7 of 40". The acceptance tests are in `worker/test/rated.test.ts` with that wording.
 - **Table server: done.** P1-01b-1 is PR #13; the 60 s grace and the both-gone void are P1-01b-2 (PR #14).
 - **Rated queue and the email gate: done** (P1-01b-3), with the end text reading the outcome. The gate asks Supabase Auth, not a token claim (the riskiest assumption, checked against the docs).
-- **Next:** the lobby's Rated card and the match bar (P1-01c).
+- **UI: done** (P1-01c): the Rated card, the refusal message with a re-check on retry, and the match bar. **P1-01 is done**, except for one manual check: a real confirmed account plays a real rated match once U-4 sets the Worker's secret key, so the result is archived.
 
 - **Goal.** A signed-in player with a confirmed email can queue for a rated HU match and play 2 segments × 20 hands, with a 60 s bank per segment, a 60 s reconnect grace, the forfeit rule and a W/D/L result archived.
 - **User-visible outcome.**

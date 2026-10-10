@@ -106,4 +106,15 @@ At hand end, call `luckAdjusted(state)` on the DO's full state, after sending `h
   - Asking for the other kind starts over in that line. Rows from before rated existed are casual.
   - A rated queue without eligibility gets `error unverified`. A player who already has a table is sent back to it first.
 - **The end text reads the rated outcome** (`src/net/matchResult.ts`): win, draw or loss, with the luck-adjusted total in bb, or "by forfeit". A forfeit while ahead reads as a loss (review finding on #13). Casual matches keep the chips text.
-- **Still to do (P1-01c):** the lobby's Rated card. Until then nothing in the UI sends `kind: 'hu-rated'`.
+- **Review fold-ins on #15:**
+  - a cached yes expires after `ELIGIBLE_TTL_MS` (5 min), so a revoked confirmation lapses;
+  - a match stopped by a server fault never reads as won or lost.
+
+### The UI (P1-01c)
+
+- **The lobby's "Play rated 1v1" card** explains the format in one line: 40 hands, all-in luck settled at equity, within 2 bb a draw.
+  - "Find a rated match" queues `hu-rated`; one queue at a time, so the other card's button waits while one looks.
+  - The lobby-wide presence line shows once, on the casual card.
+- **A refusal (`unverified`)** stops looking and shows the server's reason on the Rated card. Retrying rated reopens the lobby socket, because the Worker checks once per socket; this was the third review finding on #15. Casual stays open to the player.
+- **The match bar** reads "Rated · Hand 7 of 40". Casual is unchanged.
+- **E2E:** two players find a rated match and both see "Rated · Hand 1 of 40", against `wrangler dev`, where dev accounts are eligible.

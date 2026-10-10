@@ -81,6 +81,7 @@ import {
 import { Tour } from './components/Tour'
 import { CardDefs } from './components/cards/CardArt'
 import type { TourStep } from './components/Tour'
+import { isFirstVisit } from './lib/landing'
 
 type View =
   | 'play'
@@ -90,22 +91,28 @@ type View =
   | 'gallery'
   | 'live'
   | 'info'
+  | 'landing'
 type Route = { view: View; lesson: LessonId | null }
 const Curriculum = lazy(() => import('./curriculum/Curriculum'))
 const LiveApp = lazy(() => import('./net/LiveApp'))
 const InfoPage = lazy(() => import('./info/InfoPages'))
 const Gallery = lazy(() => import('./dev/Gallery'))
+const loadLanding = () => import('./landing/Landing')
+const Landing = lazy(loadLanding)
 // The lab is the heaviest view; it loads in parallel with the first paint.
 const labModule = import('./components/lab/Lab')
 const Lab = lazy(() => labModule.then((module) => ({ default: module.Lab })))
 
 /**
- * Hash routes: #table (default), #progress, #lobby[/find], #play/<id>,
+ * Hash routes: the landing page (the bare URL on a first visit, or #start),
+ * #table (default), #progress, #lobby[/find], #play/<id>,
  * #ladder[/month], #u/<username> and #match/<id> (online play), #fair-play,
  * #terms and #method, #learn/...
  * and #learn/quick[/id].
  */
-function parseRoute(hash: string): Route {
+function parseRoute(hash: string, firstVisit = false): Route {
+  if (hash === '#start' || (firstVisit && (hash === '' || hash === '#')))
+    return { view: 'landing', lesson: null }
   const quick = hash.match(/^#learn\/quick(?:\/([\w-]+))?$/)
   if (quick) {
     const id = quick[1] as LessonId | undefined
@@ -118,7 +125,8 @@ function parseRoute(hash: string): Route {
     /^#play\/[0-9a-f-]{36}$/.test(hash) ||
     /^#ladder(?:\/month)?$/.test(hash) ||
     /^#u\/[a-z0-9_]{3,20}$/.test(hash) ||
-    /^#match\/[0-9a-f-]{36}$/.test(hash)
+    /^#match\/[0-9a-f-]{36}$/.test(hash) ||
+    hash === '#welcome/onboard'
   )
     return { view: 'live', lesson: null }
   if (hash === '#fair-play' || hash === '#terms' || hash === '#method')
@@ -248,7 +256,14 @@ export default function App() {
   )
   const { spots, request } = useSpots()
   const hash = useHash()
-  const { view, lesson } = parseRoute(hash)
+  // Decided once, so the landing page never disappears mid-hand. A first
+  // visit starts loading it in parallel with the first paint.
+  const [firstVisit] = useState(() => {
+    const first = isFirstVisit(progress)
+    if (first) void loadLanding()
+    return first
+  })
+  const { view, lesson } = parseRoute(hash, firstVisit)
   const learningSession = useRef<LearningSession | null>(null)
   const [dialog, setDialog] = useState<Dialog>(null)
   const [paused, setPaused] = useState(false)
@@ -279,7 +294,11 @@ export default function App() {
   const style = trainer.style
   const model = settings.opponentModel
   // Not over an invite link: a friend opening #play/<id> goes straight in.
-  const welcome = !progress.onboarded && view !== 'live' && view !== 'info'
+  const welcome =
+    !progress.onboarded &&
+    view !== 'live' &&
+    view !== 'info' &&
+    view !== 'landing'
   // Atlas waits while you are away from the table.
   const blocked = welcome || tour || view !== 'play'
   const legal = legalActions(game.turn === 0 ? game : { ...game, turn: 0 })
@@ -1109,6 +1128,17 @@ export default function App() {
                     : 'fair-play'
               }
             />
+          </Suspense>
+        )}
+        {view === 'landing' && (
+          <Suspense
+            fallback={
+              <div className="curriculum-loading" role="status">
+                Dealing your hand…
+              </div>
+            }
+          >
+            <Landing />
           </Suspense>
         )}
         {view === 'gallery' && (

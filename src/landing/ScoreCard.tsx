@@ -1,0 +1,200 @@
+// The end of the challenge (L-5, L-6): accuracy, an honest percentile (the
+// server re-scores the line; "model players" until a hand has enough real
+// scores), the cards' luck shown apart from the decisions, every decision
+// with its grade and what the best play was, and Atlas's reasoning, now that
+// the hand is over.
+import { useEffect, useState } from 'react'
+import { ArrowRight, RotateCcw, ShieldCheck } from 'lucide-react'
+import { scorePath } from '../challenge/score'
+import { cardLabel } from '../lib/poker'
+import { savePendingClaim } from '../lib/landing'
+import { track } from '../lib/track'
+import type { FinishedChallenge } from './ChallengeHand'
+import { ordinal, why } from './why'
+
+type Server =
+  | { status: 'loading' }
+  | { status: 'failed' }
+  | {
+      status: 'ok'
+      percentile: number
+      basis: 'players' | 'model'
+      crowd: (number | null)[]
+    }
+
+const chips = (x: number) =>
+  `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(Math.round(x)).toLocaleString('en-US')}`
+
+export function ScoreCard({
+  finished,
+  onSave,
+  onAgain,
+}: {
+  finished: FinishedChallenge
+  onSave: () => void
+  onAgain: () => void
+}) {
+  const { spec, tree, game, path, decisions } = finished
+  const accuracy = scorePath(tree, path)?.accuracy ?? 0
+  const [server, setServer] = useState<Server>({ status: 'loading' })
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch('/api/challenge/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hand: spec.id, ver: spec.ver, path }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(String(response.status))
+        const result = (await response.json()) as {
+          accuracy: number
+          percentile: number
+          basis: 'players' | 'model'
+          crowd: (number | null)[]
+          receipt: string
+        }
+        savePendingClaim({
+          receipt: result.receipt,
+          hand: spec.id,
+          ver: spec.ver,
+          accuracy: result.accuracy,
+          percentile: result.percentile,
+          at: Date.now(),
+        })
+        setServer({ status: 'ok', ...result })
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setServer({ status: 'failed' })
+      })
+    return () => controller.abort()
+  }, [spec, path])
+
+  const net = game.result?.net ?? 0
+  const best = decisions.filter((d) => d.chosen.grade === 'Best').length
+  const costly = decisions.reduce<(typeof decisions)[number] | null>(
+    (worst, d) =>
+      !worst || d.chosen.accuracy < worst.chosen.accuracy ? d : worst,
+    null,
+  )
+  const notes = decisions.flatMap((d) => d.atlas.map((a) => a.note))
+
+  return (
+    <section className="scorecard" aria-labelledby="scorecard-title">
+      <div className="scorecard-head">
+        <div className="scorecard-score">
+          <span className="scorecard-label">Accuracy</span>
+          <span className="scorecard-number" id="scorecard-title">
+            {accuracy}
+            <small>/100</small>
+          </span>
+        </div>
+        <div className="scorecard-rank" aria-live="polite">
+          {server.status === 'ok' ? (
+            <>
+              <span className="scorecard-label">Percentile</span>
+              <span className="scorecard-number">
+                {server.percentile}
+                <small>{ordinal(server.percentile)}</small>
+              </span>
+              <span className="scorecard-basis">
+                {server.basis === 'players'
+                  ? `Better than ${server.percentile}% of players on this hand`
+                  : `Against model players, until 200 people have played this hand`}
+              </span>
+            </>
+          ) : server.status === 'failed' ? (
+            <span className="scorecard-basis">
+              Percentile unavailable right now. Your grades below are exact.
+            </span>
+          ) : (
+            <span className="scorecard-basis">Ranking your line…</span>
+          )}
+        </div>
+        <dl className="scorecard-split">
+          <div>
+            <dt>Your decisions</dt>
+            <dd>
+              {best} of {decisions.length} graded Best
+            </dd>
+          </div>
+          <div>
+            <dt>The cards</dt>
+            <dd className={net >= 0 ? 'is-up' : 'is-down'}>
+              {chips(net)} chips
+            </dd>
+          </div>
+        </dl>
+        <p className="scorecard-note">
+          Your score ignores how the cards fell. Winning a pot with a bad call
+          still costs you; losing one with the right call does not.
+        </p>
+      </div>
+
+      <ol className="scorecard-decisions">
+        {decisions.map((d, i) => {
+          const crowd = server.status === 'ok' ? server.crowd[i] : null
+          return (
+            <li
+              key={i}
+              className={
+                d === costly && d.chosen.grade !== 'Best' ? 'is-costly' : ''
+              }
+            >
+              <span className="scorecard-street">{d.node.street}</span>
+              <span className="scorecard-move">
+                <strong>{d.chosen.label}</strong>{' '}
+                <span className={`grade grade-${d.chosen.grade.toLowerCase()}`}>
+                  {d.chosen.grade}
+                </span>
+              </span>
+              <span className="scorecard-why">
+                {why(d.node, d.chosen)}
+                {crowd !== null && (
+                  <em>
+                    {' '}
+                    {Math.round(crowd * 100)}% of players chose this too.
+                  </em>
+                )}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+
+      <details className="scorecard-atlas">
+        <summary>
+          Atlas held {game.cards[1].map(cardLabel).join(' ')}. Read its
+          reasoning
+        </summary>
+        <ul>
+          {notes.length ? (
+            notes.map((n, i) => <li key={i}>{n}</li>)
+          ) : (
+            <li>Atlas had nothing left to decide.</li>
+          )}
+        </ul>
+      </details>
+
+      <div className="scorecard-cta">
+        <button
+          className="btn btn-accent btn-lg"
+          onClick={() => {
+            track('signup_start')
+            onSave()
+          }}
+        >
+          Save your score and get rated <ArrowRight size={16} />
+        </button>
+        <button className="btn btn-ghost-desk" onClick={onAgain}>
+          <RotateCcw size={15} /> Play another hand
+        </button>
+      </div>
+      <p className="scorecard-fine">
+        <ShieldCheck size={14} /> Play money only. Your score is checked on our
+        server against the same model, so nobody can post one they did not earn.
+      </p>
+    </section>
+  )
+}

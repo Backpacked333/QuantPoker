@@ -17,6 +17,7 @@ import { hashString } from '../lib/random'
 import { analyzeSpot } from '../lib/range'
 import { lcg } from '../lib/sim'
 import { spotKey } from '../lib/spotKey'
+import { actionOf, codeOf } from './actions'
 import { CHALLENGE_HANDS, STYLE, startGame } from './hands'
 import type { ChallengeSpec } from './hands'
 import type {
@@ -26,17 +27,6 @@ import type {
   ChallengeTree,
   ChallengeTrees,
 } from './score'
-
-export const codeOf = (action: Action): ActionCode =>
-  action.type === 'fold' ? 'f' : action.type === 'raise' ? `r${action.to}` : 'c'
-
-/** The engine action for `code` in `game` (check or call by the price). */
-export function actionOf(game: Game, code: ActionCode): Action {
-  if (code === 'f') return { type: 'fold' }
-  if (code === 'c')
-    return { type: legalActions(game).canCheck ? 'check' : 'call' }
-  return { type: 'raise', to: Number(code.slice(1)) }
-}
 
 const round = (value: number, places: number) =>
   Math.round(value * 10 ** places) / 10 ** places

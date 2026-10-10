@@ -55,6 +55,8 @@ Merged and deployed, each one verified in production after its merge:
 
 **PR #27 (open): the ladder, the metrics query and a simulated season (P1-14).** `#ladder` and `#ladder/month` are public; `supabase/metrics/rating-metrics.sql` reports "insufficient data" on production today. A 200-player, 5,000-match season in PGlite ranks players by hidden skill with Spearman 0.975 and meets all three PM targets.
 
+**6-max arenas (P2-13/P2-14): stopped at the pre-check, 2026-10-10.** 100,000 simulated 6-max hands with 0 failures; 0 of the 1,000 human casual 6-max hands the gate needs, because casual 6-max is unbuilt and production archives nothing until U-4. Path: `.10x/decisions/architect/six-max-arena.md`.
+
 **P1-15/16 (built, PR after #27):** `/u/<username>` with a link preview, the profile at `#u/<username>`, the public match review at `#match/<id>` (showdown cards only), the `#method` page and the share card. Counting profile views from outside the app is **not built**, so that PM metric needs instrumentation.
 
 Q2 (when the third timeout forfeits) is unanswered. The build uses the recommendation, "immediately", which one rule can reverse.

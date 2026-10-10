@@ -815,6 +815,8 @@ Rated matches use `MatchKind 'hu-rated'`. Everything below is additive; casual H
 
 ### P1-14 · The ladder
 
+**Status 2026-10-10: built** (this branch). `ladder`, `ladder_month` and `abandonment_rate`; `#ladder` and `#ladder/month` (public); the metrics query `supabase/metrics/rating-metrics.sql` (production: insufficient data); the 200-player, 5,000-match season in PGlite (Spearman 0.975, all three metrics meet target). The acceptance tests exist under these names or close variants; the e2e is in `e2e/ladder.spec.ts` and `e2e/mobile.spec.ts`. Details: SDE log §P1-14 and `.10x/decisions/dba/ladder.md`.
+
 - **Goal.** A public ladder per format, all-time and this month (R-16). It shows only eligible players: not provisional, ≥ 1 rated match in 30 days, abandonment < 10% over lifetime rated matches (R-13). Uses keyset pagination.
 - **User-visible outcome.**
   - `#ladder`, inside the Online area and linked from the lobby, with no new top-nav item: the phone header overflowed at four items (SDE Step 2, deviation 6).

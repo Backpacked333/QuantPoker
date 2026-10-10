@@ -229,3 +229,61 @@
   display: grid;
   gap: 8px;
 }
+
+/* The ladder (P1-14). The table scrolls inside its own region on a phone,
+   so the page never scrolls sideways. */
+.live-ladder {
+  display: grid;
+  gap: 12px;
+}
+.live-ladder h2 {
+  margin: 0;
+}
+.live-ladder-views {
+  display: flex;
+  gap: 16px;
+}
+.live-ladder-views a[aria-current='page'] {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.live-standing {
+  margin: 0;
+  font-weight: 600;
+}
+.live-ladder-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.live-ladder-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.live-ladder table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.live-ladder th,
+.live-ladder td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+.live-ladder th:nth-child(2),
+.live-ladder td:nth-child(2) {
+  text-align: left;
+}
+.live-ladder thead th {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.live-ladder tbody th {
+  font-weight: 600;
+}
+.live-ladder-note {
+  font-size: 13px;
+}

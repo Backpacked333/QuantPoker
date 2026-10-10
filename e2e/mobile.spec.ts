@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { onboard, playHand } from './helpers'
+import { fakeLadder, onboard, playHand } from './helpers'
 
 /**
  * Nothing wider than the device. Comparing with innerWidth alone is not
@@ -72,4 +72,21 @@ test('the online lobby fits a phone without horizontal scroll', async ({
     page.getByText('Online play is not set up on this site yet.'),
   ).toBeVisible()
   await expectNoOverflow(page)
+})
+
+test('the ladder fits a phone, down to 320 px: the table scrolls inside itself', async ({
+  page,
+}) => {
+  await fakeLadder(page)
+  await page.goto('/#ladder')
+  const table = page.getByRole('region', { name: /Ladder table/ })
+  await expect(table.locator('tbody tr')).toHaveCount(50)
+  await expectNoOverflow(page)
+  await page.setViewportSize({ width: 320, height: 640 })
+  await expectNoOverflow(page)
+  // Every column stays reachable: the region scrolls sideways to the last.
+  await table.evaluate((el) => (el.scrollLeft = el.scrollWidth))
+  await expect(
+    page.getByRole('columnheader', { name: '30 days' }),
+  ).toBeInViewport()
 })

@@ -1,11 +1,13 @@
-// The online area: #lobby and #play/<matchId>. Lazy-loaded so the account
-// client never reaches the entry chunk; the trainer works without any of it.
+// The online area: #lobby, #play/<matchId> and the public #ladder[/month].
+// Lazy-loaded so the account client never reaches the entry chunk; the
+// trainer works without any of it.
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useHash } from '../lib/navigation'
 import { devIdentity } from './api'
 import type { Identity } from './api'
 import { AuthGate } from './AuthGate'
+import { Ladder } from './Ladder'
 import { LiveTable } from './LiveTable'
 import { Lobby } from './Lobby'
 import { loadOnline } from './supabase'
@@ -13,10 +15,12 @@ import type { Online } from './supabase'
 import './live.css'
 
 const PLAY = /^#play\/([0-9a-f-]{36})$/
+const LADDER = /^#ladder(\/month)?$/
 
 export default function LiveApp() {
   const hash = useHash()
   const matchId = hash.match(PLAY)?.[1] ?? null
+  const ladder = hash.match(LADDER)
   const [dev] = useState(devIdentity)
   const [online, setOnline] = useState<Online | null | undefined>(undefined)
   useEffect(() => {
@@ -49,6 +53,38 @@ export default function LiveApp() {
       />
     )
 
+  // The ladder is public: no sign-in, read with the anonymous key.
+  if (ladder)
+    return (
+      <div className="page live-page">
+        <header className="page-head">
+          <h1>Ladder</h1>
+          <p>
+            Rated heads-up duplicate: the same cards both ways, luck cancelled.
+          </p>
+          <p className="live-muted">
+            <a href="#lobby">Play rated</a> · <a href="#fair-play">Fair play</a>
+          </p>
+        </header>
+        {online === undefined && !dev ? (
+          <p className="live-status" role="status">
+            Connecting…
+          </p>
+        ) : online ? (
+          <Ladder
+            key={ladder[1] ? 'month' : 'all'}
+            client={online.client}
+            view={ladder[1] ? 'month' : 'all'}
+          />
+        ) : (
+          <p className="live-muted" role="status">
+            The ladder is not available on this site: it has no account service
+            configured.
+          </p>
+        )}
+      </div>
+    )
+
   return (
     <div className={`page live-page ${matchId ? 'live-page-table' : ''}`}>
       {!matchId && (
@@ -56,7 +92,8 @@ export default function LiveApp() {
           <h1>Play online</h1>
           <p>Real opponents, play money, every hand reviewable afterwards.</p>
           <p className="live-muted">
-            <a href="#fair-play">Fair play</a> · <a href="#terms">Terms</a>
+            <a href="#ladder">Ladder</a> · <a href="#fair-play">Fair play</a> ·{' '}
+            <a href="#terms">Terms</a>
           </p>
         </header>
       )}

@@ -122,3 +122,48 @@ The test asserts what does hold for every sequence: **after playing a period, RD
   |     30 |        10 s |    111 s |          23% |       90 |
 
   The median stays under 60 s from 10 players online. At 10 online the tail is long (p90 3.7 min), the cost of matching within about 130 points. If launch liquidity is lower, widen faster (`perMinute`) rather than starting wider.
+
+## P1-14 · The ladder, the rating metrics and a simulated season (2026-10-10)
+
+The DBA decisions and EXPLAIN evidence are in `.10x/decisions/dba/ladder.md`.
+
+### What was built
+
+- **SQL:** `supabase/migrations/20261010090000_ladder.sql` adds `ladder`, `ladder_month` and `abandonment_rate`. All three are invoker-rights, and the eligibility rules match `src/rating/rules.ts`. P1-18's sanctions clause stays in `supabase/proposed/phase1.sql`.
+- **Client:**
+  - `src/net/ladder.ts` holds the loaders and formatting. The rating is always shown as "1612 ± 64". It also has `standingLine`, the viewer's line: matches to go, provisional by RD, or why they are off the ladder.
+  - `src/net/Ladder.tsx` is the table: rank, player, rating ± RD, accuracy, matches, win rate, and the change over 30 days or this month. It shows a page of 50 and asks for 51 to know whether a next page exists. Previous and next work from a stack of keyset cursors.
+  - **Routes:** `#ladder` and `#ladder/month` belong to the Online area and are public: no sign-in, no welcome dialog, read with the publishable key. There is no new top-nav item. The ladder is linked from the lobby's rated card and the Online header.
+- **Metrics:** `supabase/metrics/rating-metrics.sql` is a single read-only query, run on production read-only. All three metrics report "insufficient data (need 30)" because there are no rated matches yet.
+
+### Deviations
+
+- There are two functions (`ladder`, `ladder_month`) instead of one with a `period` argument. Each keeps a plan the planner can see.
+- Win rate counts wins only, and the note under the table says so; draws are visible as the gap.
+- The e2e lives in `e2e/ladder.spec.ts` (desktop) and `e2e/mobile.spec.ts` (phone) rather than `app.spec.ts`. `fakeLadder` in `e2e/helpers.ts` serves `/api/config` and the ladder RPCs inside the browser, so CI needs no account service.
+- Player names are plain text until P1-15 adds profiles, so no link points to a route that does not exist yet.
+
+### Tests
+
+- **`supabase/tests/ladder.test.ts`** (4 tests):
+  - only eligible players appear, and exactly 10% abandonment is out;
+  - pages of 50 over 1,000 players have no gaps or repeats, and the page size is capped at 100;
+  - this month counts only that month's matches, wins and trend;
+  - anon and authenticated read it with their own rights.
+- **`supabase/tests/season.test.ts`:** "insufficient data" on the empty database; then 200 players and 5,000 matches, with these results:
+  - Spearman(true skill, ladder rating) is 0.975;
+  - 190 players are listed, and none of the 10 inactive or abandoning players is among them;
+  - predictive validity is 65.4%, rating stability 13.4, accuracy validity 0.860.
+- **`src/net/ladder.test.ts`** (7 tests): formatting; the standing lines, including the 10% and 30-day boundaries.
+- **`src/net/Ladder.test.tsx`** (5 tests): the columns and row contents; keyset paging (ranks continue, the cursor is the last row shown, the last page has no next); the month view; a provisional viewer's "7 rated matches to go" while a visitor sees no line; empty and retry states.
+- **Mutation checks:** each of these fails a test:
+  - rank without the page offset;
+  - asking for 50 instead of 51;
+  - `>` for `>=` on abandonment;
+  - a 35-day activity window;
+  - "Previous" resetting to page 1.
+- **e2e:**
+  - the ladder is public, ranks and pages by keyset, and this month works;
+  - axe reports 0 violations of any impact in light and dark;
+  - at 412 px and 320 px there is no page overflow, and the table scrolls inside its own region.
+  - Removing that region's `overflow-x` makes the page 563 px wide on a 412 px phone, and the test fails.

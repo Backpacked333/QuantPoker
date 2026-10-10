@@ -178,3 +178,57 @@ The DBA decisions and EXPLAIN evidence are in `.10x/decisions/dba/ladder.md`.
   - axe reports 0 violations of any impact in light and dark;
   - at 412 px and 320 px there is no page overflow, and the table scrolls inside its own region.
   - Removing that region's `overflow-x` makes the page 563 px wide on a 412 px phone, and the test fails.
+
+## P1-15/16 · Public profile, match review, Method page and share card (2026-10-10)
+
+### What was built
+
+- **Routes.**
+  - **`/u/<username>`** is the share link. The Worker (`worker/src/profile.ts`, with `run_worker_first` gaining `/u/*`) serves the app with that player's link preview: the title and description carry the name and rating ± RD, provisional or not. `og:image` is an absolute URL to `public/og-default.png`.
+  - The preview is built from the name as validated from the path (`[a-z0-9_]{3,20}`). HTMLRewriter's `setAttribute` escapes it again. Previews are edge-cached for 60 s, so page loads cannot become Postgres reads.
+  - An unknown name gets a 404 with the app; a Supabase failure gets the generic preview.
+  - In the browser, `src/lib/profilePath.ts` turns the path into `#u/<username>` at the site root.
+- **Profile (`src/net/profile/`, at `#u/<username>`).** It is public; there is no sign-in.
+  - Rating ± RD with an "Established" or "Provisional · X rated matches to go" badge.
+  - A graph of the rating with a band one RD either side. `LineChart` gained `zero={false}` so ratings near 1500 are not drawn from 0.
+  - Volume (W · D · L, win rate), abandonment ("1 of 25 (4%)"), and Sanctions "None" (P1-18 fills it).
+  - Accuracy, through the same panel worded for the player.
+  - The last 20 rated matches, each with the opponent's profile and a Review link.
+  - Share (copy the `/u/` link) and a Method link.
+- **Match review (`#match/<id>`, `src/net/MatchReview.tsx`).** The finished match hand by hand from the public archive: actions, board and only the cards shown at showdown.
+  - A match still being played is refused before any hand is read.
+  - Decision times are left out (tickets Q5); "ran out of time" stays.
+- **Method page (`#method`, `src/info/Method.tsx`, in the info chunk).** Every number is imported from the module that applies it:
+  - Glicko-2 `glicko2.v1`: τ, the start values, the scale, one match per period, the 30-day idle widening, and the update formulas;
+  - the draw band (`DRAW_BAND_BB` moved to `src/rating/rules.ts`, re-exported by `worker/src/rated.ts`) and the scores;
+  - the provisional rule and the ladder rules;
+  - accuracy (the exact label, `grade.v1+population.v1`, the per-decision formula, the grade thresholds);
+  - what the numbers do not measure, and a versions table.
+- **Links.** The end-of-match rating line has "How ratings work"; ladder names link to profiles; the ladder, the profile and the public pages' header link Method.
+- **Share card.** `scripts/og-card.ts` renders `public/og-default.png` (1200 × 630) with Chromium. It is generic and carries no numbers that could pass for a player's.
+
+### Deviations and deferrals
+
+- **Deferred to a follow-up: counting profile views from outside the app** (P1-16's `profile_views` table and `/api/profile/share`). The mission's build list does not include it. The PM metric "public profile views from outside the app" stays **needs instrumentation**.
+- **No dynamic per-player image** (the ticket's cut line); the player's numbers are in the preview text.
+- **`#match/<id>` replaces the ticket's `#review/<id>/1`.** No review route existed, and the hand number is navigation inside the page.
+- **Only rated matches are listed** on a profile. ToS consent covers rated hand histories (PM spec); casual ones are not surfaced.
+
+### Tests
+
+- **`worker/test/profile.test.ts`** (7 tests):
+  - the preview for `/u/alice`, plus the provisional and unrated wordings;
+  - `og:image` is absolute;
+  - unknown and impossible names give a 404, with no lookup for an impossible name;
+  - injection: a forged row puts nothing in the page;
+  - Supabase down still serves the page;
+  - one read per name while cached.
+  - Mutation-checked: no cache, the stored name in the title, and a loose path pattern each fail a test.
+- **`supabase/tests/profile.test.ts`** (3 tests): every query the profile, review and preview make returns rows to anon; hole cards, the deck and emails are refused; anon writes nothing.
+- **`src/net/profile/Profile.test.tsx`** (5 tests): the numbers, badge, sanctions and Method link; 20 matches newest first with review and opponent links; provisional; unknown and retry states; only public tables read.
+- **`src/net/MatchReview.test.tsx`** (3 tests): only showdown cards (none on a fold) and no decision times; a live match is refused without reading hands; an unknown match.
+- **Smaller suites:** `src/info/Method.test.tsx` (2 tests) and `src/lib/profilePath.test.ts` (2 tests).
+- **e2e (`e2e/profile.spec.ts`, `e2e/mobile.spec.ts`):**
+  - `/u/alice` opens the profile, and a Review link opens the match hand by hand;
+  - axe reports 0 violations on the profile, the review and Method (light and dark);
+  - the profile, the review and Method fit 320 px. That test caught the Method versions grid overflowing by 13 px, now fixed.
